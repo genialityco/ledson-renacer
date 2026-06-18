@@ -1,0 +1,679 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { FirebaseService } from '../firebase/firebase.service';
+import { EmailService } from '../email/email.service';
+import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
+import FormData from 'form-data';
+
+@Injectable()
+export class BookingsService {
+  constructor(
+    private firebase: FirebaseService,
+    private emailService: EmailService,
+  ) {}
+
+  async initBooking(data: any) {
+    const {
+      name,
+      docId,
+      email,
+      whatsapp,
+      country,
+      city,
+      selectedFilter,
+      timeSlot,
+      bookingDate,
+      imageBase64,
+    } = data;
+
+    let imageUrl = '';
+
+    // Si se envía una imagen en base64, se sube a Firebase Storage
+    if (imageBase64) {
+      const storage = this.firebase.getStorage();
+      const bucket = storage.bucket();
+      const fileName = `bookings/${uuidv4()}.jpg`;
+      const file = bucket.file(fileName);
+
+      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      await file.save(buffer, {
+        metadata: { contentType: 'image/jpeg' },
+      });
+
+      try {
+        await file.makePublic();
+        imageUrl = file.publicUrl();
+      } catch (e) {
+        const [url] = await file.getSignedUrl({
+          action: 'read',
+          expires: '01-01-2100',
+        });
+        imageUrl = url;
+      }
+    }
+
+    const db = this.firebase.getFirestore();
+    const finalBookingDate = bookingDate || new Date().toISOString().split('T')[0];
+
+    const bookingRef = db.collection('lr_bookings').doc();
+
+    const booking = {
+      name,
+      docId,
+      email,
+      whatsapp: whatsapp || '',
+      country,
+      city,
+      selectedFilter,
+      timeSlot,
+      exactTime: 'Sin asignar', // Se asignará al confirmar el pago
+      bookingDate: finalBookingDate,
+      imageUrl,
+      status: 'PENDING', // Queda como pendiente de pago
+      paymentMethod: data.paymentMethod || 'Wompi',
+      requiresInvoice: data.requiresInvoice || false,
+      createdAt: new Date(),
+      abandonmentEmailSent: false,
+    };
+
+    await bookingRef.set(booking);
+
+    return { id: bookingRef.id, ...booking };
+  }
+
+  async confirmPayment(id: string) {
+    const db = this.firebase.getFirestore();
+    const bookingRef = db.collection('lr_bookings').doc(id);
+    const bookingDoc = await bookingRef.get();
+
+    if (!bookingDoc.exists) throw new NotFoundException('Booking no encontrado');
+    const booking = bookingDoc.data();
+    if (!booking) throw new NotFoundException('Booking sin datos');
+
+    if (booking.status !== 'PENDING') {
+      return { success: true, message: 'La reserva ya fue procesada' };
+    }
+
+    // Calcular slot exacto de proyección
+    let exactTime = 'Sin asignar';
+    let slotDuration = 1;
+    if (booking.timeSlot) {
+      let deadTimes = [];
+      const scheduleDoc = await db.collection('lr_daily_schedules').doc(booking.bookingDate).get();
+      const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
+      const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
+      
+      if (scheduleSettingsDoc.exists) {
+        slotDuration = scheduleSettingsDoc.data()?.slotDuration || 1;
+      }
+
+      if (scheduleDoc.exists) {
+        deadTimes = scheduleDoc.data()?.deadTimes || [];
+      } else {
+        deadTimes = screenSettingsDoc.exists ? (screenSettingsDoc.data()?.deadTimes || []) : [];
+      }
+
+      const [startStr, endStr] = booking.timeSlot.split('-');
+      
+      if (startStr && endStr) {
+        const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+        const toStr = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+        
+        const startMins = toMins(startStr);
+        const endMins = toMins(endStr);
+        
+        const existing = await db.collection('lr_bookings')
+          .where('timeSlot', '==', booking.timeSlot)
+          .where('bookingDate', '==', booking.bookingDate)
+          .get();
+          
+        const taken = existing.docs.map(d => d.data().exactTime).filter(Boolean);
+        
+        for (let m = startMins; m < endMins; m += slotDuration) {
+          const tStr = toStr(m);
+          const isDead = deadTimes.some((dt: any) => tStr >= dt.startTime && tStr < dt.endTime);
+          if (!isDead && !taken.includes(tStr)) {
+            exactTime = tStr;
+            break;
+          }
+        }
+        if (exactTime === 'Sin asignar') exactTime = 'Agotado/Lleno';
+      }
+    }
+
+    await bookingRef.update({ status: 'APPROVED', exactTime });
+    return { success: true, exactTime };
+  }
+
+  async createBooking(data: any) {
+    const {
+      name,
+      docId,
+      email,
+      whatsapp,
+      country,
+      city,
+      selectedFilter,
+      timeSlot,
+      bookingDate,
+      imageBase64,
+    } = data;
+
+    let imageUrl = '';
+
+    // Si se envía una imagen en base64, se sube a Firebase Storage
+    if (imageBase64) {
+      const storage = this.firebase.getStorage();
+      const bucket = storage.bucket();
+      const fileName = `bookings/${uuidv4()}.jpg`;
+      const file = bucket.file(fileName);
+
+      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      await file.save(buffer, {
+        metadata: { contentType: 'image/jpeg' },
+      });
+
+      // Intentar hacer pública la imagen
+      try {
+        await file.makePublic();
+        imageUrl = file.publicUrl();
+      } catch (e) {
+        // Fallback: generar Signed URL duradera en caso de reglas restrictivas del bucket
+        const [url] = await file.getSignedUrl({
+          action: 'read',
+          expires: '01-01-2100',
+        });
+        imageUrl = url;
+      }
+    }
+
+    // Guardar los datos en Firestore
+    const db = this.firebase.getFirestore();
+    
+    // Calcular slot exacto (por defecto 1 minuto)
+    let exactTime = 'Sin asignar';
+    let slotDuration = 1;
+    const finalBookingDate = bookingDate || new Date().toISOString().split('T')[0];
+
+    if (timeSlot) {
+      let deadTimes = [];
+      const scheduleDoc = await db.collection('lr_daily_schedules').doc(finalBookingDate).get();
+      const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
+      const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
+      
+      if (scheduleSettingsDoc.exists) {
+        slotDuration = scheduleSettingsDoc.data()?.slotDuration || 1;
+      }
+
+      if (scheduleDoc.exists) {
+        deadTimes = scheduleDoc.data()?.deadTimes || [];
+      } else {
+        deadTimes = screenSettingsDoc.exists ? (screenSettingsDoc.data()?.deadTimes || []) : [];
+      }
+
+      const [startStr, endStr] = timeSlot.split('-');
+      
+      if (startStr && endStr) {
+        const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+        const toStr = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+        
+        const startMins = toMins(startStr);
+        const endMins = toMins(endStr);
+        
+        const existing = await db.collection('lr_bookings')
+          .where('timeSlot', '==', timeSlot)
+          .where('bookingDate', '==', finalBookingDate)
+          .get();
+          
+        const taken = existing.docs.map(d => d.data().exactTime).filter(Boolean);
+        
+        for (let m = startMins; m < endMins; m += slotDuration) {
+          const tStr = toStr(m);
+          const isDead = deadTimes.some((dt: any) => tStr >= dt.startTime && tStr < dt.endTime);
+          if (!isDead && !taken.includes(tStr)) {
+            exactTime = tStr;
+            break;
+          }
+        }
+        if (exactTime === 'Sin asignar') exactTime = 'Agotado/Lleno';
+      }
+    }
+
+    const bookingRef = db.collection('lr_bookings').doc();
+
+    const booking = {
+      name,
+      docId,
+      email,
+      whatsapp: whatsapp || '',
+      country,
+      city,
+      selectedFilter,
+      timeSlot,
+      exactTime,
+      bookingDate: finalBookingDate,
+      imageUrl,
+      status: 'APPROVED', // Lo marcamos como APPROVED
+      paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
+      requiresInvoice: data.requiresInvoice || false, // boolean
+      createdAt: new Date(),
+    };
+
+    await bookingRef.set(booking);
+
+    return { id: bookingRef.id, ...booking };
+  }
+
+  async getBookings() {
+    const db = this.firebase.getFirestore();
+    const snapshot = await db
+      .collection('lr_bookings')
+      .orderBy('createdAt', 'desc')
+      .get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  }
+
+  async searchBookings(query: string) {
+    const db = this.firebase.getFirestore();
+    
+    // Primero buscamos por docId
+    let snapshot = await db
+      .collection('lr_bookings')
+      .where('docId', '==', query)
+      .get();
+
+    // Si no hay por docId, buscamos por email
+    if (snapshot.empty) {
+      snapshot = await db
+        .collection('lr_bookings')
+        .where('email', '==', query)
+        .get();
+    }
+
+    const docs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+    // Ordenar de la más próxima a la más antigua (basado en bookingDate y exactTime)
+    // Para ello concatenamos las fechas y horas y ordenamos descendente o ascendente según se necesite.
+    // Proyección más próxima = la que está más en el futuro, luego las antiguas.
+    const now = new Date();
+    
+    docs.sort((a: any, b: any) => {
+      const dateA = new Date(`${a.bookingDate}T${a.exactTime !== 'Sin asignar' && a.exactTime !== 'Agotado/Lleno' ? a.exactTime : a.timeSlot ? a.timeSlot.split('-')[0] : '00:00'}`);
+      const dateB = new Date(`${b.bookingDate}T${b.exactTime !== 'Sin asignar' && b.exactTime !== 'Agotado/Lleno' ? b.exactTime : b.timeSlot ? b.timeSlot.split('-')[0] : '00:00'}`);
+      
+      return dateB.getTime() - dateA.getTime(); // Ordenar de más reciente a más antigua
+    });
+
+    return docs;
+  }
+
+  async updateBookingStatus(id: string, status: string) {
+    const db = this.firebase.getFirestore();
+    await db.collection('lr_bookings').doc(id).update({ status });
+    return { success: true, status };
+  }
+
+  async generateImage(id: string) {
+    const db = this.firebase.getFirestore();
+    const bookingRef = db.collection('lr_bookings').doc(id);
+    const bookingDoc = await bookingRef.get();
+
+    if (!bookingDoc.exists)
+      throw new NotFoundException('Booking no encontrado');
+    const booking = bookingDoc.data();
+
+    if (!booking || !booking.selectedFilter)
+      throw new NotFoundException('Filtro no asignado');
+
+    // Obtener el filtro
+    const filterDoc = await db
+      .collection('lr_filters')
+      .doc(booking.selectedFilter)
+      .get();
+    if (!filterDoc.exists)
+      throw new NotFoundException('Filtro no encontrado en la base de datos');
+    const filter = filterDoc.data();
+
+    if (!filter) throw new NotFoundException('Filtro sin datos');
+
+    // Descargar la imagen original de Firebase Storage (o URL pública)
+    const imageRes = await axios.get(booking.imageUrl, {
+      responseType: 'arraybuffer',
+    });
+    const imageBuffer = Buffer.from(imageRes.data);
+
+    // Preparar form-data
+    const form = new FormData();
+    form.append('lora', filter.lora || filter.value);
+    form.append('prompt', filter.prompt || '');
+    form.append('lora_strength', String(filter.lora_strength || 1.0));
+    form.append('denoise', String(filter.denoise || 0.7));
+    form.append('image', imageBuffer, {
+      filename: 'image.jpg',
+      contentType: 'image/jpeg',
+    });
+
+    // Llamar a la API externa de generación
+    let generateRes;
+    try {
+      generateRes = await axios.post('http://localhost:8000/generate', form, {
+        headers: form.getHeaders(),
+        responseType: 'arraybuffer',
+      });
+    } catch (apiError: any) {
+      if (apiError.response && apiError.response.data) {
+        const errorString = Buffer.from(apiError.response.data).toString(
+          'utf-8',
+        );
+        console.error('Error 422 de la API de imágenes:', errorString);
+      } else {
+        console.error('Error llamando a la API de imágenes:', apiError.message);
+      }
+      throw new Error('Falló la generación de imagen externa');
+    }
+
+    let generatedBuffer: Buffer;
+    const contentType = generateRes.headers['content-type'];
+    if (
+      typeof contentType === 'string' &&
+      contentType.includes('application/json')
+    ) {
+      const json = JSON.parse(generateRes.data.toString());
+      // Extrae la imagen en base64 de la respuesta JSON (depende de cómo responda tu API)
+      generatedBuffer = Buffer.from(
+        json.image || json.base64 || json.imageUrl || '',
+        'base64',
+      );
+    } else {
+      // Si la API devuelve directamente la imagen binaria
+      generatedBuffer = Buffer.from(generateRes.data);
+    }
+
+    // Subir imagen final a Firebase Storage
+    const storage = this.firebase.getStorage();
+    const bucket = storage.bucket();
+    const fileName = `generated/${id}_${Date.now()}.jpg`;
+    const file = bucket.file(fileName);
+
+    await file.save(generatedBuffer, {
+      metadata: { contentType: 'image/jpeg' },
+    });
+
+    let generatedImageUrl = '';
+    try {
+      await file.makePublic();
+      generatedImageUrl = file.publicUrl();
+    } catch (e) {
+      const [url] = await file.getSignedUrl({
+        action: 'read',
+        expires: '01-01-2100',
+      });
+      generatedImageUrl = url;
+    }
+
+    // Actualizar documento con la URL final y el estado
+    await bookingRef.update({ generatedImageUrl, status: 'GENERATED' });
+
+    return { success: true, generatedImageUrl };
+  }
+
+  async getScreenSettings() {
+    const db = this.firebase.getFirestore();
+    const doc = await db.collection('lr_settings').doc('screen').get();
+    return doc.exists 
+      ? doc.data() 
+      : { 
+          backgroundUrl: '', 
+          headerUrl: '', 
+          footerUrl: '', 
+          carouselImages: [], 
+          carouselDuration: 5,
+          projectionDuration: 15,
+          carouselTransitionDirection: 'right',
+          contentGrid: [],
+          deadTimes: [], // Tiempos muertos (descansos)
+          currentProjection: null 
+        };
+  }
+
+  async updateScreenSettings(data: any) {
+    const db = this.firebase.getFirestore();
+    await db.collection('lr_settings').doc('screen').set(data, { merge: true });
+    return { success: true };
+  }
+
+  async clearProjection() {
+    const db = this.firebase.getFirestore();
+    await db.collection('lr_settings').doc('screen').set({ currentProjection: null }, { merge: true });
+    return { success: true };
+  }
+
+  async projectBooking(bookingId: string) {
+    const db = this.firebase.getFirestore();
+    const bookingDoc = await db.collection('lr_bookings').doc(bookingId).get();
+    if (!bookingDoc.exists) throw new NotFoundException('Booking no encontrado');
+    const b = bookingDoc.data();
+
+    if (!b) throw new NotFoundException('Booking sin datos');
+    
+    let transitionEffect = 'fade';
+    let frameUrl = '';
+
+    if (b.selectedFilter) {
+      const filterDoc = await db.collection('lr_filters').doc(b.selectedFilter).get();
+      if (filterDoc.exists) {
+        const filterData = filterDoc.data();
+        if (filterData) {
+          transitionEffect = filterData.transitionEffect || 'fade';
+          frameUrl = filterData.frameUrl || '';
+        }
+      }
+    }
+
+    const projectionData = {
+      id: bookingId,
+      name: b.name || '',
+      imageUrl: b.generatedImageUrl || b.imageUrl || '',
+      timestamp: Date.now(),
+      transitionEffect,
+      frameUrl
+    };
+
+    await db.collection('lr_settings').doc('screen').set({ currentProjection: projectionData }, { merge: true });
+    await db.collection('lr_bookings').doc(bookingId).update({ status: 'SHOWN' });
+    return { success: true };
+  }
+
+  async completeProjection(bookingId: string) {
+    const db = this.firebase.getFirestore();
+    // 1. Limpiar pantalla
+    await db.collection('lr_settings').doc('screen').set({ currentProjection: null }, { merge: true });
+
+    // 2. Obtener reserva
+    const bookingRef = db.collection('lr_bookings').doc(bookingId);
+    const bookingDoc = await bookingRef.get();
+    if (!bookingDoc.exists) throw new NotFoundException('Booking no encontrado');
+    
+    const b = bookingDoc.data();
+    if (!b) return { success: true };
+
+    // 3. Evitar doble envío
+    if (b.waSend) return { success: true, message: 'Notificación de WhatsApp ya enviada' };
+
+    // 4. Enviar el correo electrónico
+    if (b.email && !b.emailSent) {
+      const imageUrl = b.generatedImageUrl || b.imageUrl;
+      const html = `
+        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #228be6;">¡Hola ${b.name}!</h1>
+          <p>Gracias por ser parte de la experiencia <strong>Led's on Renacer</strong>.</p>
+          <p>Aquí tienes el recuerdo de tu photobooth:</p>
+          <img src="${imageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+          <p>¡Esperamos que lo hayas disfrutado!</p>
+          <br/>
+          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+        </div>
+      `;
+      try {
+        await this.emailService.sendEmail(b.email, "¡Tu foto de Led's on Renacer está lista!", html);
+        await bookingRef.update({ emailSent: true });
+      } catch (e: any) {
+        console.error('Error enviando correo al cliente:', e.message);
+      }
+    }
+
+    // Enviar WhatsApp de resultado (Después de la proyección en completeProjection)
+    let waSend = b.waSend || false;
+    
+    console.log(`[Diagnostic] Preparando envío WA para: ${b.name}`);
+    console.log(`[Diagnostic] Whatsapp num: ${b.whatsapp}, waSend state: ${waSend}`);
+    console.log(`[Diagnostic] ENV.WHATSAPP_API_URL: ${process.env.WHATSAPP_API_URL}, ENV.WHATSAPP_ACCOUNT_ID: ${process.env.WHATSAPP_ACCOUNT_ID}`);
+    
+    if (b.whatsapp && process.env.WHATSAPP_API_URL && !waSend) {
+      try {
+        const imageUrl = b.generatedImageUrl || b.imageUrl;
+        console.log(`[Diagnostic] Enviando payload a ${process.env.WHATSAPP_API_URL}/api/send-image-result con imageUrl: ${imageUrl}`);
+        
+        const waResponse = await axios.post(`${process.env.WHATSAPP_API_URL}/api/send-image-result`, {
+          accountId: process.env.WHATSAPP_ACCOUNT_ID,
+          to: b.whatsapp,
+          imageUrl,
+          userName: b.name,
+          experienceName: "Led's on Renacer",
+          organizationName: "Galería Renacer",
+        });
+        
+        console.log(`[Diagnostic] Respuesta de WA API: ${waResponse.status} - ${JSON.stringify(waResponse.data)}`);
+        waSend = true;
+      } catch (err: any) {
+        console.error('[Diagnostic] Error crítico enviando WhatsApp de resultado:', err.message);
+        if (err.response) {
+          console.error('[Diagnostic] Detalles del error WA:', err.response.data);
+        }
+      }
+    } else {
+      console.log(`[Diagnostic] Omitiendo envío WA. Motivo: Faltan variables de entorno, whatsapp del usuario está vacío, o waSend ya era true.`);
+    }
+
+    // 5. Marcar como finalizado (para el panel admin)
+    await bookingRef.update({ status: 'COMPLETED', waSend });
+
+    return { success: true };
+  }
+
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async checkAbandonedBookings() {
+    const db = this.firebase.getFirestore();
+    const now = new Date();
+    // Considerar abandonado si lleva más de 15 minutos pendiente
+    const abandonedTime = new Date(now.getTime() - 15 * 60000);
+
+    try {
+      const snapshot = await db.collection('lr_bookings')
+        .where('status', '==', 'PENDING')
+        .where('abandonmentEmailSent', '==', false)
+        .where('createdAt', '<', abandonedTime)
+        .get();
+
+      if (snapshot.empty) return;
+
+      for (const doc of snapshot.docs) {
+        const b = doc.data();
+        if (b.email) {
+          const html = `
+            <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+              <h1 style="color: #f59f00;">¡Hola ${b.name}!</h1>
+              <p>Notamos que no terminaste el pago para tu experiencia <strong>Led's on Renacer</strong>.</p>
+              <p>Tu foto y reserva en la franja <strong>${b.timeSlot}</strong> del <strong>${b.bookingDate}</strong> aún están guardadas.</p>
+              <p>Puedes retomar tu compra contactándonos o regresando al punto de venta virtual.</p>
+              <br/>
+              <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+            </div>
+          `;
+          try {
+            await this.emailService.sendEmail(b.email, "¡Retoma tu reserva de Led's on Renacer!", html);
+            await doc.ref.update({ abandonmentEmailSent: true });
+          } catch (e: any) {
+            console.error(`Error enviando correo de abandono para ${doc.id}:`, e.message);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error('Error verificando carritos abandonados:', e.message);
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkUpcomingProjections() {
+    console.log('[Diagnostic] Ejecutando Cronjob: checkUpcomingProjections');
+    
+    const db = this.firebase.getFirestore();
+    const now = new Date();
+    
+    const targetDateStr = now.toISOString().split('T')[0];
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const maxMins = nowMins + 10;
+    
+    try {
+      const snapshot = await db.collection('lr_bookings')
+        .where('bookingDate', '==', targetDateStr)
+        .get();
+
+      if (snapshot.empty) {
+        console.log('[Diagnostic] No hay bookings para el día de hoy:', targetDateStr);
+        return;
+      }
+
+      const apiUrl = process.env.WHATSAPP_API_URL;
+      const accountId = process.env.WHATSAPP_ACCOUNT_ID;
+
+      if (!apiUrl) {
+        console.log('[Diagnostic] Omite notificaciones de proyección: FALTA WHATSAPP_API_URL en el entorno.');
+        return;
+      }
+
+      let notifsSent = 0;
+      console.log(`[Diagnostic] Revisando ${snapshot.size} bookings para proyecciones próximas...`);
+      for (const doc of snapshot.docs) {
+        const b = doc.data();
+        
+        const validStatus = b.status === 'APPROVED' || b.status === 'GENERATED';
+
+        if (validStatus && b.whatsapp && !b.projectionNotificationSent && b.exactTime && b.exactTime !== 'Sin asignar' && b.exactTime !== 'Agotado/Lleno') {
+          const [h, m] = b.exactTime.split(':').map(Number);
+          const exactMins = h * 60 + m;
+          console.log(`[Diagnostic] Booking ${doc.id} - exactTime: ${b.exactTime}, exactMins: ${exactMins}, nowMins: ${nowMins}, maxMins: ${maxMins}`);
+          if (exactMins >= nowMins && exactMins <= maxMins) {
+            const shortName = b.name ? b.name.trim().split(' ')[0].substring(0, 20) : 'Amigo';
+            
+            console.log(`[Diagnostic] Enviando Notificación Previa a: ${shortName} (${b.whatsapp}) para la proyección de las ${b.exactTime}`);
+            try {
+              await axios.post(`${apiUrl}/api/send-projection-notification`, {
+                accountId,
+                to: b.whatsapp,
+                experienceName: "Renacer",
+                userName: shortName,
+              });
+              await doc.ref.update({ projectionNotificationSent: true });
+              notifsSent++;
+            } catch (err: any) {
+              console.error(`[Diagnostic] Error enviando WhatsApp previo para ${doc.id}:`, err.message);
+              if (err.response) {
+                console.error('[Diagnostic] Detalles del error WA:', err.response.data);
+              }
+            }
+          }
+        }
+      }
+      
+      console.log(`[Diagnostic] Cronjob finalizado. Notificaciones enviadas en este ciclo: ${notifsSent}`);
+    } catch (e: any) {
+      console.error('[Diagnostic] Error verificando proyecciones próximas:', e.message);
+    }
+  }
+}

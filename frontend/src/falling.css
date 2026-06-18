@@ -1,0 +1,110 @@
+/* falling.css */
+.falling-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  pointer-events: none; /* Allows clicking through the images */
+  z-index: 0;
+}
+
+.falling-image {
+  position: absolute;
+  top: -250px; /* Start above the screen */
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  animation: fall linear infinite;
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+}
+
+.falling-image:hover {
+  opacity: 1;
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+  100% {
+    transform: translateY(calc(100vh + 300px)) rotate(15deg);
+  }
+}
+
+/* CAROUSEL TRANSITIONS */
+.carousel-fade-enter {
+  opacity: 0;
+}
+.carousel-fade-enter-active {
+  opacity: 1;
+  transition: opacity 1000ms ease;
+}
+.carousel-fade-exit {
+  opacity: 1;
+}
+.carousel-fade-exit-active {
+  opacity: 0;
+  transition: opacity 1000ms ease;
+}
+
+.carousel-slide-left-enter {
+  transform: translateX(100%);
+}
+.carousel-slide-left-enter-active {
+  transform: translateX(0);
+  transition: transform 1000ms ease;
+}
+.carousel-slide-left-exit {
+  transform: translateX(0);
+}
+.carousel-slide-left-exit-active {
+  transform: translateX(-100%);
+  transition: transform 1000ms ease;
+}
+
+.carousel-slide-right-enter {
+  transform: translateX(-100%);
+}
+.carousel-slide-right-enter-active {
+  transform: translateX(0);
+  transition: transform 1000ms ease;
+}
+.carousel-slide-right-exit {
+  transform: translateX(0);
+}
+.carousel-slide-right-exit-active {
+  transform: translateX(100%);
+  transition: transform 1000ms ease;
+}
+
+.carousel-slide-up-enter {
+  transform: translateY(100%);
+}
+.carousel-slide-up-enter-active {
+  transform: translateY(0);
+  transition: transform 1000ms ease;
+}
+.carousel-slide-up-exit {
+  transform: translateY(0);
+}
+.carousel-slide-up-exit-active {
+  transform: translateY(-100%);
+  transition: transform 1000ms ease;
+}
+
+.carousel-slide-down-enter {
+  transform: translateY(-100%);
+}
+.carousel-slide-down-enter-active {
+  transform: translateY(0);
+  transition: transform 1000ms ease;
+}
+.carousel-slide-down-exit {
+  transform: translateY(0);
+}
+.carousel-slide-down-exit-active {
+  transform: translateY(100%);
+  transition: transform 1000ms ease;
+}

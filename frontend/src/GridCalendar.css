@@ -1,0 +1,293 @@
+/* ── Layout ────────────────────────────────────────────── */
+.gcv-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.gcv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  gap: 1rem;
+}
+
+.gcv-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.gcv-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #4a90d9;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.gcv-back-btn:hover {
+  background: #e8f0fe;
+}
+
+/* ── Calendar box ──────────────────────────────────────── */
+.gcv-calendar-box {
+  height: 75vh;
+  background: #fff;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Overlay / Modal ───────────────────────────────────── */
+.gcv-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.gcv-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.gcv-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 0;
+}
+.gcv-modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.gcv-modal-close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #888;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.gcv-modal-close:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.gcv-modal-body {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.gcv-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem 1.25rem;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 0.5rem;
+}
+
+/* ── Form fields ───────────────────────────────────────── */
+.gcv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1;
+}
+
+.gcv-field label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #444;
+}
+
+.gcv-field-desc {
+  font-size: 0.72rem;
+  color: #888;
+  margin-top: -0.2rem;
+}
+
+.gcv-required {
+  color: #e03131;
+}
+
+.gcv-field input[type='text'],
+.gcv-field input[type='number'],
+.gcv-field input[type='datetime-local'],
+.gcv-field select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #1a1a2e;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gcv-field input:focus,
+.gcv-field select:focus {
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.2);
+}
+
+.gcv-field input:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+/* URL input + upload button side by side */
+.gcv-input-with-btn {
+  display: flex;
+  gap: 0.5rem;
+}
+.gcv-input-with-btn input {
+  flex: 1;
+}
+
+.gcv-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  background: #e8f0fe;
+  color: #4a90d9;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  border: 1px solid #c5d8f5;
+  transition: background 0.15s;
+  user-select: none;
+}
+.gcv-upload-btn:hover {
+  background: #d0e4fc;
+}
+.gcv-upload-btn--loading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* Two-column row */
+.gcv-row {
+  display: flex;
+  gap: 1rem;
+}
+.gcv-row--align-end {
+  align-items: flex-end;
+}
+
+/* ── Toggle switch ─────────────────────────────────────── */
+.gcv-field--switch {
+  justify-content: flex-end;
+  padding-bottom: 0.1rem;
+}
+
+.gcv-switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #444;
+  user-select: none;
+}
+
+.gcv-switch-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: #ccc;
+  border-radius: 10px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.gcv-switch-track input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.gcv-switch-track input:checked ~ .gcv-switch-thumb {
+  transform: translateX(16px);
+}
+.gcv-switch-track:has(input:checked) {
+  background: #339af0;
+}
+
+.gcv-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: transform 0.2s;
+  pointer-events: none;
+}
+
+/* ── Buttons ───────────────────────────────────────────── */
+.gcv-btn {
+  padding: 0.5rem 1.25rem;
+  border-radius: 7px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.gcv-btn--primary {
+  background: #339af0;
+  color: #fff;
+}
+.gcv-btn--primary:hover {
+  background: #228be6;
+}
+
+.gcv-btn--danger-ghost {
+  background: transparent;
+  color: #e03131;
+  border: 1px solid transparent;
+}
+.gcv-btn--danger-ghost:hover {
+  background: #fff5f5;
+  border-color: #ffc9c9;
+}
