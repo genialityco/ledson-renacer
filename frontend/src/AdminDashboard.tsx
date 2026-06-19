@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput } from '@mantine/core';
-import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar } from '@tabler/icons-react';
+import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio } from '@mantine/core';
+import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -53,6 +53,7 @@ export function AdminDashboard() {
   const [autoSlotInterval, setAutoSlotInterval] = useState<string | null>('60');
   
   const [slotDuration, setSlotDuration] = useState(1);
+  const [bookingSystemType, setBookingSystemType] = useState('slots');
 
   const fetchData = async () => {
     try {
@@ -67,6 +68,7 @@ export function AdminDashboard() {
       setFilters(resFilters.data);
       setTemplates(resTemplates.data || []);
       setSlotDuration(resScheduleSettings.data?.slotDuration || 1);
+      setBookingSystemType(resScheduleSettings.data?.bookingSystemType || 'slots');
       if (resScreen.data) {
         setScreenBgUrl(resScreen.data.backgroundUrl || '');
         setHeaderUrl(resScreen.data.headerUrl || '');
@@ -288,10 +290,10 @@ export function AdminDashboard() {
 
   const handleUpdateScheduleSettings = async () => {
     try {
-      await axios.put('http://localhost:5000/api/schedules/settings', { slotDuration });
-      alert('Ajustes de horario actualizados');
+      await axios.put('http://localhost:5000/api/schedules/settings', { slotDuration, bookingSystemType });
+      alert('Ajustes guardados correctamente');
     } catch (e) {
-      alert('Error guardando ajustes de horario');
+      alert('Error guardando ajustes');
     }
   };
 
@@ -321,6 +323,7 @@ export function AdminDashboard() {
           <Tabs.Tab value="filters" leftSection={<IconFilter size={16} />}>Gestión de Filtros</Tabs.Tab>
           <Tabs.Tab value="schedules" leftSection={<IconCalendar size={16} />}>Gestión de Horarios</Tabs.Tab>
           <Tabs.Tab value="screen" leftSection={<IconDeviceTv size={16} />}>Pantalla Gigante</Tabs.Tab>
+          <Tabs.Tab value="policies" leftSection={<IconShieldLock size={16} />}>Políticas</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="bookings">
@@ -462,6 +465,26 @@ export function AdminDashboard() {
 
             <Button fullWidth onClick={handleAddFilter}>Guardar Filtro</Button>
           </Modal>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="policies">
+          <Box mb="xl" p="md" style={{ border: '1px solid #eee', borderRadius: '8px', maxWidth: '600px' }}>
+            <Title order={4} mb="sm">Sistema de Reservas</Title>
+            <Radio.Group
+              name="bookingSystem"
+              label="Modalidad de gestión de turnos"
+              description="Define si los clientes seleccionarán una franja de horario específica al reservar, o si entrarán automáticamente a una cola por orden de llegada."
+              value={bookingSystemType}
+              onChange={setBookingSystemType}
+              mb="xl"
+            >
+              <Group mt="xs" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px' }}>
+                <Radio value="slots" label="Sistema de Franjas (Slots de horario manual)" />
+                <Radio value="queue" label="Sistema de Cola Automática (Por orden de llegada / Pago)" />
+              </Group>
+            </Radio.Group>
+            <Button onClick={handleUpdateScheduleSettings} color="blue">Guardar Políticas</Button>
+          </Box>
         </Tabs.Panel>
 
         <Tabs.Panel value="schedules">

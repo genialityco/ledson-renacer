@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox } from '@mantine/core';
-import { IconCamera, IconUpload, IconDeviceFloppy } from '@tabler/icons-react';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Stepper, Badge, Loader } from '@mantine/core';
+import { IconCamera, IconUpload, IconDeviceFloppy, IconCheck, IconX, IconSearch } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import QRCode from 'react-qr-code';
 
 interface FilterOption {
   id: string;
@@ -22,7 +23,6 @@ export function AssistedBookingForm() {
   const [filters, setFilters] = useState<FilterOption[]>([]);
   const webcamRef = useRef<Webcam>(null);
 
-  // Form states
   const [name, setName] = useState('');
   const [docId, setDocId] = useState('');
   const [email, setEmail] = useState('');
@@ -36,94 +36,60 @@ export function AssistedBookingForm() {
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
   const [requiresInvoice, setRequiresInvoice] = useState('NO');
   const [habeasData, setHabeasData] = useState(false);
+  const [bookingSystemType, setBookingSystemType] = useState('slots');
+
+  const [activeStep, setActiveStep] = useState(0);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [finalResult, setFinalResult] = useState<any>(null);
 
   useEffect(() => {
-    // Fetch countries using CountriesNow API
-    axios.get('https://countriesnow.space/api/v0.1/countries')
-      .then((res) => {
-        if (!res.data.error) {
-          const countryOptions = res.data.data.map((item: any) => ({
-            value: item.country,
-            label: item.country
-          }));
-          setCountries(countryOptions);
-        }
-      })
-      .catch((err) => console.error("Error fetching countries", err));
-
-    // Fetch filters
-    axios.get('http://localhost:5000/api/images')
-      .then((res) => {
-        setFilters(res.data.map((img: any) => ({
-          id: img._id,
-          name: img.label || img.altText,
-          url: img.imageUrl,
-        })));
-      });
+    axios.get('https://countriesnow.space/api/v0.1/countries').then((res) => {
+      if (!res.data.error) {
+        setCountries(res.data.data.map((item: any) => ({ value: item.country, label: item.country })));
+      }
+    });
+    axios.get('http://localhost:5000/api/images').then((res) => {
+      setFilters(res.data.map((img: any) => ({ id: img._id, name: img.label || img.altText, url: img.imageUrl })));
+    });
+    axios.get('http://localhost:5000/api/schedules/settings').then((res) => {
+      if (res.data && res.data.bookingSystemType) setBookingSystemType(res.data.bookingSystemType);
+    });
   }, []);
 
   useEffect(() => {
-    // Fetch slots for the selected date
     if (bookingDate) {
       axios.get(`http://localhost:5000/api/schedules/daily?date=${bookingDate}`)
         .then((res) => {
           let slots = res.data.slots || [];
           if (slots.length === 0) {
-            // Default slots si no hay plantilla aplicada
             slots = [
               { startTime: '20:00', endTime: '21:00' },
               { startTime: '21:00', endTime: '22:00' },
               { startTime: '22:00', endTime: '23:00' },
-              { startTime: '23:00', endTime: '00:00' },
+              { startTime: '23:00', endTime: '00:00' }
             ];
           }
-
-          // Filtrar franjas que ya pasaron
           const today = new Date();
-          // Ajustar zona horaria local para comparar correctamente
           today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-          const todayStr = today.toISOString().split('T')[0];
-          
-          if (bookingDate === todayStr) {
+          if (bookingDate === today.toISOString().split('T')[0]) {
             const now = new Date();
             const currentHour = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-            slots = slots.filter((s: any) => {
-              const endTime = s.endTime === '00:00' ? '24:00' : s.endTime;
-              return endTime > currentHour;
-            });
+            slots = slots.filter((s: any) => (s.endTime === '00:00' ? '24:00' : s.endTime) > currentHour);
           }
-
-          setAvailableSlots(slots.map((s: any) => ({
-            value: `${s.startTime}-${s.endTime}`,
-            label: `${s.startTime} - ${s.endTime}`
-          })));
-          setTimeSlot(null); // reset selected slot
-        })
-        .catch(() => {
-          setAvailableSlots([]);
-        });
+          setAvailableSlots(slots.map((s: any) => ({ value: `${s.startTime}-${s.endTime}`, label: `${s.startTime} - ${s.endTime}` })));
+          setTimeSlot(null);
+        }).catch(() => setAvailableSlots([]));
     }
   }, [bookingDate]);
 
   const handleCountryChange = (selectedCountry: string | null) => {
     setCountry(selectedCountry);
-    setCity(''); // Reset city when country changes
-    setCities([]);
-    
+    setCity(''); setCities([]);
     if (selectedCountry) {
       setIsFetchingCities(true);
-      axios.post('https://countriesnow.space/api/v0.1/countries/cities', { country: selectedCountry })
-        .then((res) => {
-          if (!res.data.error) {
-            const cityOptions = res.data.data.map((cityName: string) => ({
-              value: cityName,
-              label: cityName
-            }));
-            setCities(cityOptions);
-          }
-        })
-        .catch((err) => console.error("Error fetching cities", err))
-        .finally(() => setIsFetchingCities(false));
+      axios.post('https://countriesnow.space/api/v0.1/countries/cities', { country: selectedCountry }).then((res) => {
+        if (!res.data.error) setCities(res.data.data.map((cityName: string) => ({ value: cityName, label: cityName })));
+      }).finally(() => setIsFetchingCities(false));
     }
   };
 
@@ -135,29 +101,22 @@ export function AssistedBookingForm() {
   const handleFileChange = (file: File | null) => {
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setFileImageBase64(reader.result as string);
-      };
+      reader.onloadend = () => setFileImageBase64(reader.result as string);
       reader.readAsDataURL(file);
-    } else {
-      setFileImageBase64(null);
-    }
+    } else setFileImageBase64(null);
   };
 
   const resizeImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
-      const img = new Image();
+      const img = new window.Image();
       img.src = base64Str;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
+        canvas.width = 512; canvas.height = 512;
         const ctx = canvas.getContext('2d');
         if (ctx) {
           const size = Math.min(img.width, img.height);
-          const x = (img.width - size) / 2;
-          const y = (img.height - size) / 2;
-          ctx.drawImage(img, x, y, size, size, 0, 0, 512, 512);
+          ctx.drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 512, 512);
         }
         resolve(canvas.toDataURL('image/jpeg', 0.9));
       };
@@ -165,212 +124,140 @@ export function AssistedBookingForm() {
     });
   };
 
-  const saveBooking = async (e: React.FormEvent) => {
+  const handleDataSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedFilter) return alert('Debes seleccionar un filtro primero.');
+    if (!habeasData) return alert('Debes aceptar la política de datos.');
+    setActiveStep(2);
+  };
 
+  const submitPhotoAndConfirm = async () => {
     let finalImage = useWebcam ? capturedImage : fileImageBase64;
-    if (!finalImage) {
-      alert('Por favor, tómate una foto o sube un archivo.');
-      return;
-    }
-
-    if (!habeasData) {
-      alert('Debes aceptar la política de tratamiento de datos personales para continuar.');
-      return;
-    }
-
-    finalImage = await resizeImage(finalImage);
-
+    if (!finalImage) return alert('Por favor, tómate una foto o sube un archivo.');
+    setIsUploadingPhoto(true);
     try {
+      finalImage = await resizeImage(finalImage);
       const res = await axios.post('http://localhost:5000/api/bookings', {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
-        imageBase64: finalImage,
-        paymentMethod,
-        requiresInvoice: requiresInvoice === 'SI'
+        imageBase64: finalImage, paymentMethod, requiresInvoice: requiresInvoice === 'SI'
       });
-      const exactTime = res.data?.exactTime || 'Sin asignar';
-      alert(`¡Reserva asistida creada exitosamente! Tu tiempo exacto de proyección asignado es a las: ${exactTime}`);
-      navigate('/');
+      setFinalResult(res.data);
+      setActiveStep(3);
     } catch (error) {
-      console.error('Error al guardar la reserva', error);
+      console.error(error);
       alert('Hubo un error guardando tus datos.');
+    } finally {
+      setIsUploadingPhoto(false);
     }
-  }
+  };
 
   return (
-    <Container size="sm" py="xl">
-      <Title order={2} ta="center" mb="sm" c="blue.7">
-        Reserva Asistida
-      </Title>
-      <Text ta="center" c="dimmed" mb="xl">
-        Punto de venta físico - Galería Renacer (Piso 1)
-      </Text>
+    <Container size="md" py="xl">
+      <Title order={2} ta="center" mb="md" c="grape.7">Reserva Asistida (Terminal Físico)</Title>
+      <Stepper active={activeStep} onStepClick={setActiveStep} allowNextStepsSelect={false} mb="xl">
+        <Stepper.Step label="Estilo" description="Elegir filtro" />
+        <Stepper.Step label="Datos" description="Registro y pago" />
+        <Stepper.Step label="Foto" description="Toma fotográfica" />
+        <Stepper.Step label="Resultado" description="Turno asignado" />
+      </Stepper>
 
-      <Box component="form" onSubmit={saveBooking} style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <Grid>
-          <Grid.Col span={12}>
-            <TextInput label="1. Nombre" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={12}>
-            <TextInput label="2. ID / Cédula" required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={12}>
-            <TextInput type="email" label="3. Correo Electrónico" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={12}>
-            <TextInput label="WhatsApp (Celular)" required placeholder="Ej: +573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <Select 
-              label="4. Nacionalidad (País)" 
-              placeholder="Selecciona tu país" 
-              data={countries} 
-              searchable 
-              required
-              value={country}
-              onChange={handleCountryChange}
-            />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <Select 
-              label="Ciudad" 
-              placeholder={country ? "Selecciona tu ciudad" : "Primero selecciona un país"} 
-              data={cities}
-              searchable
-              disabled={!country || isFetchingCities}
-              required 
-              value={city} 
-              onChange={(val) => setCity(val || '')} 
-            />
-          </Grid.Col>
+      {activeStep === 0 && (
+        <Box>
+          <Text ta="center" size="lg" mb="md" fw={500}>1. Selecciona el estilo que el cliente desea</Text>
+          {filters.length === 0 ? <Text c="dimmed" ta="center">No hay filtros activos.</Text> : (
+            <Grid>
+              {filters.map(f => (
+                <Grid.Col span={{ base: 6, sm: 4 }} key={f.id}>
+                  <Card shadow="sm" padding="sm" radius="md" withBorder style={{ cursor: 'pointer', borderColor: selectedFilter === f.id ? '#be4bdb' : '#e9ecef', borderWidth: selectedFilter === f.id ? '2px' : '1px', transform: selectedFilter === f.id ? 'scale(1.02)' : 'scale(1)', transition: 'all 0.2s ease' }} onClick={() => setSelectedFilter(f.id)}>
+                    <Card.Section><Image src={f.url} height={160} alt={f.name} /></Card.Section>
+                    <Text fw={500} ta="center" mt="md">{f.name}</Text>
+                    {selectedFilter === f.id && <Badge color="grape" variant="filled" style={{ position: 'absolute', top: 10, right: 10 }}><IconCheck size={14} /></Badge>}
+                  </Card>
+                </Grid.Col>
+              ))}
+            </Grid>
+          )}
+          <Group justify="center" mt="xl">
+            <Button size="lg" color="grape" onClick={() => { if(!selectedFilter) return alert('Selecciona un filtro'); setActiveStep(1); }}>Siguiente Paso</Button>
+          </Group>
+        </Box>
+      )}
 
-          <Grid.Col span={12}>
-            <Text fw={500} size="sm" mb="xs">5. Sube aquí tu foto / Tomar foto</Text>
-            <Group mb="sm">
-              <Button variant={useWebcam ? 'default' : 'filled'} onClick={() => setUseWebcam(false)} leftSection={<IconUpload size={16}/>}>Subir Archivo</Button>
-              <Button variant={useWebcam ? 'filled' : 'default'} onClick={() => setUseWebcam(true)} leftSection={<IconCamera size={16}/>}>Usar Cámara</Button>
-            </Group>
-            
-            {!useWebcam ? (
-              <FileInput 
-                placeholder="Selecciona una imagen..." 
-                accept="image/*" 
-                onChange={handleFileChange}
-              />
-            ) : (
-              <Box>
-                {!capturedImage ? (
-                  <Box style={{ position: 'relative', width: '100%', maxWidth: '300px', margin: '0 auto' }}>
-                    <Webcam
-                      audio={false}
-                      ref={webcamRef}
-                      screenshotFormat="image/jpeg"
-                      style={{ width: '100%', borderRadius: '8px' }}
-                    />
-                    <Button fullWidth mt="sm" onClick={capture}>Capturar Foto</Button>
-                  </Box>
-                ) : (
-                  <Box ta="center">
-                    <img src={capturedImage} alt="Captura" style={{ width: '100%', maxWidth: '300px', borderRadius: '8px' }} />
-                    <Button fullWidth mt="sm" color="red" variant="light" onClick={() => setCapturedImage(null)}>Tomar de nuevo</Button>
-                  </Box>
-                )}
-              </Box>
+      {activeStep === 1 && (
+        <Box component="form" onSubmit={handleDataSubmit} style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+          <Text fw={500} size="lg" mb="md">2. Registro de datos del cliente</Text>
+          <Grid>
+            <Grid.Col span={12}><TextInput label="Nombre completo" required value={name} onChange={(e) => setName(e.currentTarget.value)} /></Grid.Col>
+            <Grid.Col span={12}><TextInput label="ID / Cédula" required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} /></Grid.Col>
+            <Grid.Col span={12}><TextInput type="email" label="Correo Electrónico" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} /></Grid.Col>
+            <Grid.Col span={12}><TextInput label="WhatsApp (Celular)" required placeholder="Ej: +573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} /></Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Select label="Nacionalidad (País)" placeholder="Selecciona país" data={countries} searchable required value={country} onChange={handleCountryChange} /></Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Select label="Ciudad" placeholder={country ? "Selecciona ciudad" : "Primero selecciona un país"} data={cities} searchable disabled={!country || isFetchingCities} required value={city} onChange={(val) => setCity(val || '')} /></Grid.Col>
+
+            {bookingSystemType === 'slots' && (
+              <>
+                <Grid.Col span={{ base: 12, sm: 6 }}><TextInput type="date" label="Fecha de reserva" required value={bookingDate} onChange={(e) => setBookingDate(e.currentTarget.value)} min={new Date().toISOString().split('T')[0]} /></Grid.Col>
+                <Grid.Col span={{ base: 12, sm: 6 }}><Select label="Franja horaria a elegir" placeholder="Selecciona la hora" data={availableSlots} required value={timeSlot} onChange={setTimeSlot} disabled={availableSlots.length === 0} /></Grid.Col>
+              </>
             )}
-          </Grid.Col>
 
-          <Grid.Col span={12}>
-            <Select 
-              label="6. Filtro a elegir" 
-              placeholder="Selecciona un estilo" 
-              data={filters.map(f => ({ value: f.id, label: f.name }))}
-              required
-              value={selectedFilter}
-              onChange={setSelectedFilter}
-            />
-            {selectedFilter && (
-              <Box mt="xs">
-                <Text size="xs" c="dimmed">Muestra del filtro:</Text>
-                <img 
-                  src={filters.find(f => f.id === selectedFilter)?.url} 
-                  alt="Muestra de filtro" 
-                  style={{ height: '80px', borderRadius: '8px', marginTop: '4px' }} 
-                />
-              </Box>
-            )}
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <TextInput 
-              type="date" 
-              label="7. Fecha de reserva" 
-              required 
-              value={bookingDate} 
-              onChange={(e) => setBookingDate(e.currentTarget.value)} 
-              min={new Date().toISOString().split('T')[0]}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <Select 
-              label="8. Franja horaria a elegir" 
-              placeholder="Selecciona la hora de proyección" 
-              data={availableSlots}
-              required
-              value={timeSlot}
-              onChange={setTimeSlot}
-              disabled={availableSlots.length === 0}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={12}>
-            <Select 
-              label="8. Método de pago físico" 
-              placeholder="Efectivo, Datáfono o QR" 
-              data={['Efectivo', 'Datáfono', 'QR']}
-              required
-              value={paymentMethod}
-              onChange={(val) => val && setPaymentMethod(val)}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={12}>
-            <Radio.Group
-              label="9. ¿Requiere factura electrónica?"
-              withAsterisk
-              value={requiresInvoice}
-              onChange={setRequiresInvoice}
-            >
-              <Group mt="xs">
-                <Radio value="SI" label="Sí" />
-                <Radio value="NO" label="No" />
+            <Grid.Col span={12}><Select label="Método de pago físico recibido" placeholder="Efectivo, Datáfono o QR" data={['Efectivo', 'Datáfono', 'QR']} required value={paymentMethod} onChange={(val) => val && setPaymentMethod(val)} /></Grid.Col>
+            <Grid.Col span={12}>
+              <Radio.Group label="¿Requiere factura electrónica?" withAsterisk value={requiresInvoice} onChange={setRequiresInvoice}>
+                <Group mt="xs"><Radio value="SI" label="Sí" /><Radio value="NO" label="No" /></Group>
+              </Radio.Group>
+            </Grid.Col>
+            <Grid.Col span={12} mt="sm"><Checkbox label={<Text size="sm">Acepto la <a href="#" target="_blank" style={{color: '#228be6'}}>política de tratamiento de datos personales</a>.</Text>} checked={habeasData} onChange={(event) => setHabeasData(event.currentTarget.checked)} required /></Grid.Col>
+            <Grid.Col span={12}>
+              <Group justify="space-between" mt="md">
+                <Button variant="default" onClick={() => setActiveStep(0)}>Volver</Button>
+                <Button type="submit" size="lg" color="grape">Continuar a la Foto</Button>
               </Group>
-            </Radio.Group>
-          </Grid.Col>
+            </Grid.Col>
+          </Grid>
+        </Box>
+      )}
 
-          <Grid.Col span={12} mt="sm">
-            <Checkbox
-              label={<Text size="sm">Acepto la <a href="#" target="_blank" style={{color: '#228be6'}}>política de tratamiento de datos personales (Habeas Data)</a>.</Text>}
-              checked={habeasData}
-              onChange={(event) => setHabeasData(event.currentTarget.checked)}
-              required
-            />
-          </Grid.Col>
+      {activeStep === 2 && (
+        <Box style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+          <Title order={3} mb="sm" c="grape.7">Captura de la Foto</Title>
+          <Text fw={500} size="lg" mb="xl">El cliente ya está registrado. Toma la foto ahora.</Text>
+          <Group justify="center" mb="md">
+            <Button variant={useWebcam ? 'filled' : 'outline'} color="grape" onClick={() => { setUseWebcam(true); setFileImageBase64(null); }} leftSection={<IconCamera size={16}/>}>Usar Cámara</Button>
+            <FileInput key={fileImageBase64 ? 'loaded' : 'empty'} placeholder="Subir Archivo" accept="image/*" onChange={(file) => { setUseWebcam(false); handleFileChange(file); }} leftSection={<IconUpload size={16}/>} style={{ maxWidth: '200px' }} />
+          </Group>
+          {useWebcam && !capturedImage && (
+            <Box style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto' }}>
+              <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" style={{ width: '100%', borderRadius: '8px' }} />
+              <Button fullWidth mt="sm" color="grape" onClick={capture}>¡Capturar Ahora!</Button>
+            </Box>
+          )}
+          {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
+            <Box ta="center" mt="md" p="sm" style={{ border: '1px dashed #ccc', borderRadius: '8px', maxWidth: '300px', margin: '0 auto' }}>
+              <Text size="xs" c="dimmed" mb="xs">Imagen seleccionada:</Text>
+              <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', objectFit: 'cover' }} />
+              <Button fullWidth variant="light" color="red" mt="sm" leftSection={<IconX size={16} />} onClick={() => { setCapturedImage(null); setFileImageBase64(null); setUseWebcam(useWebcam); }}>Quitar imagen</Button>
+            </Box>
+          )}
+          <Group justify="space-between" mt="xl">
+             <Button variant="default" onClick={() => setActiveStep(1)} disabled={isUploadingPhoto}>Volver a Datos</Button>
+             <Button size="lg" color="teal" loading={isUploadingPhoto} onClick={submitPhotoAndConfirm} disabled={(!useWebcam && !fileImageBase64) || (useWebcam && !capturedImage)} leftSection={<IconDeviceFloppy size={24} />}>Finalizar y Reservar Turno</Button>
+          </Group>
+        </Box>
+      )}
 
-          <Grid.Col span={12}>
-            <Button 
-              type="submit" 
-              fullWidth 
-              size="lg" 
-              color="teal" 
-              mt="md" 
-              leftSection={<IconDeviceFloppy size={24} />}
-            >
-              Confirmar y Guardar Reserva
-            </Button>
-          </Grid.Col>
-        </Grid>
-      </Box>
+      {activeStep === 3 && (
+        <Box style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+          <Title order={3} mb="md" c="blue.7">¡Reserva Asistida Completada!</Title>
+          {finalResult?.queuePosition && <Text size="xl" fw={700} c="dimmed" mb="xs">Turno del cliente en la fila: #{finalResult.queuePosition}</Text>}
+          <Text size="lg" mb="xl">La hora asignada para la proyección es a las <Text span fw={700} c="blue">{finalResult?.exactTime || 'Sin asignar'}</Text>.</Text>
+          <Text c="dimmed" mb="md">Pídele al cliente que guarde este QR o dígale que revise en la web con su cédula.</Text>
+          <Box style={{ background: '#f8f9fa', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '2rem' }}>
+            <QRCode value={`${window.location.origin}/my-bookings`} size={150} />
+          </Box>
+          <Group justify="center"><Button size="lg" onClick={() => window.location.reload()}>Registrar Nuevo Cliente</Button></Group>
+        </Box>
+      )}
     </Container>
   );
 }

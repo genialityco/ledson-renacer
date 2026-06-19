@@ -56,7 +56,18 @@ export class BookingsService {
     }
 
     const db = this.firebase.getFirestore();
-    const finalBookingDate = bookingDate || new Date().toISOString().split('T')[0];
+    const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
+    const scheduleSettings = (scheduleSettingsDoc.exists ? scheduleSettingsDoc.data() : {}) || {};
+    const sysType = scheduleSettings.bookingSystemType || 'slots';
+    
+    let finalBookingDate = bookingDate;
+    let finalTimeSlot = timeSlot || '';
+    
+    if (sysType === 'queue') {
+       finalBookingDate = new Date().toISOString().split('T')[0];
+    } else if (!finalBookingDate) {
+       finalBookingDate = new Date().toISOString().split('T')[0];
+    }
 
     const bookingRef = db.collection('lr_bookings').doc();
 
@@ -68,7 +79,7 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
-      timeSlot,
+      timeSlot: finalTimeSlot,
       exactTime: 'Sin asignar', // Se asignará al confirmar el pago
       bookingDate: finalBookingDate,
       imageUrl,
@@ -84,7 +95,7 @@ export class BookingsService {
     return { id: bookingRef.id, ...booking };
   }
 
-  async confirmPayment(id: string) {
+  async confirmPayment(id: string, data?: { imageBase64?: string }) {
     const db = this.firebase.getFirestore();
     const bookingRef = db.collection('lr_bookings').doc(id);
     const bookingDoc = await bookingRef.get();
@@ -97,18 +108,94 @@ export class BookingsService {
       return { success: true, message: 'La reserva ya fue procesada' };
     }
 
+    let imageUrl = booking.imageUrl;
+
+    // Si se envía la foto después del pago, se sube ahora
+    if (data?.imageBase64) {
+      const storage = this.firebase.getStorage();
+      const bucket = storage.bucket();
+      const fileName = `bookings/${uuidv4()}.jpg`;
+      const file = bucket.file(fileName);
+
+      const base64Data = data.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      await file.save(buffer, { metadata: { contentType: 'image/jpeg' } });
+      try {
+        await file.makePublic();
+        imageUrl = file.publicUrl();
+      } catch (e) {
+        const [url] = await file.getSignedUrl({ action: 'read', expires: '01-01-2100' });
+        imageUrl = url;
+      }
+    }
+
     // Calcular slot exacto de proyección
     let exactTime = 'Sin asignar';
     let slotDuration = 1;
-    if (booking.timeSlot) {
+    let queuePosition = 0;
+    
+    const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
+    const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
+    
+    let bookingSystemType = 'slots';
+    if (scheduleSettingsDoc.exists) {
+      const data = scheduleSettingsDoc.data() || {};
+      slotDuration = Number(data.slotDuration) || 1;
+      bookingSystemType = data.bookingSystemType || 'slots';
+    }
+
+    if (bookingSystemType === 'queue') {
+      // Logic for automatic queue system
+      // Find the latest exactTime for today
+      const todayStr = booking.bookingDate;
+      const existingQueue = await db.collection('lr_bookings')
+        .where('bookingDate', '==', todayStr)
+        .where('status', 'in', ['APPROVED', 'GENERATED', 'SHOWN'])
+        .get();
+        
+      queuePosition = existingQueue.size + 1;
+      
+      const now = new Date();
+      // Ajustar zona horaria si es necesario, asumimos la hora local del servidor
+      let baseTimeMins = now.getHours() * 60 + now.getMinutes();
+      
+      // Alinear los minutos base para que sean múltiplos exactos del slotDuration (ej: si es 2 min, horas como 1:30, 1:32)
+      const remainder = baseTimeMins % slotDuration;
+      if (remainder !== 0) {
+        baseTimeMins += (slotDuration - remainder);
+      }
+      
+      // If there are existing bookings, find the latest assigned time
+      if (!existingQueue.empty) {
+        let maxMins = 0;
+        existingQueue.docs.forEach(doc => {
+          const d = doc.data();
+          if (d.exactTime && d.exactTime !== 'Sin asignar' && d.exactTime !== 'Agotado/Lleno') {
+             const [h, m] = d.exactTime.split(':').map(Number);
+             const mins = h * 60 + m;
+             if (mins > maxMins) maxMins = mins;
+          }
+        });
+        
+        // Next projection is slotDuration minutes after the latest one
+        // or current time, whichever is later
+        if (maxMins >= baseTimeMins) {
+           baseTimeMins = maxMins + slotDuration;
+        }
+      }
+      
+      const toStr = (m: number) => {
+        const h = Math.floor(m / 60) % 24;
+        const min = m % 60;
+        return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+      };
+      exactTime = toStr(baseTimeMins);
+
+    } else if (booking.timeSlot) {
+      // Existing logic for slots
       let deadTimes = [];
       const scheduleDoc = await db.collection('lr_daily_schedules').doc(booking.bookingDate).get();
-      const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
-      const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
-      
-      if (scheduleSettingsDoc.exists) {
-        slotDuration = scheduleSettingsDoc.data()?.slotDuration || 1;
-      }
 
       if (scheduleDoc.exists) {
         deadTimes = scheduleDoc.data()?.deadTimes || [];
@@ -144,8 +231,13 @@ export class BookingsService {
       }
     }
 
-    await bookingRef.update({ status: 'APPROVED', exactTime });
-    return { success: true, exactTime };
+    await bookingRef.update({ 
+      status: 'APPROVED', 
+      exactTime,
+      imageUrl,
+      ...(bookingSystemType === 'queue' ? { queuePosition } : {})
+    });
+    return { success: true, exactTime, queuePosition };
   }
 
   async createBooking(data: any) {
@@ -198,17 +290,61 @@ export class BookingsService {
     // Calcular slot exacto (por defecto 1 minuto)
     let exactTime = 'Sin asignar';
     let slotDuration = 1;
+    let queuePosition = 0;
     const finalBookingDate = bookingDate || new Date().toISOString().split('T')[0];
 
-    if (timeSlot) {
+    const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
+    const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
+    
+    let bookingSystemType = 'slots';
+    if (scheduleSettingsDoc.exists) {
+      const data = scheduleSettingsDoc.data() || {};
+      slotDuration = Number(data.slotDuration) || 1;
+      bookingSystemType = data.bookingSystemType || 'slots';
+    }
+
+    if (bookingSystemType === 'queue') {
+      const existingQueue = await db.collection('lr_bookings')
+        .where('bookingDate', '==', finalBookingDate)
+        .where('status', 'in', ['APPROVED', 'GENERATED', 'SHOWN'])
+        .get();
+        
+      queuePosition = existingQueue.size + 1;
+      const now = new Date();
+      let baseTimeMins = now.getHours() * 60 + now.getMinutes();
+      
+      // Alinear los minutos base para que sean múltiplos exactos del slotDuration (ej: si es 2 min, horas como 1:30, 1:32)
+      const remainder = baseTimeMins % slotDuration;
+      if (remainder !== 0) {
+        baseTimeMins += (slotDuration - remainder);
+      }
+      
+      if (!existingQueue.empty) {
+        let maxMins = 0;
+        existingQueue.docs.forEach(doc => {
+          const d = doc.data();
+          if (d.exactTime && d.exactTime !== 'Sin asignar' && d.exactTime !== 'Agotado/Lleno') {
+             const [h, m] = d.exactTime.split(':').map(Number);
+             const mins = h * 60 + m;
+             if (mins > maxMins) maxMins = mins;
+          }
+        });
+        
+        if (maxMins >= baseTimeMins) {
+           baseTimeMins = maxMins + slotDuration;
+        }
+      }
+      
+      const toStr = (m: number) => {
+        const h = Math.floor(m / 60) % 24;
+        const min = m % 60;
+        return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+      };
+      exactTime = toStr(baseTimeMins);
+
+    } else if (timeSlot) {
       let deadTimes = [];
       const scheduleDoc = await db.collection('lr_daily_schedules').doc(finalBookingDate).get();
-      const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
-      const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
-      
-      if (scheduleSettingsDoc.exists) {
-        slotDuration = scheduleSettingsDoc.data()?.slotDuration || 1;
-      }
 
       if (scheduleDoc.exists) {
         deadTimes = scheduleDoc.data()?.deadTimes || [];
@@ -254,7 +390,7 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
-      timeSlot,
+      timeSlot: bookingSystemType === 'queue' ? '' : timeSlot,
       exactTime,
       bookingDate: finalBookingDate,
       imageUrl,
@@ -262,6 +398,7 @@ export class BookingsService {
       paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
       requiresInvoice: data.requiresInvoice || false, // boolean
       createdAt: new Date(),
+      ...(bookingSystemType === 'queue' ? { queuePosition } : {})
     };
 
     await bookingRef.set(booking);

@@ -36,8 +36,8 @@ export class BookingsController {
   }
 
   @Post(':id/confirm-payment')
-  async confirmPayment(@Param('id') id: string) {
-    return this.bookingsService.confirmPayment(id);
+  async confirmPayment(@Param('id') id: string, @Body() data?: { imageBase64?: string }) {
+    return this.bookingsService.confirmPayment(id, data);
   }
 
   @Post()

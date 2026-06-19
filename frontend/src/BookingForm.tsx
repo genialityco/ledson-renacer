@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox } from '@mantine/core';
-import { IconCamera, IconUpload, IconCreditCard, IconX } from '@tabler/icons-react';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Stepper, Loader, Badge } from '@mantine/core';
+import { IconCamera, IconUpload, IconCreditCard, IconX, IconCheck, IconSearch } from '@tabler/icons-react';
+import QRCode from 'react-qr-code';
 import Webcam from 'react-webcam';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -37,6 +38,14 @@ export function BookingForm() {
   const [availableSlots, setAvailableSlots] = useState<{ value: string; label: string }[]>([]);
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
   const [habeasData, setHabeasData] = useState(false);
+  const [bookingSystemType, setBookingSystemType] = useState('slots');
+
+  // Multi-step states
+  const [activeStep, setActiveStep] = useState(0);
+  const [bookingId, setBookingId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [finalResult, setFinalResult] = useState<any>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   useEffect(() => {
     // Fetch countries using CountriesNow API
@@ -61,6 +70,15 @@ export function BookingForm() {
           url: img.imageUrl,
         })));
       });
+
+    // Fetch system settings
+    axios.get('http://localhost:5000/api/schedules/settings')
+      .then((res) => {
+        if (res.data && res.data.bookingSystemType) {
+          setBookingSystemType(res.data.bookingSystemType);
+        }
+      })
+      .catch((err) => console.error("Error fetching settings", err));
   }, []);
 
   useEffect(() => {
@@ -150,7 +168,7 @@ export function BookingForm() {
 
   const resizeImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
-      const img = new Image();
+      const img = new window.Image();
       img.src = base64Str;
       img.onload = () => {
         const canvas = document.createElement('canvas');
@@ -169,12 +187,11 @@ export function BookingForm() {
     });
   };
 
-  const handlePayment = async (e: React.FormEvent) => {
+  const handleDataSubmitAndPay = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    let finalImage = useWebcam ? capturedImage : fileImageBase64;
-    if (!finalImage) {
-      alert('Por favor, tómate una foto o sube un archivo.');
+    if (!selectedFilter) {
+      alert('Debes seleccionar un filtro primero.');
       return;
     }
 
@@ -184,20 +201,17 @@ export function BookingForm() {
     }
 
     try {
-      if (finalImage) {
-        finalImage = await resizeImage(finalImage);
-      }
-      
-      // 1. Inicializar la reserva como pendiente ANTES de abrir Wompi
+      // 1. Inicializar la reserva como pendiente sin foto todavía
       const initRes = await axios.post('http://localhost:5000/api/bookings/init', {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
-        imageBase64: finalImage
+        imageBase64: '' // No photo yet
       });
-      const bookingId = initRes.data.id;
+      const generatedBookingId = initRes.data.id;
+      setBookingId(generatedBookingId);
 
       // Parametros para pago
       const amountInCents = 1500000; // Ej: $15.000 COP
-      const reference = `booking-${bookingId}`;
+      const reference = `booking-${generatedBookingId}`;
 
       const wompiRes = await axios.get(`http://localhost:5000/api/wompi/integrity-signature?reference=${reference}&amountInCents=${amountInCents}&currency=COP`);
       const { signature } = wompiRes.data;
@@ -210,23 +224,17 @@ export function BookingForm() {
         signature: { integrity: signature },
       });
 
-      checkout.open(async (result: any) => {
+      checkout.open((result: any) => {
         const transaction = result.transaction;
         console.log('Transaction result: ', transaction);
+        setPaymentStatus(transaction.status);
+
         if(transaction.status === 'APPROVED') {
-          // 2. Confirmar la reserva si el pago fue aprobado
-          try {
-            const confirmRes = await axios.post(`http://localhost:5000/api/bookings/${bookingId}/confirm-payment`);
-            const exactTime = confirmRes.data?.exactTime || 'Sin asignar';
-            alert(`¡Reserva creada exitosamente! Tu tiempo exacto de proyección será a las: ${exactTime}`);
-            navigate('/');
-          } catch(err) {
-             alert('El pago fue aprobado pero hubo un error confirmando tus datos.');
-          }
+          // Go to step 3 (Photo)
+          setActiveStep(2);
         } else {
-          alert('Estado del pago: ' + transaction.status);
-          // Si falló o declinó, se queda en PENDING en backend,
-          // y el cron se encargará de enviarle el correo.
+          // Go to step 4 (Failed/Pending Payment QR view)
+          setActiveStep(3);
         }
       });
     } catch (error) {
@@ -235,158 +243,296 @@ export function BookingForm() {
     }
   };
 
+  const submitPhotoAndConfirm = async () => {
+    let finalImage = useWebcam ? capturedImage : fileImageBase64;
+    if (!finalImage || !bookingId) {
+      alert('Por favor, tómate una foto o sube un archivo.');
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+
+    try {
+      finalImage = await resizeImage(finalImage);
+      
+      const confirmRes = await axios.post(`http://localhost:5000/api/bookings/${bookingId}/confirm-payment`, {
+        imageBase64: finalImage
+      });
+      
+      setFinalResult(confirmRes.data);
+      setActiveStep(3); // Go to final result screen
+    } catch (err) {
+      console.error(err);
+      alert('Hubo un error subiendo tu foto.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   return (
-    <Container size="sm" py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
+    <Container size="md" py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }}>
       <Title order={2} ta="center" mb="xl" c="blue.7">
         Reserva tu Photobooth
       </Title>
 
-      <Box component="form" onSubmit={handlePayment} style={{ backgroundColor: 'white', padding: isMobile ? '1rem' : '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <Grid>
-          <Grid.Col span={12}>
-            <TextInput label="1. Nombre" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={12}>
-            <TextInput label="2. ID / Cédula" required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={12}>
-            <TextInput type="email" label="3. Correo Electrónico" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={12}>
-            <TextInput label="WhatsApp (Celular)" required placeholder="Ej: +573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <Select 
-              label="4. Nacionalidad (País)" 
-              placeholder="Selecciona tu país" 
-              data={countries} 
-              searchable 
-              required
-              value={country}
-              onChange={handleCountryChange}
-            />
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <Select 
-              label="Ciudad" 
-              placeholder={country ? "Selecciona tu ciudad" : "Primero selecciona un país"} 
-              data={cities}
-              searchable
-              disabled={!country || isFetchingCities}
-              required 
-              value={city} 
-              onChange={(val) => setCity(val || '')} 
-            />
-          </Grid.Col>
+      <Stepper active={activeStep} onStepClick={setActiveStep} allowNextStepsSelect={false} mb="xl">
+        <Stepper.Step label="Elegir Estilo" description="Selecciona el filtro" />
+        <Stepper.Step label="Pago" description="Ingresa datos y paga" />
+        <Stepper.Step label="Foto" description="Tómate la foto" />
+        <Stepper.Step label="Resultado" description="Tu turno" />
+      </Stepper>
 
-          <Grid.Col span={12}>
-            <Text fw={500} size="sm" mb="xs">5. Sube aquí tu foto</Text>
-            <Group grow mb="sm">
-              <FileInput 
-                key={fileImageBase64 ? 'loaded' : 'empty'}
-                placeholder="Galería" 
-                accept="image/*" 
-                onChange={(file) => { setUseWebcam(false); handleFileChange(file); }}
-                leftSection={<IconUpload size={16}/>}
+      {/* STEP 1: FILTERS */}
+      {activeStep === 0 && (
+        <Box>
+          <Text ta="center" size="lg" mb="md" fw={500}>1. Selecciona el estilo que deseas para tu proyección</Text>
+          {filters.length === 0 ? (
+            <Text c="dimmed" ta="center">No hay filtros activos en este momento.</Text>
+          ) : (
+            <Grid>
+              {filters.map(f => (
+                <Grid.Col span={{ base: 6, sm: 4 }} key={f.id}>
+                  <Card 
+                    shadow="sm" 
+                    padding="sm" 
+                    radius="md" 
+                    withBorder 
+                    style={{ 
+                      cursor: 'pointer', 
+                      borderColor: selectedFilter === f.id ? '#228be6' : '#e9ecef',
+                      borderWidth: selectedFilter === f.id ? '2px' : '1px',
+                      transform: selectedFilter === f.id ? 'scale(1.02)' : 'scale(1)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={() => setSelectedFilter(f.id)}
+                  >
+                    <Card.Section>
+                      <Image src={f.url} height={160} alt={f.name} />
+                    </Card.Section>
+                    <Text fw={500} ta="center" mt="md">{f.name}</Text>
+                    {selectedFilter === f.id && (
+                      <Badge color="blue" variant="filled" style={{ position: 'absolute', top: 10, right: 10 }}>
+                        <IconCheck size={14} />
+                      </Badge>
+                    )}
+                  </Card>
+                </Grid.Col>
+              ))}
+            </Grid>
+          )}
+          
+          <Group justify="center" mt="xl">
+            <Button 
+              size="lg" 
+              onClick={() => {
+                if(!selectedFilter) return alert('Selecciona un filtro para continuar');
+                setActiveStep(1);
+              }}
+            >
+              Siguiente Paso
+            </Button>
+          </Group>
+        </Box>
+      )}
+
+      {/* STEP 2: DATA & PAYMENT */}
+      {activeStep === 1 && (
+        <Box component="form" onSubmit={handleDataSubmitAndPay} style={{ backgroundColor: 'white', padding: isMobile ? '1rem' : '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+          <Text fw={500} size="lg" mb="md">2. Llena tus datos para realizar el pago</Text>
+          <Grid>
+            <Grid.Col span={12}>
+              <TextInput label="Nombre completo" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
+            </Grid.Col>
+            <Grid.Col span={12}>
+              <TextInput label="ID / Cédula" required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} />
+            </Grid.Col>
+            <Grid.Col span={12}>
+              <TextInput type="email" label="Correo Electrónico" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+            </Grid.Col>
+            <Grid.Col span={12}>
+              <TextInput label="WhatsApp (Celular)" required placeholder="Ej: +573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Select 
+                label="Nacionalidad (País)" 
+                placeholder="Selecciona tu país" 
+                data={countries} 
+                searchable 
+                required
+                value={country}
+                onChange={handleCountryChange}
+              />
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Select 
+                label="Ciudad" 
+                placeholder={country ? "Selecciona tu ciudad" : "Primero selecciona un país"} 
+                data={cities}
+                searchable
+                disabled={!country || isFetchingCities}
+                required 
+                value={city} 
+                onChange={(val) => setCity(val || '')} 
+              />
+            </Grid.Col>
+
+            {bookingSystemType === 'slots' && (
+              <>
+                <Grid.Col span={{ base: 12, sm: 6 }}>
+                  <TextInput 
+                    type="date" 
+                    label="Fecha de reserva" 
+                    required 
+                    value={bookingDate} 
+                    onChange={(e) => setBookingDate(e.currentTarget.value)} 
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </Grid.Col>
+
+                <Grid.Col span={{ base: 12, sm: 6 }}>
+                  <Select 
+                    label="Franja horaria a elegir" 
+                    placeholder="Selecciona la hora de proyección" 
+                    data={availableSlots}
+                    required
+                    value={timeSlot}
+                    onChange={setTimeSlot}
+                    disabled={availableSlots.length === 0}
+                  />
+                </Grid.Col>
+              </>
+            )}
+
+            <Grid.Col span={12} mt="sm">
+              <Checkbox
+                label={<Text size="sm">Acepto la <a href="#" target="_blank" style={{color: '#228be6'}}>política de tratamiento de datos personales (Habeas Data)</a>.</Text>}
+                checked={habeasData}
+                onChange={(event) => setHabeasData(event.currentTarget.checked)}
+                required
+              />
+            </Grid.Col>
+
+            <Grid.Col span={12}>
+              <Group justify="space-between" mt="md">
+                <Button variant="default" onClick={() => setActiveStep(0)}>Volver</Button>
+                <Button 
+                  type="submit" 
+                  size="lg" 
+                  color="indigo" 
+                  leftSection={<IconCreditCard size={24} />}
+                >
+                  Pagar con Wompi ($15.000 COP)
+                </Button>
+              </Group>
+            </Grid.Col>
+          </Grid>
+        </Box>
+      )}
+
+      {/* STEP 3: PHOTO CAPTURE */}
+      {activeStep === 2 && (
+        <Box style={{ backgroundColor: 'white', padding: isMobile ? '1rem' : '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+          <Title order={3} mb="sm" c="teal.7">¡Pago Aprobado!</Title>
+          <Text fw={500} size="lg" mb="xl">Ahora, sube tu foto o tómate una selfie para la proyección.</Text>
+
+          <Group justify="center" mb="md">
+            <FileInput 
+              key={fileImageBase64 ? 'loaded' : 'empty'}
+              placeholder="Galería" 
+              accept="image/*" 
+              onChange={(file) => { setUseWebcam(false); handleFileChange(file); }}
+              leftSection={<IconUpload size={16}/>}
+              style={{ flex: 1, maxWidth: '200px' }}
+            />
+            <Button 
+              variant="outline" 
+              onClick={() => { setUseWebcam(true); openCameraModal(); }} 
+              leftSection={<IconCamera size={16}/>}
+            >
+              Tomar Selfie
+            </Button>
+          </Group>
+
+          {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
+            <Box ta="center" mt="md" p="sm" style={{ border: '1px dashed #ccc', borderRadius: '8px', maxWidth: '300px', margin: '0 auto' }}>
+              <Text size="xs" c="dimmed" mb="xs">Imagen seleccionada:</Text>
+              <img 
+                src={(useWebcam ? capturedImage : fileImageBase64) as string} 
+                alt="Preview" 
+                style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', objectFit: 'cover' }} 
               />
               <Button 
-                variant="outline" 
-                onClick={() => { setUseWebcam(true); openCameraModal(); }} 
-                leftSection={<IconCamera size={16}/>}
+                fullWidth 
+                variant="light" 
+                color="red" 
+                mt="sm" 
+                leftSection={<IconX size={16} />} 
+                onClick={() => { setCapturedImage(null); setFileImageBase64(null); setUseWebcam(false); }}
               >
-                Tomar Selfie
+                Quitar imagen
               </Button>
-            </Group>
+            </Box>
+          )}
 
-            {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
-              <Box ta="center" mt="md" p="sm" style={{ border: '1px dashed #ccc', borderRadius: '8px' }}>
-                <Text size="xs" c="dimmed" mb="xs">Imagen seleccionada:</Text>
-                <img 
-                  src={(useWebcam ? capturedImage : fileImageBase64) as string} 
-                  alt="Preview" 
-                  style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', objectFit: 'cover' }} 
-                />
-                <Button 
-                  fullWidth 
-                  variant="light" 
-                  color="red" 
-                  mt="sm" 
-                  leftSection={<IconX size={16} />} 
-                  onClick={() => { setCapturedImage(null); setFileImageBase64(null); setUseWebcam(false); }}
-                >
-                  Quitar imagen
-                </Button>
-              </Box>
-            )}
-          </Grid.Col>
-
-          <Grid.Col span={12}>
-            <Select 
-              label="6. Filtro a elegir" 
-              placeholder="Selecciona un estilo" 
-              data={filters.map(f => ({ value: f.id, label: f.name }))}
-              required
-              value={selectedFilter}
-              onChange={setSelectedFilter}
-            />
-            {selectedFilter && (
-              <Box mt="xs">
-                <Text size="xs" c="dimmed">Muestra del filtro:</Text>
-                <img 
-                  src={filters.find(f => f.id === selectedFilter)?.url} 
-                  alt="Muestra de filtro" 
-                  style={{ height: '80px', borderRadius: '8px', marginTop: '4px' }} 
-                />
-              </Box>
-            )}
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <TextInput 
-              type="date" 
-              label="7. Fecha de reserva" 
-              required 
-              value={bookingDate} 
-              onChange={(e) => setBookingDate(e.currentTarget.value)} 
-              min={new Date().toISOString().split('T')[0]}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6 }}>
-            <Select 
-              label="8. Franja horaria a elegir" 
-              placeholder="Selecciona la hora de proyección" 
-              data={availableSlots}
-              required
-              value={timeSlot}
-              onChange={setTimeSlot}
-              disabled={availableSlots.length === 0}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={12} mt="sm">
-            <Checkbox
-              label={<Text size="sm">Acepto la <a href="#" target="_blank" style={{color: '#228be6'}}>política de tratamiento de datos personales (Habeas Data)</a>.</Text>}
-              checked={habeasData}
-              onChange={(event) => setHabeasData(event.currentTarget.checked)}
-              required
-            />
-          </Grid.Col>
-
-          <Grid.Col span={12}>
+          <Group justify="center" mt="xl">
             <Button 
-              type="submit" 
-              fullWidth 
               size="lg" 
-              color="indigo" 
-              mt="md" 
-              leftSection={<IconCreditCard size={24} />}
+              color="teal"
+              loading={isUploadingPhoto}
+              onClick={submitPhotoAndConfirm}
+              disabled={(!useWebcam && !fileImageBase64) || (useWebcam && !capturedImage)}
             >
-              Pagar con Wompi ($15.000 COP)
+              Finalizar y Reservar Turno
             </Button>
-          </Grid.Col>
-        </Grid>
-      </Box>
+          </Group>
+        </Box>
+      )}
+
+      {/* STEP 4: FINAL RESULT / QR VIEW */}
+      {activeStep === 3 && (
+        <Box style={{ backgroundColor: 'white', padding: isMobile ? '1rem' : '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+          {paymentStatus === 'APPROVED' ? (
+            <>
+              <Title order={3} mb="md" c="blue.7">¡Reserva Completada Exitosamente!</Title>
+              
+              {finalResult?.queuePosition && (
+                <Text size="xl" fw={700} c="dimmed" mb="xs">
+                  Tu turno en la fila es el #{finalResult.queuePosition}
+                </Text>
+              )}
+              <Text size="lg" mb="xl">
+                La hora asignada para tu proyección es a las <Text span fw={700} c="blue">{finalResult?.exactTime || 'Sin asignar'}</Text>.
+              </Text>
+              
+              <Text c="dimmed" mb="md">
+                Guarda este QR o busca tu reserva con tu cédula en el portal para ver su estado en tiempo real.
+              </Text>
+              
+              <Box style={{ background: '#f8f9fa', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '2rem' }}>
+                <QRCode value={`${window.location.origin}/my-bookings`} size={150} />
+              </Box>
+            </>
+          ) : (
+            <>
+              <Title order={3} mb="md" c="orange.7">Tu pago está procesándose o no fue aprobado</Title>
+              <Text size="lg" mb="xl">
+                No te preocupes. Escanea el código QR a continuación para acceder a nuestro portal. 
+                Si tu pago se aprueba, podrás completar tu reserva o revisar el estado desde allí ingresando tu cédula o email.
+              </Text>
+              
+              <Box style={{ background: '#f8f9fa', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '2rem' }}>
+                <QRCode value={`${window.location.origin}/my-bookings`} size={150} />
+              </Box>
+            </>
+          )}
+
+          <Group justify="center">
+            <Button size="lg" leftSection={<IconSearch size={20} />} onClick={() => navigate('/my-bookings')}>
+              Ir a Mis Proyecciones
+            </Button>
+          </Group>
+        </Box>
+      )}
 
       <Modal 
         opened={cameraModalOpened} 

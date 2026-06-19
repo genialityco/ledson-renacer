@@ -122,9 +122,17 @@ export function UserBookingsView() {
                   <strong>Fecha:</strong> {booking.bookingDate}
                 </Text>
                 
-                <Text size="sm" c="dimmed" mb="xs">
-                  <strong>Franja General:</strong> {booking.timeSlot}
-                </Text>
+                {booking.timeSlot && (
+                  <Text size="sm" c="dimmed" mb="xs">
+                    <strong>Franja General:</strong> {booking.timeSlot}
+                  </Text>
+                )}
+                
+                {booking.queuePosition ? (
+                  <Text size="sm" c="dimmed" mb="xs">
+                    <strong>Turno en la cola:</strong> #{booking.queuePosition}
+                  </Text>
+                ) : null}
                 
                 <Box mt="md" p="sm" bg="blue.0" style={{ borderRadius: '8px', borderLeft: '4px solid #228be6' }}>
                   <Text size="sm" fw={700} c="blue.9">
