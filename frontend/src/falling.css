@@ -108,3 +108,26 @@
   transform: translateY(100%);
   transition: transform 1000ms ease;
 }
+
+.carousel-particles-enter {
+  opacity: 0;
+  filter: blur(10px);
+  transform: scale(1.2);
+}
+.carousel-particles-enter-active {
+  opacity: 1;
+  filter: blur(0px);
+  transform: scale(1);
+  transition: opacity 1000ms ease, filter 1000ms ease, transform 1000ms ease;
+}
+.carousel-particles-exit {
+  opacity: 1;
+  filter: blur(0px);
+  transform: scale(1);
+}
+.carousel-particles-exit-active {
+  opacity: 0;
+  filter: blur(10px);
+  transform: scale(1.2);
+  transition: opacity 1000ms ease, filter 1000ms ease, transform 1000ms ease;
+}

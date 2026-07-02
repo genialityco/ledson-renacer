@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Title, Box, Button, Modal, Text, Group, Badge, ActionIcon } from '@mantine/core';
+import { useState, useEffect } from 'react';
+import { Container, Title, Box, Button, Modal, Text, Group, Badge } from '@mantine/core';
 import { IconArrowLeft, IconZoomIn, IconZoomOut } from '@tabler/icons-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';

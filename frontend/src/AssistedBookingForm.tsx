@@ -116,7 +116,9 @@ export function AssistedBookingForm() {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           const size = Math.min(img.width, img.height);
-          ctx.drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 512, 512);
+          const x = (img.width - size) / 2; // Center horizontally
+          const y = 0; // Top vertically, cropping the bottom
+          ctx.drawImage(img, x, y, size, size, 0, 0, 512, 512);
         }
         resolve(canvas.toDataURL('image/jpeg', 0.9));
       };

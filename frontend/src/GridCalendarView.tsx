@@ -69,6 +69,7 @@ export function GridCalendarView() {
     if (!screenSettings) return;
     
     const gridToSave = newGrid.map(ev => ({
+      ...ev,
       id: ev.id,
       name: ev.title,
       type: ev.type,
@@ -103,7 +104,12 @@ export function GridCalendarView() {
       url: '',
       duration: 10,
       priority: 1,
-      active: true
+      active: true,
+      transition: 'fade',
+      cooldownPeriod: 5,
+      targetAppearances: 100,
+      currentAppearances: 0,
+      exclusionWindows: []
     });
     setModalOpened(true);
   };

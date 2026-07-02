@@ -3,9 +3,11 @@ import { Container, Title, TextInput, Button, Card, Image, Text, Badge, Group, B
 import { IconSearch, IconArrowLeft } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { useLanguage } from './i18n';
 
 export function UserBookingsView() {
   const navigate = useNavigate();
+  const { t, language } = useLanguage();
   const [query, setQuery] = useState('');
   const [bookings, setBookings] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -22,7 +24,7 @@ export function UserBookingsView() {
       setBookings(res.data);
     } catch (err) {
       console.error('Error buscando reservas', err);
-      alert('Hubo un error al buscar tus proyecciones.');
+      alert(t('searchError'));
     } finally {
       setLoading(false);
       setHasSearched(true);
@@ -31,11 +33,11 @@ export function UserBookingsView() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'PENDING': return <Badge color="orange">Pago Pendiente</Badge>;
-      case 'APPROVED': return <Badge color="blue">Confirmada (En Cola)</Badge>;
-      case 'GENERATED': return <Badge color="teal">Imagen Generada</Badge>;
-      case 'SHOWN': return <Badge color="indigo">Proyectada</Badge>;
-      case 'COMPLETED': return <Badge color="grape">Experiencia Finalizada</Badge>;
+      case 'PENDING': return <Badge color="orange">{t('pendingPayment')}</Badge>;
+      case 'APPROVED': return <Badge color="blue">{t('confirmedInQueue')}</Badge>;
+      case 'GENERATED': return <Badge color="teal">{t('imageGenerated')}</Badge>;
+      case 'SHOWN': return <Badge color="indigo">{t('projected')}</Badge>;
+      case 'COMPLETED': return <Badge color="grape">{t('experienceFinished')}</Badge>;
       default: return <Badge color="gray">{status}</Badge>;
     }
   };
@@ -56,10 +58,11 @@ export function UserBookingsView() {
     };
     
     // Formatear la fecha en español
-    let formatted = dateObj.toLocaleDateString('es-ES', options);
+    let formatted = dateObj.toLocaleDateString(language === 'en' ? 'en-US' : 'es-ES', options);
     
-    // Ajustar el string "jue, 18 de junio de 2026, 3:20 p. m." a "jue 18 de junio de 2026 a las 3:20 pm"
-    formatted = formatted.replace(',', '').replace(/,\s*/, ' a las ').replace(/\.\s*m\./, 'm');
+    if (language === 'es') {
+      formatted = formatted.replace(',', '').replace(/,\s*/, ' a las ').replace(/\.\s*m\./, 'm');
+    }
     
     return formatted;
   };
@@ -67,35 +70,35 @@ export function UserBookingsView() {
   return (
     <Container size="sm" py="xl">
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/')} mb="md">
-        Volver al inicio
+        {t('backHome')}
       </Button>
 
       <Title order={2} ta="center" mb="md" c="blue.7">
-        Mis Proyecciones
+        {t('myProjections')}
       </Title>
       <Text ta="center" c="dimmed" mb="xl">
-        Ingresa tu cédula o correo electrónico para verificar tus reservas y el horario de tus proyecciones en pantalla gigante.
+        {t('enterIdToVerify')}
       </Text>
 
       <Box component="form" onSubmit={handleSearch} mb="xl">
         <Group align="flex-end">
           <TextInput
             style={{ flex: 1 }}
-            label="Cédula o Correo Electrónico"
-            placeholder="Ej: 10203040 o juan@correo.com"
+            label={t('idOrEmail')}
+            placeholder={t('idOrEmailPlaceholder')}
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
             required
           />
           <Button type="submit" leftSection={<IconSearch size={16} />} loading={loading}>
-            Buscar
+            {t('search')}
           </Button>
         </Group>
       </Box>
 
       {hasSearched && bookings.length === 0 && (
         <Text ta="center" c="dimmed" mt="xl">
-          No se encontraron proyecciones con ese dato.
+          {t('noProjectionsFound')}
         </Text>
       )}
 
@@ -119,29 +122,29 @@ export function UserBookingsView() {
                 </Group>
 
                 <Text size="sm" c="dimmed" mb="xs">
-                  <strong>Fecha:</strong> {booking.bookingDate}
+                  <strong>{t('date')}</strong> {booking.bookingDate}
                 </Text>
                 
                 {booking.timeSlot && (
                   <Text size="sm" c="dimmed" mb="xs">
-                    <strong>Franja General:</strong> {booking.timeSlot}
+                    <strong>{t('generalSlot')}</strong> {booking.timeSlot}
                   </Text>
                 )}
                 
                 {booking.queuePosition ? (
                   <Text size="sm" c="dimmed" mb="xs">
-                    <strong>Turno en la cola:</strong> #{booking.queuePosition}
+                    <strong>{t('queuePosition')}</strong> #{booking.queuePosition}
                   </Text>
                 ) : null}
                 
                 <Box mt="md" p="sm" bg="blue.0" style={{ borderRadius: '8px', borderLeft: '4px solid #228be6' }}>
                   <Text size="sm" fw={700} c="blue.9">
-                    Fecha y hora de proyección:
+                    {t('projectionDateTime')}
                   </Text>
                   <Title order={4} c="blue.9">
                     {booking.exactTime && booking.exactTime !== 'Sin asignar' && booking.exactTime !== 'Agotado/Lleno' 
                       ? formatDateTime(booking.bookingDate, booking.exactTime)
-                      : (booking.status === 'PENDING' ? 'Pendiente de pago' : 'Por calcular')}
+                      : (booking.status === 'PENDING' ? t('pendingPaymentState') : t('toCalculate'))}
                   </Title>
                 </Box>
               </Card>

@@ -10,34 +10,28 @@ export function AdminDashboard() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [filters, setFilters] = useState<any[]>([]);
   const [opened, { open, close }] = useDisclosure(false);
-  const [newFilter, setNewFilter] = useState({ 
+  const [newFilter, setNewFilter] = useState<any>({ 
     label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '' 
   });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [screenBgUrl, setScreenBgUrl] = useState('');
   const [headerUrl, setHeaderUrl] = useState('');
   const [footerUrl, setFooterUrl] = useState('');
-  const [carouselImages, setCarouselImages] = useState<string[]>([]);
-  const [newCarouselImg, setNewCarouselImg] = useState('');
-  const [carouselDuration, setCarouselDuration] = useState(5);
   const [projectionDuration, setProjectionDuration] = useState(15);
-  const [carouselDirection, setCarouselDirection] = useState('fade');
+  const [globalGridStartTime, setGlobalGridStartTime] = useState('08:00:00');
+  const [globalGridEndTime, setGlobalGridEndTime] = useState('17:00:00');
   const [isUploading, setIsUploading] = useState(false);
   const [contentGrid, setContentGrid] = useState<any[]>([]);
   const [deadTimes, setDeadTimes] = useState<any[]>([]);
   const [gridModalOpened, { open: openGridModal, close: closeGridModal }] = useDisclosure(false);
-  const [newGridItem, setNewGridItem] = useState({ name: '', url: '', type: 'image', duration: 10, startTime: '00:00:00', endTime: '23:59:59', priority: 1, active: true });
+  const [newGridItem, setNewGridItem] = useState<any>({ 
+    name: '', url: '', type: 'image', duration: 10, priority: 1, active: true,
+    targetAppearances: 100, currentAppearances: 0, cooldownPeriod: 30, noConsecutive: true, exclusionWindows: [], transition: 'fade'
+  });
 
-  const addSecondsToTime = (timeStr: string, seconds: number) => {
-    if (!timeStr) return '';
-    const parts = timeStr.split(':');
-    const h = parseInt(parts[0] || '0', 10);
-    const m = parseInt(parts[1] || '0', 10);
-    const s = parseInt(parts[2] || '0', 10);
-    const date = new Date();
-    date.setHours(h, m, s + seconds);
-    return date.toTimeString().slice(0, 8); // "HH:mm:ss"
-  };
+  // Remove unused addSecondsToTime if it's there but actually used inside useEffect.
+  // Actually wait, let's keep it but suppress the TS warning by removing if not used. 
+  // Let's replace the whole unused declaration.
 
   // Schedules states
   const [templates, setTemplates] = useState<any[]>([]);
@@ -54,6 +48,7 @@ export function AdminDashboard() {
   
   const [slotDuration, setSlotDuration] = useState(1);
   const [bookingSystemType, setBookingSystemType] = useState('slots');
+  const [paymentGateway, setPaymentGateway] = useState('wompi');
 
   const fetchData = async () => {
     try {
@@ -69,14 +64,14 @@ export function AdminDashboard() {
       setTemplates(resTemplates.data || []);
       setSlotDuration(resScheduleSettings.data?.slotDuration || 1);
       setBookingSystemType(resScheduleSettings.data?.bookingSystemType || 'slots');
+      setPaymentGateway(resScheduleSettings.data?.paymentGateway || 'wompi');
       if (resScreen.data) {
         setScreenBgUrl(resScreen.data.backgroundUrl || '');
         setHeaderUrl(resScreen.data.headerUrl || '');
         setFooterUrl(resScreen.data.footerUrl || '');
-        setCarouselImages(resScreen.data.carouselImages || []);
-        setCarouselDuration(resScreen.data.carouselDuration || 5);
         setProjectionDuration(resScreen.data.projectionDuration || 15);
-        setCarouselDirection(resScreen.data.carouselTransitionDirection || 'fade');
+        setGlobalGridStartTime(resScreen.data.globalGridStartTime || '08:00:00');
+        setGlobalGridEndTime(resScreen.data.globalGridEndTime || '17:00:00');
         setContentGrid(resScreen.data.contentGrid || []);
         setDeadTimes(resScreen.data.deadTimes || []);
       }
@@ -87,6 +82,18 @@ export function AdminDashboard() {
 
   useEffect(() => {
     fetchData();
+
+    // Auto-refresh bookings every 5 seconds without reloading the page
+    const intervalId = setInterval(async () => {
+      try {
+        const resBookings = await axios.get('http://localhost:5000/api/bookings');
+        setBookings(resBookings.data);
+      } catch (e) {
+        console.error('Error auto-refreshing bookings', e);
+      }
+    }, 5000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   /* const handleUpdateBookingStatus = async (id: string, status: string) => {
@@ -137,25 +144,13 @@ export function AdminDashboard() {
       backgroundUrl: screenBgUrl,
       headerUrl,
       footerUrl,
-      carouselImages,
-      carouselDuration,
       projectionDuration,
-      carouselTransitionDirection: carouselDirection,
+      globalGridStartTime,
+      globalGridEndTime,
       contentGrid: overrideGrid || contentGrid,
       deadTimes
     });
     alert('Configuración de la Pantalla Gigante actualizada');
-  };
-
-  const addCarouselImage = () => {
-    if (newCarouselImg) {
-      setCarouselImages([...carouselImages, newCarouselImg]);
-      setNewCarouselImg('');
-    }
-  };
-
-  const removeCarouselImage = (index: number) => {
-    setCarouselImages(carouselImages.filter((_, i) => i !== index));
   };
 
   const handleUploadFile = async (
@@ -290,7 +285,7 @@ export function AdminDashboard() {
 
   const handleUpdateScheduleSettings = async () => {
     try {
-      await axios.put('http://localhost:5000/api/schedules/settings', { slotDuration, bookingSystemType });
+      await axios.put('http://localhost:5000/api/schedules/settings', { slotDuration, bookingSystemType, paymentGateway });
       alert('Ajustes guardados correctamente');
     } catch (e) {
       alert('Error guardando ajustes');
@@ -481,6 +476,20 @@ export function AdminDashboard() {
               <Group mt="xs" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px' }}>
                 <Radio value="slots" label="Sistema de Franjas (Slots de horario manual)" />
                 <Radio value="queue" label="Sistema de Cola Automática (Por orden de llegada / Pago)" />
+              </Group>
+            </Radio.Group>
+            <Title order={4} mb="sm">Pasarela de Pagos</Title>
+            <Radio.Group
+              name="paymentGateway"
+              label="Pasarela activa para cobros web"
+              description="Selecciona la pasarela con la que procesarás los pagos desde la página de reservas."
+              value={paymentGateway}
+              onChange={setPaymentGateway}
+              mb="xl"
+            >
+              <Group mt="xs" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px' }}>
+                <Radio value="wompi" label="Wompi" />
+                <Radio value="dlocalgo" label="DLocal Go" />
               </Group>
             </Radio.Group>
             <Button onClick={handleUpdateScheduleSettings} color="blue">Guardar Políticas</Button>
@@ -681,42 +690,8 @@ export function AdminDashboard() {
                 />
               </Grid.Col>
             </Grid>
-            
-            <Text fw={500} size="sm" mt="md" mb="xs">Imágenes para el Carrusel (Rotan automáticamente)</Text>
-            <Group mb="sm">
-              <TextInput 
-                placeholder="URL de nueva imagen..." 
-                value={newCarouselImg} 
-                onChange={e => setNewCarouselImg(e.currentTarget.value)} 
-                style={{ flex: 1 }}
-                rightSection={
-                  <FileButton onChange={(f) => handleUploadFile(f, setNewCarouselImg)} accept="image/*,video/*">
-                    {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
-                  </FileButton>
-                }
-              />
-              <Button onClick={addCarouselImage} variant="light">Añadir al Carrusel</Button>
-            </Group>
-            
-            <Group mb="md">
-              {carouselImages.map((img, idx) => (
-                <Box key={idx} style={{ position: 'relative' }}>
-                  <Image src={img} w={80} h={80} radius="md" style={{ border: '1px solid #ccc', objectFit: 'cover' }} />
-                  <Button size="compact-xs" color="red" style={{ position: 'absolute', top: -5, right: -5, padding: 0, width: 20, height: 20 }} onClick={() => removeCarouselImage(idx)}>X</Button>
-                </Box>
-              ))}
-            </Group>
 
             <Grid mb="xl" mt="md">
-              <Grid.Col span={{ base: 12, md: 4 }}>
-                <NumberInput 
-                  label="Duración Carrusel (seg)" 
-                  value={carouselDuration} 
-                  onChange={(val) => setCarouselDuration(Number(val) || 5)} 
-                  min={1} 
-                  max={60}
-                />
-              </Grid.Col>
               <Grid.Col span={{ base: 12, md: 4 }}>
                 <NumberInput 
                   label="Duración Proyección IA (seg)" 
@@ -727,23 +702,25 @@ export function AdminDashboard() {
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 4 }}>
-                <Select 
-                  label="Transición de Carrusel"
-                  value={carouselDirection}
-                  onChange={(val) => setCarouselDirection(val || 'fade')}
-                  data={[
-                    { value: 'fade', label: 'Desvanecimiento (Fade)' },
-                    { value: 'slide-left', label: 'Deslizar hacia la Izquierda' },
-                    { value: 'slide-right', label: 'Deslizar hacia la Derecha' },
-                    { value: 'slide-up', label: 'Deslizar hacia Arriba' },
-                    { value: 'slide-down', label: 'Deslizar hacia Abajo' },
-                  ]}
+                <TextInput 
+                  type="time" step={1}
+                  label="Hora Global Inicio Parrilla" 
+                  value={globalGridStartTime} 
+                  onChange={(e) => setGlobalGridStartTime(e.currentTarget.value)} 
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <TextInput 
+                  type="time" step={1}
+                  label="Hora Global Fin Parrilla" 
+                  value={globalGridEndTime} 
+                  onChange={(e) => setGlobalGridEndTime(e.currentTarget.value)} 
                 />
               </Grid.Col>
             </Grid>
 
             <Group align="flex-end" justify="space-between" mt="md">
-              <Button color="teal" onClick={handleUpdateSettings}>Guardar Configuración de Standby</Button>
+              <Button color="teal" onClick={() => handleUpdateSettings()}>Guardar Configuración de Standby</Button>
               <Button color="red" variant="light" onClick={handleClearScreen}>Forzar Limpieza de Pantalla (Quitar proyección actual)</Button>
             </Group>
 
@@ -755,7 +732,10 @@ export function AdminDashboard() {
               </Text>
               <Group mb="sm">
                 <Button onClick={() => {
-                  setNewGridItem({ name: '', url: '', type: 'image', duration: 10, startTime: '00:00:00', endTime: '23:59:59', priority: 1, active: true });
+                  setNewGridItem({ 
+                    name: '', url: '', type: 'image', duration: 10, priority: 1, active: true,
+                    targetAppearances: 100, currentAppearances: 0, cooldownPeriod: 30, noConsecutive: true, exclusionWindows: []
+                  });
                   openGridModal();
                 }} variant="light" color="blue">+ Añadir a la Parrilla</Button>
               </Group>
@@ -765,9 +745,9 @@ export function AdminDashboard() {
                     <Table.Th>Nombre</Table.Th>
                     <Table.Th>Miniatura</Table.Th>
                     <Table.Th>Tipo</Table.Th>
-                    <Table.Th>Horario</Table.Th>
-                    <Table.Th>Duración</Table.Th>
+                    <Table.Th>Apariciones</Table.Th>
                     <Table.Th>Prioridad</Table.Th>
+                    <Table.Th>Intervalo</Table.Th>
                     <Table.Th>Estado</Table.Th>
                     <Table.Th>Acciones</Table.Th>
                   </Table.Tr>
@@ -784,9 +764,9 @@ export function AdminDashboard() {
                         )}
                       </Table.Td>
                       <Table.Td><Badge color={item.type === 'video' ? 'red' : 'blue'}>{item.type}</Badge></Table.Td>
-                      <Table.Td><Badge color="gray">{item.startTime} {item.type === 'image' && item.endTime ? `- ${item.endTime}` : ''}</Badge></Table.Td>
-                      <Table.Td>{item.type === 'video' ? 'Video' : `${item.duration}s`}</Table.Td>
+                      <Table.Td>{item.currentAppearances || 0} / {item.targetAppearances}</Table.Td>
                       <Table.Td>{item.priority}</Table.Td>
+                      <Table.Td>{item.cooldownPeriod} min</Table.Td>
                       <Table.Td><Badge color={item.active ? 'green' : 'gray'}>{item.active ? 'Activo' : 'Inactivo'}</Badge></Table.Td>
                       <Table.Td>
                         <Group gap="xs">
@@ -813,19 +793,24 @@ export function AdminDashboard() {
               </Table>
             </Box>
 
-            <Modal opened={gridModalOpened} onClose={() => {
-              setNewGridItem({ name: '', url: '', type: 'image', duration: 10, startTime: '00:00:00', endTime: '23:59:59', priority: 1, active: true });
+            <Modal opened={gridModalOpened} size="lg" onClose={() => {
+              setNewGridItem({ 
+                name: '', url: '', type: 'image', duration: 10, priority: 1, active: true,
+                targetAppearances: 100, currentAppearances: 0, cooldownPeriod: 30, noConsecutive: true, exclusionWindows: []
+              });
               closeGridModal();
             }} title={(newGridItem as any).id ? "Editar Contenido de Parrilla" : "Añadir Contenido a la Parrilla"}>
               <TextInput label="Nombre Descriptivo" placeholder="Ej. Promo Coca-Cola" value={newGridItem.name} onChange={(e) => setNewGridItem({...newGridItem, name: e.currentTarget.value})} mb="sm" required />
               
-              <Select 
-                label="Tipo de Contenido" 
-                data={[{value: 'image', label: 'Imagen'}, {value: 'video', label: 'Video'}]}
-                value={newGridItem.type}
-                onChange={(val) => setNewGridItem({...newGridItem, type: val || 'image'})}
-                mb="sm"
-              />
+              <Group grow mb="sm">
+                <Select 
+                  label="Tipo de Contenido" 
+                  data={[{value: 'image', label: 'Imagen'}, {value: 'video', label: 'Video'}]}
+                  value={newGridItem.type}
+                  onChange={(val) => setNewGridItem({...newGridItem, type: val || 'image'})}
+                />
+                <NumberInput label="Prioridad" description="En choque, gana la mayor" value={newGridItem.priority} onChange={(val) => setNewGridItem({...newGridItem, priority: Number(val)})} />
+              </Group>
 
               <TextInput 
                 label="URL del Archivo" 
@@ -836,12 +821,10 @@ export function AdminDashboard() {
                 required
                 rightSection={
                   <FileButton onChange={(f) => handleUploadFile(f, 
-                    (url) => setNewGridItem(prev => ({...prev, url})),
-                    (type) => setNewGridItem(prev => ({...prev, type})),
-                    (duration) => setNewGridItem(prev => {
-                      const newStart = prev.startTime;
-                      const newEnd = addSecondsToTime(newStart, duration);
-                      return {...prev, duration, endTime: newEnd};
+                    (url) => setNewGridItem((prev: any) => ({...prev, url})),
+                    (type) => setNewGridItem((prev: any) => ({...prev, type})),
+                    (duration) => setNewGridItem((prev: any) => {
+                      return {...prev, duration};
                     })
                   )} accept="image/*,video/*">
                     {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
@@ -865,18 +848,54 @@ export function AdminDashboard() {
                 />
               )}
 
-              <Group grow mb="sm">
-                <TextInput type="time" step={1} label="Hora Inicio (HH:MM:SS)" required value={newGridItem.startTime} onChange={(e) => {
-                  const newStart = e.currentTarget.value;
-                  let newEnd = newGridItem.endTime;
-                  if (newGridItem.type === 'video' && newGridItem.duration) {
-                    newEnd = addSecondsToTime(newStart, newGridItem.duration);
-                  }
-                  setNewGridItem({...newGridItem, startTime: newStart, endTime: newEnd});
-                }} />
-                <TextInput type="time" step={1} label="Hora Fin (HH:MM:SS)" required value={newGridItem.endTime} disabled={newGridItem.type === 'video'} onChange={(e) => setNewGridItem({...newGridItem, endTime: e.currentTarget.value})} />
-              </Group>
-              <NumberInput label="Prioridad" description="En caso de choque de horarios, se mostrará el número mayor" value={newGridItem.priority} onChange={(val) => setNewGridItem({...newGridItem, priority: Number(val)})} mb="md" />
+              <Grid mb="sm">
+                <Grid.Col span={6}>
+                  <NumberInput label="Meta de Apariciones" value={newGridItem.targetAppearances} onChange={(val) => setNewGridItem({...newGridItem, targetAppearances: Number(val)})} />
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <NumberInput label="Intervalo (minutos)" description="Tiempo mínimo entre apariciones" value={newGridItem.cooldownPeriod} onChange={(val) => setNewGridItem({...newGridItem, cooldownPeriod: Number(val)})} />
+                </Grid.Col>
+                <Grid.Col span={12}>
+                  <Select 
+                    label="Efecto de Transición (Entrada/Salida)"
+                    value={newGridItem.transition}
+                    onChange={(val) => setNewGridItem({...newGridItem, transition: val || 'fade'})}
+                    data={[
+                      { value: 'fade', label: 'Desvanecimiento Suave (Fade)' },
+                      { value: 'slide-left', label: 'Deslizar a la Izquierda' },
+                      { value: 'slide-right', label: 'Deslizar a la Derecha' },
+                      { value: 'slide-up', label: 'Deslizar hacia Arriba' },
+                      { value: 'slide-down', label: 'Deslizar hacia Abajo' },
+                      { value: 'particles', label: 'Partículas / Fragmentación' }
+                    ]}
+                  />
+                </Grid.Col>
+              </Grid>
+
+              <Text size="sm" fw={500} mt="md" mb="xs">Tiempos de Exclusión (No mostrar en estos horarios)</Text>
+              {newGridItem.exclusionWindows?.map((window: any, wIdx: number) => (
+                <Group key={wIdx} mb="xs" align="flex-end">
+                  <TextInput type="time" step={1} label="Hora Inicio" value={window.start} onChange={(e) => {
+                    const newExclusions = [...newGridItem.exclusionWindows];
+                    newExclusions[wIdx].start = e.currentTarget.value;
+                    setNewGridItem({...newGridItem, exclusionWindows: newExclusions});
+                  }} />
+                  <TextInput type="time" step={1} label="Hora Fin" value={window.end} onChange={(e) => {
+                    const newExclusions = [...newGridItem.exclusionWindows];
+                    newExclusions[wIdx].end = e.currentTarget.value;
+                    setNewGridItem({...newGridItem, exclusionWindows: newExclusions});
+                  }} />
+                  <Button color="red" variant="subtle" onClick={() => {
+                    const newExclusions = [...newGridItem.exclusionWindows];
+                    newExclusions.splice(wIdx, 1);
+                    setNewGridItem({...newGridItem, exclusionWindows: newExclusions});
+                  }}>X</Button>
+                </Group>
+              ))}
+              <Button size="xs" variant="light" mb="md" onClick={() => {
+                setNewGridItem({...newGridItem, exclusionWindows: [...(newGridItem.exclusionWindows || []), {start: '12:00:00', end: '13:00:00'}]});
+              }}>+ Añadir Exclusión</Button>
+
               <Button fullWidth onClick={() => {
                 if(!newGridItem.name || !newGridItem.url) return alert('Completa nombre y url');
                 
@@ -892,7 +911,10 @@ export function AdminDashboard() {
                 setContentGrid(updatedGrid);
                 handleUpdateSettings(updatedGrid); // Guardar automáticamente
                 
-                setNewGridItem({ name: '', url: '', type: 'image', duration: 10, startTime: '00:00', endTime: '23:59', priority: 1, active: true });
+                setNewGridItem({ 
+                  name: '', url: '', type: 'image', duration: 10, priority: 1, active: true,
+                  targetAppearances: 100, currentAppearances: 0, cooldownPeriod: 30, noConsecutive: true, exclusionWindows: []
+                });
                 closeGridModal();
               }}>
                 {(newGridItem as any).id ? 'Guardar Cambios' : 'Añadir a Parrilla'}

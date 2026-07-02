@@ -1,15 +1,18 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Container, Title, Box, Text, Transition as MantineTransition } from '@mantine/core';
 import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import axios from 'axios';
 import './falling.css';
+import { SprayEffect } from './SprayEffect';
+import QRCode from 'react-qr-code';
+import { useLanguage } from './i18n';
 
-const CarouselItem = ({ item, transitionClass, onEnded, ...props }: any) => {
+const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: any) => {
   const nodeRef = useRef(null);
   if (!item) return null;
 
   return (
-    <CSSTransition {...props} nodeRef={nodeRef} timeout={1000} classNames={transitionClass}>
+    <CSSTransition {...props} appear={true} nodeRef={nodeRef} timeout={1000} classNames={classNames || transitionClass}>
       <Box ref={nodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: item.type === 'video' ? '#000' : 'transparent', zIndex: item.type === 'video' ? 1000 : 1 }}>
         {item.type === 'video' ? (
           <video 
@@ -43,13 +46,23 @@ export function BigScreenView() {
     contentGrid: [],
     currentProjection: null
   });
-  const [carouselIndex, setCarouselIndex] = useState(0);
   const [currentTimeStr, setCurrentTimeString] = useState('');
-  const prevItemsKeyRef = useRef('');
+  
+  const [currentItem, setCurrentItem] = useState<any>(null);
+  const lastGridItemIdRef = useRef<string | null>(null);
+  const timerRef = useRef<any>(null);
+
+  const settingsRef = useRef<any>(settings);
+  const fallbackNodeRef = useRef(null);
+  const { t } = useLanguage();
+  
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   const fetchSettings = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/bookings/screen-settings');
+      const res = await axios.get(`http://${window.location.hostname}:5000/api/bookings/screen-settings`);
       if (res.data) {
         setSettings(res.data);
       }
@@ -73,43 +86,105 @@ export function BigScreenView() {
     };
   }, []);
 
-  const effectiveCarouselItems = useMemo(() => {
-    if (!settings.contentGrid || settings.contentGrid.length === 0) {
-      return (settings.carouselImages || []).map((url: string, idx: number) => ({ id: `carousel-${idx}`, url, type: 'image', duration: settings.carouselDuration || 5 }));
-    }
+  const advanceCarousel = () => {
+    // Si hay una proyección activa, no queremos iterar y gastar "apariciones" o interrumpir.
+    if (settingsRef.current.currentProjection) return;
+
+    // Calculate current time explicitly to avoid stale closures
+    const d = new Date();
+    const currentStr = d.toTimeString().slice(0, 8);
+    let nextItem = null;
     
-    const activeItems = settings.contentGrid.filter((item: any) => {
+    const currentSettings = settingsRef.current;
+    const grid = currentSettings.contentGrid || [];
+    let eligibleGridItems = grid.filter((item: any) => {
       if (!item.active) return false;
-      if (item.type === 'video') {
-        return currentTimeStr >= item.startTime && (!item.endTime || currentTimeStr <= item.endTime);
+      
+      if (currentSettings.globalGridStartTime && currentSettings.globalGridEndTime) {
+        if (currentStr < currentSettings.globalGridStartTime || currentStr > currentSettings.globalGridEndTime) {
+          return false;
+        }
       }
-      return currentTimeStr >= item.startTime && currentTimeStr <= item.endTime;
+
+      if (item.exclusionWindows && item.exclusionWindows.length > 0) {
+        for (const w of item.exclusionWindows) {
+          if (currentStr >= w.start && currentStr <= w.end) return false;
+        }
+      }
+
+      const target = item.targetAppearances || 0;
+      const current = item.currentAppearances || 0;
+      if (target > 0 && current >= target) return false;
+
+      const cooldownMs = (item.cooldownPeriod || 0) * 60 * 1000;
+      if (item.lastShown && cooldownMs > 0) {
+        if (Date.now() - item.lastShown < cooldownMs) return false;
+      }
+
+      return true;
     });
 
-    if (activeItems.length === 0) {
-      return (settings.carouselImages || []).map((url: string, idx: number) => ({ id: `carousel-${idx}`, url, type: 'image', duration: settings.carouselDuration || 5 }));
+    if (eligibleGridItems.length > 0) {
+      eligibleGridItems.sort((a: any, b: any) => b.priority - a.priority);
+      const maxPriority = eligibleGridItems[0].priority;
+      let topPriorityItems = eligibleGridItems.filter((i: any) => i.priority === maxPriority);
+
+      if (topPriorityItems.length > 1 && lastGridItemIdRef.current) {
+        const filtered = topPriorityItems.filter((i: any) => i.id !== lastGridItemIdRef.current);
+        if (filtered.length > 0) topPriorityItems = filtered;
+      }
+
+      const randomIndex = Math.floor(Math.random() * topPriorityItems.length);
+      const selected = topPriorityItems[randomIndex];
+
+      nextItem = {
+        id: selected.id,
+        isGrid: true,
+        url: selected.url,
+        type: selected.type || 'image',
+        duration: selected.duration || 10,
+        transition: selected.transition || 'fade', // Usar transición individual
+        renderKey: `grid-${selected.id}-${Date.now()}` // For TransitionGroup uniqueness
+      };
+      
+      lastGridItemIdRef.current = selected.id;
+      axios.post(`http://${window.location.hostname}:5000/api/bookings/screen-settings/grid-item-shown/${selected.id}`).catch(console.error);
+    } else {
+      nextItem = null;
     }
 
-    activeItems.sort((a: any, b: any) => b.priority - a.priority);
-    const maxPriority = activeItems[0].priority;
-    const topPriorityItems = activeItems.filter((item: any) => item.priority === maxPriority);
-    
-    return topPriorityItems.map((item: any, idx: number) => ({
-      id: item.id || `grid-${idx}`,
-      url: item.url,
-      type: item.type || 'image',
-      duration: item.duration || 5
-    }));
-  }, [settings.contentGrid, settings.carouselImages, currentTimeStr, settings.carouselDuration]);
+    setCurrentItem(nextItem);
+  };
 
-  // Reset índice solo cuando cambia el contenido real (comparando URLs)
   useEffect(() => {
-    const key = effectiveCarouselItems.map((i: any) => i.url).join(',');
-    if (key !== prevItemsKeyRef.current) {
-      prevItemsKeyRef.current = key;
-      setCarouselIndex(0);
+    if (settings.currentProjection) return;
+    if (currentItem?.type === 'video') return; 
+
+    if (currentItem) {
+      const durationMs = (currentItem.duration || 5) * 1000;
+      timerRef.current = setTimeout(() => {
+        advanceCarousel();
+      }, durationMs);
+
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
+    } else {
+      // Intentar cargar inmediatamente
+      if (settings.contentGrid?.length > 0) {
+        advanceCarousel();
+      }
+      
+      // Keep checking every 3 seconds if there are items but none were eligible (e.g., all on cooldown)
+      const intervalId = setInterval(() => {
+        advanceCarousel();
+      }, 3000);
+
+      return () => {
+        clearInterval(intervalId);
+      };
     }
-  });
+  }, [currentItem, settings.currentProjection, settings.contentGrid?.length]);
 
   // Lógica de expiración de la proyección
   useEffect(() => {
@@ -120,38 +195,28 @@ export function BigScreenView() {
       
       if (timeRemaining > 0) {
         const timer = setTimeout(() => {
-          axios.post(`http://localhost:5000/api/bookings/${settings.currentProjection.id}/complete`);
+          axios.post(`http://${window.location.hostname}:5000/api/bookings/${settings.currentProjection.id}/complete`);
         }, timeRemaining);
         return () => clearTimeout(timer);
       } else {
-        axios.post(`http://localhost:5000/api/bookings/${settings.currentProjection.id}/complete`);
+        axios.post(`http://${window.location.hostname}:5000/api/bookings/${settings.currentProjection.id}/complete`);
       }
+    } else if (!settings.currentProjection) {
+      // Cuando la proyección se acaba, forzamos al carrusel a avanzar al siguiente contenido 
+      // de la parrilla para evitar que se quede atascado en el último video o imagen congelada.
+      advanceCarousel();
     }
   }, [settings.currentProjection]);
 
-  const numItems = effectiveCarouselItems?.length || 0;
-  const currentItem = numItems > 0 ? effectiveCarouselItems[carouselIndex % numItems] : null;
-
-  // Rotación del carrusel
-  useEffect(() => {
-    if (numItems === 0 || settings.currentProjection) return;
-    if (currentItem?.type === 'video') return;
-
-    const durationMs = (currentItem?.duration || 5) * 1000;
-
-    const timer = setInterval(() => {
-      setCarouselIndex(prev => (prev + 1) % numItems);
-    }, durationMs);
-
-    return () => clearInterval(timer);
-  }, [numItems, currentItem?.type, currentItem?.duration, settings.currentProjection]);
-
   const handleVideoEnded = () => {
-    setCarouselIndex(prev => (prev + 1) % numItems);
+    // Si hay una proyección activa, no cambiamos el fondo
+    if (settingsRef.current.currentProjection) return;
+    advanceCarousel();
   };
 
-  const hasCarousel = numItems > 0;
+  const hasCarousel = !!currentItem;
   const transitionClass = `carousel-${settings.carouselTransitionDirection || 'fade'}`;
+  const getTransitionName = (t: string) => t?.startsWith('carousel-') ? t : `carousel-${t}`;
 
   // Guardar la última proyección para que la animación de salida sepa qué renderizar
   const [displayProjection, setDisplayProjection] = useState<any>(null);
@@ -196,21 +261,28 @@ export function BigScreenView() {
         
         {/* El carrusel siempre está renderizado debajo */}
         <Box style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', overflow: 'hidden', zIndex: 10 }}>
-          {hasCarousel ? (
-            <TransitionGroup style={{ width: '100%', height: '100%', position: 'relative' }} childFactory={(child) => React.cloneElement(child as React.ReactElement<any>, { classNames: transitionClass })}>
+          <TransitionGroup style={{ width: '100%', height: '100%', position: 'relative' }} childFactory={(child) => React.cloneElement(child as React.ReactElement<any>, { classNames: currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass })}>
+            {hasCarousel ? (
               <CarouselItem 
-                key={currentItem?.id + '-' + carouselIndex} 
+                key={currentItem.renderKey} 
                 item={currentItem} 
-                transitionClass={transitionClass} 
+                transitionClass={currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass} 
                 onEnded={handleVideoEnded}
               />
-            </TransitionGroup>
-          ) : (
-            <Container style={{ textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: '2rem', borderRadius: '16px' }}>
-              <Title order={1} size="4rem" c="white">Led's on Renacer Photobooth</Title>
-              <Text size="xl" c="gray.3" mt="md">¡Escanea el QR y aparece aquí!</Text>
-            </Container>
-          )}
+            ) : (
+              <CSSTransition key="fallback-empty" appear={true} nodeRef={fallbackNodeRef} timeout={1000} classNames="carousel-fade">
+                <Box ref={fallbackNodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1 }}>
+                  <Container style={{ textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: '2rem', borderRadius: '16px' }}>
+                    <Title order={1} size="4rem" c="white">{t('appTitle')}</Title>
+                    <Text size="xl" c="gray.3" mt="md">{t('scanQR')}</Text>
+                      <Box style={{ background: 'white', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '2rem' }}>
+                                <QRCode value={`${window.location.origin}/booking`} size={200} />
+                              </Box>
+                  </Container>
+                </Box>
+              </CSSTransition>
+            )}
+          </TransitionGroup>
         </Box>
 
         <MantineTransition 
@@ -221,32 +293,39 @@ export function BigScreenView() {
         >
           {(styles) => (
             <div style={{ ...styles, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, zIndex: 20 }}>
-              <Box style={{ 
-                flex: 1, 
-                display: 'flex', 
-                justifyContent: 'center', 
-                alignItems: 'center', 
-                position: 'relative', 
-                overflow: 'hidden',
-                WebkitMaskImage: displayProjection?.transitionEffect === 'particles' ? 'radial-gradient(circle, black 60%, transparent 70%)' : 'none',
-                WebkitMaskRepeat: 'repeat',
-                WebkitMaskPosition: 'center'
-              }}>
-                <Box style={{ position: 'relative', height: '100%', aspectRatio: '1 / 1', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                  <img 
-                    src={displayProjection?.imageUrl} 
-                    alt="Proyección" 
-                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
-                  />
-                  {displayProjection?.frameUrl && (
+              {displayProjection?.transitionEffect === 'spray' || true ? (
+                <SprayEffect 
+                  imageUrl={displayProjection?.imageUrl} 
+                  frameUrl={displayProjection?.frameUrl} 
+                />
+              ) : (
+                <Box style={{ 
+                  flex: 1, 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  position: 'relative', 
+                  overflow: 'hidden',
+                  WebkitMaskImage: displayProjection?.transitionEffect === 'particles' ? 'radial-gradient(circle, black 60%, transparent 70%)' : 'none',
+                  WebkitMaskRepeat: 'repeat',
+                  WebkitMaskPosition: 'center'
+                }}>
+                  <Box style={{ position: 'relative', height: '100%', aspectRatio: '1 / 1', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                     <img 
-                      src={displayProjection?.frameUrl} 
-                      alt="Marco" 
-                      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} 
+                      src={displayProjection?.imageUrl} 
+                      alt="Proyección" 
+                      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
                     />
-                  )}
+                    {displayProjection?.frameUrl && (
+                      <img 
+                        src={displayProjection?.frameUrl} 
+                        alt="Marco" 
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} 
+                      />
+                    )}
+                  </Box>
                 </Box>
-              </Box>
+              )}
             </div>
           )}
         </MantineTransition>
