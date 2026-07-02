@@ -24,7 +24,10 @@ export class BookingsController {
   async clearProjection() {
     return this.bookingsService.clearProjection();
   }
-
+  @Post('screen-settings/grid-item-shown/:id')
+  async recordGridItemAppearance(@Param('id') id: string) {
+    return this.bookingsService.recordGridItemAppearance(id);
+  }
   @Get()
   async getAll() {
     return this.bookingsService.getBookings();
@@ -36,7 +39,10 @@ export class BookingsController {
   }
 
   @Post(':id/confirm-payment')
-  async confirmPayment(@Param('id') id: string, @Body() data?: { imageBase64?: string }) {
+  async confirmPayment(
+    @Param('id') id: string,
+    @Body() data?: { imageBase64?: string },
+  ) {
     return this.bookingsService.confirmPayment(id, data);
   }
 

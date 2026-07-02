@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Put,
+  Param,
+  Delete,
+  Query,
+} from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
 
 @Controller('api/schedules')
@@ -36,12 +45,20 @@ export class SchedulesController {
   }
 
   @Post('daily')
-  async saveDailySchedule(@Body() data: { date: string; slots: any[]; deadTimes: any[] }) {
-    return this.schedulesService.saveScheduleForDate(data.date, { slots: data.slots, deadTimes: data.deadTimes });
+  async saveDailySchedule(
+    @Body() data: { date: string; slots: any[]; deadTimes: any[] },
+  ) {
+    return this.schedulesService.saveScheduleForDate(data.date, {
+      slots: data.slots,
+      deadTimes: data.deadTimes,
+    });
   }
 
   @Post('apply-template')
   async applyTemplate(@Body() data: { templateId: string; dates: string[] }) {
-    return this.schedulesService.applyTemplateToDates(data.templateId, data.dates);
+    return this.schedulesService.applyTemplateToDates(
+      data.templateId,
+      data.dates,
+    );
   }
 }

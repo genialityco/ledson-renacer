@@ -114,8 +114,18 @@ export class ImagesService implements OnModuleInit {
     return { message: 'Seed ejecutado (o ya existían datos)' };
   }
 
-  async uploadImageBase64(data: { imageBase64: string; folder?: string; contentType?: string; extension?: string }) {
-    const { imageBase64, folder = 'screen_assets', contentType = 'image/jpeg', extension = 'jpg' } = data;
+  async uploadImageBase64(data: {
+    imageBase64: string;
+    folder?: string;
+    contentType?: string;
+    extension?: string;
+  }) {
+    const {
+      imageBase64,
+      folder = 'screen_assets',
+      contentType = 'image/jpeg',
+      extension = 'jpg',
+    } = data;
     if (!imageBase64) throw new Error('No se proporcionó imagen');
 
     const storage = this.firebase.getStorage();

@@ -6,12 +6,32 @@ import {
   Delete,
   Body,
   Param,
+  Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ImagesService } from './images.service';
 
 @Controller('api/images')
 export class ImagesController {
   constructor(private readonly imagesService: ImagesService) {}
+
+  @Get('proxy')
+  async proxyImage(@Query('url') url: string, @Res() res: Response) {
+    try {
+      if (!url) return res.status(400).send('URL is required');
+      const response = await fetch(url);
+      if (!response.ok)
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      res.send(Buffer.from(buffer));
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  }
 
   @Get()
   async findAll() {

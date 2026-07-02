@@ -9,6 +9,7 @@ import { FirebaseModule } from './firebase/firebase.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { EmailModule } from './email/email.module';
 import { SchedulesModule } from './schedules/schedules.module';
+import { DlocalgoModule } from './dlocalgo/dlocalgo.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SchedulesModule } from './schedules/schedules.module';
     BookingsModule,
     EmailModule,
     SchedulesModule,
+    DlocalgoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

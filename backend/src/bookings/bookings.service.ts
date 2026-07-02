@@ -56,17 +56,21 @@ export class BookingsService {
     }
 
     const db = this.firebase.getFirestore();
-    const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
-    const scheduleSettings = (scheduleSettingsDoc.exists ? scheduleSettingsDoc.data() : {}) || {};
+    const scheduleSettingsDoc = await db
+      .collection('lr_settings')
+      .doc('schedules')
+      .get();
+    const scheduleSettings =
+      (scheduleSettingsDoc.exists ? scheduleSettingsDoc.data() : {}) || {};
     const sysType = scheduleSettings.bookingSystemType || 'slots';
-    
+
     let finalBookingDate = bookingDate;
-    let finalTimeSlot = timeSlot || '';
-    
+    const finalTimeSlot = timeSlot || '';
+
     if (sysType === 'queue') {
-       finalBookingDate = new Date().toISOString().split('T')[0];
+      finalBookingDate = new Date().toISOString().split('T')[0];
     } else if (!finalBookingDate) {
-       finalBookingDate = new Date().toISOString().split('T')[0];
+      finalBookingDate = new Date().toISOString().split('T')[0];
     }
 
     const bookingRef = db.collection('lr_bookings').doc();
@@ -100,7 +104,8 @@ export class BookingsService {
     const bookingRef = db.collection('lr_bookings').doc(id);
     const bookingDoc = await bookingRef.get();
 
-    if (!bookingDoc.exists) throw new NotFoundException('Booking no encontrado');
+    if (!bookingDoc.exists)
+      throw new NotFoundException('Booking no encontrado');
     const booking = bookingDoc.data();
     if (!booking) throw new NotFoundException('Booking sin datos');
 
@@ -117,7 +122,10 @@ export class BookingsService {
       const fileName = `bookings/${uuidv4()}.jpg`;
       const file = bucket.file(fileName);
 
-      const base64Data = data.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const base64Data = data.imageBase64.replace(
+        /^data:image\/\w+;base64,/,
+        '',
+      );
       const buffer = Buffer.from(base64Data, 'base64');
 
       await file.save(buffer, { metadata: { contentType: 'image/jpeg' } });
@@ -125,7 +133,10 @@ export class BookingsService {
         await file.makePublic();
         imageUrl = file.publicUrl();
       } catch (e) {
-        const [url] = await file.getSignedUrl({ action: 'read', expires: '01-01-2100' });
+        const [url] = await file.getSignedUrl({
+          action: 'read',
+          expires: '01-01-2100',
+        });
         imageUrl = url;
       }
     }
@@ -134,10 +145,16 @@ export class BookingsService {
     let exactTime = 'Sin asignar';
     let slotDuration = 1;
     let queuePosition = 0;
-    
-    const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
-    const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
-    
+
+    const scheduleSettingsDoc = await db
+      .collection('lr_settings')
+      .doc('schedules')
+      .get();
+    const screenSettingsDoc = await db
+      .collection('lr_settings')
+      .doc('screen')
+      .get();
+
     let bookingSystemType = 'slots';
     if (scheduleSettingsDoc.exists) {
       const data = scheduleSettingsDoc.data() || {};
@@ -149,79 +166,97 @@ export class BookingsService {
       // Logic for automatic queue system
       // Find the latest exactTime for today
       const todayStr = booking.bookingDate;
-      const existingQueue = await db.collection('lr_bookings')
+      const existingQueue = await db
+        .collection('lr_bookings')
         .where('bookingDate', '==', todayStr)
         .where('status', 'in', ['APPROVED', 'GENERATED', 'SHOWN'])
         .get();
-        
+
       queuePosition = existingQueue.size + 1;
-      
+
       const now = new Date();
       // Ajustar zona horaria si es necesario, asumimos la hora local del servidor
       let baseTimeMins = now.getHours() * 60 + now.getMinutes();
-      
+
       // Alinear los minutos base para que sean múltiplos exactos del slotDuration (ej: si es 2 min, horas como 1:30, 1:32)
       const remainder = baseTimeMins % slotDuration;
       if (remainder !== 0) {
-        baseTimeMins += (slotDuration - remainder);
+        baseTimeMins += slotDuration - remainder;
       }
-      
+
       // If there are existing bookings, find the latest assigned time
       if (!existingQueue.empty) {
         let maxMins = 0;
-        existingQueue.docs.forEach(doc => {
+        existingQueue.docs.forEach((doc) => {
           const d = doc.data();
-          if (d.exactTime && d.exactTime !== 'Sin asignar' && d.exactTime !== 'Agotado/Lleno') {
-             const [h, m] = d.exactTime.split(':').map(Number);
-             const mins = h * 60 + m;
-             if (mins > maxMins) maxMins = mins;
+          if (
+            d.exactTime &&
+            d.exactTime !== 'Sin asignar' &&
+            d.exactTime !== 'Agotado/Lleno'
+          ) {
+            const [h, m] = d.exactTime.split(':').map(Number);
+            const mins = h * 60 + m;
+            if (mins > maxMins) maxMins = mins;
           }
         });
-        
+
         // Next projection is slotDuration minutes after the latest one
         // or current time, whichever is later
         if (maxMins >= baseTimeMins) {
-           baseTimeMins = maxMins + slotDuration;
+          baseTimeMins = maxMins + slotDuration;
         }
       }
-      
+
       const toStr = (m: number) => {
         const h = Math.floor(m / 60) % 24;
         const min = m % 60;
         return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
       };
       exactTime = toStr(baseTimeMins);
-
     } else if (booking.timeSlot) {
       // Existing logic for slots
       let deadTimes = [];
-      const scheduleDoc = await db.collection('lr_daily_schedules').doc(booking.bookingDate).get();
+      const scheduleDoc = await db
+        .collection('lr_daily_schedules')
+        .doc(booking.bookingDate)
+        .get();
 
       if (scheduleDoc.exists) {
         deadTimes = scheduleDoc.data()?.deadTimes || [];
       } else {
-        deadTimes = screenSettingsDoc.exists ? (screenSettingsDoc.data()?.deadTimes || []) : [];
+        deadTimes = screenSettingsDoc.exists
+          ? screenSettingsDoc.data()?.deadTimes || []
+          : [];
       }
 
       const [startStr, endStr] = booking.timeSlot.split('-');
-      
+
       if (startStr && endStr) {
-        const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-        const toStr = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-        
+        const toMins = (t: string) => {
+          const [h, m] = t.split(':').map(Number);
+          return h * 60 + m;
+        };
+        const toStr = (m: number) =>
+          `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
         const startMins = toMins(startStr);
         const endMins = toMins(endStr);
-        
-        const existing = await db.collection('lr_bookings')
+
+        const existing = await db
+          .collection('lr_bookings')
           .where('timeSlot', '==', booking.timeSlot)
           .where('bookingDate', '==', booking.bookingDate)
           .get();
-          
-        const taken = existing.docs.map(d => d.data().exactTime).filter(Boolean);
-        
+
+        const taken = existing.docs
+          .map((d) => d.data().exactTime)
+          .filter(Boolean);
+
         for (let m = startMins; m < endMins; m += slotDuration) {
           const tStr = toStr(m);
-          const isDead = deadTimes.some((dt: any) => tStr >= dt.startTime && tStr < dt.endTime);
+          const isDead = deadTimes.some(
+            (dt: any) => tStr >= dt.startTime && tStr < dt.endTime,
+          );
           if (!isDead && !taken.includes(tStr)) {
             exactTime = tStr;
             break;
@@ -231,12 +266,16 @@ export class BookingsService {
       }
     }
 
-    await bookingRef.update({ 
-      status: 'APPROVED', 
+    await bookingRef.update({
+      status: 'APPROVED',
       exactTime,
       imageUrl,
-      ...(bookingSystemType === 'queue' ? { queuePosition } : {})
+      ...(bookingSystemType === 'queue' ? { queuePosition } : {}),
     });
+
+    // Generar la imagen automáticamente en segundo plano
+    this.generateImage(id).catch(err => console.error(`Error auto-generando imagen para ${id}:`, err));
+
     return { success: true, exactTime, queuePosition };
   }
 
@@ -286,16 +325,23 @@ export class BookingsService {
 
     // Guardar los datos en Firestore
     const db = this.firebase.getFirestore();
-    
+
     // Calcular slot exacto (por defecto 1 minuto)
     let exactTime = 'Sin asignar';
     let slotDuration = 1;
     let queuePosition = 0;
-    const finalBookingDate = bookingDate || new Date().toISOString().split('T')[0];
+    const finalBookingDate =
+      bookingDate || new Date().toISOString().split('T')[0];
 
-    const scheduleSettingsDoc = await db.collection('lr_settings').doc('schedules').get();
-    const screenSettingsDoc = await db.collection('lr_settings').doc('screen').get();
-    
+    const scheduleSettingsDoc = await db
+      .collection('lr_settings')
+      .doc('schedules')
+      .get();
+    const screenSettingsDoc = await db
+      .collection('lr_settings')
+      .doc('screen')
+      .get();
+
     let bookingSystemType = 'slots';
     if (scheduleSettingsDoc.exists) {
       const data = scheduleSettingsDoc.data() || {};
@@ -304,73 +350,91 @@ export class BookingsService {
     }
 
     if (bookingSystemType === 'queue') {
-      const existingQueue = await db.collection('lr_bookings')
+      const existingQueue = await db
+        .collection('lr_bookings')
         .where('bookingDate', '==', finalBookingDate)
         .where('status', 'in', ['APPROVED', 'GENERATED', 'SHOWN'])
         .get();
-        
+
       queuePosition = existingQueue.size + 1;
       const now = new Date();
       let baseTimeMins = now.getHours() * 60 + now.getMinutes();
-      
+
       // Alinear los minutos base para que sean múltiplos exactos del slotDuration (ej: si es 2 min, horas como 1:30, 1:32)
       const remainder = baseTimeMins % slotDuration;
       if (remainder !== 0) {
-        baseTimeMins += (slotDuration - remainder);
+        baseTimeMins += slotDuration - remainder;
       }
-      
+
       if (!existingQueue.empty) {
         let maxMins = 0;
-        existingQueue.docs.forEach(doc => {
+        existingQueue.docs.forEach((doc) => {
           const d = doc.data();
-          if (d.exactTime && d.exactTime !== 'Sin asignar' && d.exactTime !== 'Agotado/Lleno') {
-             const [h, m] = d.exactTime.split(':').map(Number);
-             const mins = h * 60 + m;
-             if (mins > maxMins) maxMins = mins;
+          if (
+            d.exactTime &&
+            d.exactTime !== 'Sin asignar' &&
+            d.exactTime !== 'Agotado/Lleno'
+          ) {
+            const [h, m] = d.exactTime.split(':').map(Number);
+            const mins = h * 60 + m;
+            if (mins > maxMins) maxMins = mins;
           }
         });
-        
+
         if (maxMins >= baseTimeMins) {
-           baseTimeMins = maxMins + slotDuration;
+          baseTimeMins = maxMins + slotDuration;
         }
       }
-      
+
       const toStr = (m: number) => {
         const h = Math.floor(m / 60) % 24;
         const min = m % 60;
         return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
       };
       exactTime = toStr(baseTimeMins);
-
     } else if (timeSlot) {
       let deadTimes = [];
-      const scheduleDoc = await db.collection('lr_daily_schedules').doc(finalBookingDate).get();
+      const scheduleDoc = await db
+        .collection('lr_daily_schedules')
+        .doc(finalBookingDate)
+        .get();
 
       if (scheduleDoc.exists) {
         deadTimes = scheduleDoc.data()?.deadTimes || [];
       } else {
-        deadTimes = screenSettingsDoc.exists ? (screenSettingsDoc.data()?.deadTimes || []) : [];
+        deadTimes = screenSettingsDoc.exists
+          ? screenSettingsDoc.data()?.deadTimes || []
+          : [];
       }
 
       const [startStr, endStr] = timeSlot.split('-');
-      
+
       if (startStr && endStr) {
-        const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-        const toStr = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-        
+        const toMins = (t: string) => {
+          const [h, m] = t.split(':').map(Number);
+          return h * 60 + m;
+        };
+        const toStr = (m: number) =>
+          `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
         const startMins = toMins(startStr);
         const endMins = toMins(endStr);
-        
-        const existing = await db.collection('lr_bookings')
+
+        const existing = await db
+          .collection('lr_bookings')
           .where('timeSlot', '==', timeSlot)
           .where('bookingDate', '==', finalBookingDate)
           .get();
-          
-        const taken = existing.docs.map(d => d.data().exactTime).filter(Boolean);
-        
+
+        const taken = existing.docs
+          .map((d) => d.data().exactTime)
+          .filter(Boolean);
+
         for (let m = startMins; m < endMins; m += slotDuration) {
           const tStr = toStr(m);
-          const isDead = deadTimes.some((dt: any) => tStr >= dt.startTime && tStr < dt.endTime);
+          const isDead = deadTimes.some(
+            (dt: any) => tStr >= dt.startTime && tStr < dt.endTime,
+          );
           if (!isDead && !taken.includes(tStr)) {
             exactTime = tStr;
             break;
@@ -398,10 +462,13 @@ export class BookingsService {
       paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
       requiresInvoice: data.requiresInvoice || false, // boolean
       createdAt: new Date(),
-      ...(bookingSystemType === 'queue' ? { queuePosition } : {})
+      ...(bookingSystemType === 'queue' ? { queuePosition } : {}),
     };
 
     await bookingRef.set(booking);
+
+    // Generar la imagen automáticamente en segundo plano
+    this.generateImage(bookingRef.id).catch(err => console.error(`Error auto-generando imagen para ${bookingRef.id}:`, err));
 
     return { id: bookingRef.id, ...booking };
   }
@@ -417,7 +484,7 @@ export class BookingsService {
 
   async searchBookings(query: string) {
     const db = this.firebase.getFirestore();
-    
+
     // Primero buscamos por docId
     let snapshot = await db
       .collection('lr_bookings')
@@ -438,11 +505,15 @@ export class BookingsService {
     // Para ello concatenamos las fechas y horas y ordenamos descendente o ascendente según se necesite.
     // Proyección más próxima = la que está más en el futuro, luego las antiguas.
     const now = new Date();
-    
+
     docs.sort((a: any, b: any) => {
-      const dateA = new Date(`${a.bookingDate}T${a.exactTime !== 'Sin asignar' && a.exactTime !== 'Agotado/Lleno' ? a.exactTime : a.timeSlot ? a.timeSlot.split('-')[0] : '00:00'}`);
-      const dateB = new Date(`${b.bookingDate}T${b.exactTime !== 'Sin asignar' && b.exactTime !== 'Agotado/Lleno' ? b.exactTime : b.timeSlot ? b.timeSlot.split('-')[0] : '00:00'}`);
-      
+      const dateA = new Date(
+        `${a.bookingDate}T${a.exactTime !== 'Sin asignar' && a.exactTime !== 'Agotado/Lleno' ? a.exactTime : a.timeSlot ? a.timeSlot.split('-')[0] : '00:00'}`,
+      );
+      const dateB = new Date(
+        `${b.bookingDate}T${b.exactTime !== 'Sin asignar' && b.exactTime !== 'Agotado/Lleno' ? b.exactTime : b.timeSlot ? b.timeSlot.split('-')[0] : '00:00'}`,
+      );
+
       return dateB.getTime() - dateA.getTime(); // Ordenar de más reciente a más antigua
     });
 
@@ -511,7 +582,19 @@ export class BookingsService {
       } else {
         console.error('Error llamando a la API de imágenes:', apiError.message);
       }
-      throw new Error('Falló la generación de imagen externa');
+      console.log(
+        'API de generación no disponible. Se proyectará la imagen original inmediatamente.',
+      );
+      
+      // Proyectar la imagen original inmediatamente
+      await this.projectBooking(id);
+
+      return {
+        success: true,
+        message:
+          'Falló la generación, se proyectó la imagen original',
+        generatedImageUrl: booking.imageUrl,
+      };
     }
 
     let generatedBuffer: Buffer;
@@ -562,19 +645,19 @@ export class BookingsService {
   async getScreenSettings() {
     const db = this.firebase.getFirestore();
     const doc = await db.collection('lr_settings').doc('screen').get();
-    return doc.exists 
-      ? doc.data() 
-      : { 
-          backgroundUrl: '', 
-          headerUrl: '', 
-          footerUrl: '', 
-          carouselImages: [], 
+    return doc.exists
+      ? doc.data()
+      : {
+          backgroundUrl: '',
+          headerUrl: '',
+          footerUrl: '',
+          carouselImages: [],
           carouselDuration: 5,
           projectionDuration: 15,
           carouselTransitionDirection: 'right',
           contentGrid: [],
           deadTimes: [], // Tiempos muertos (descansos)
-          currentProjection: null 
+          currentProjection: null,
         };
   }
 
@@ -584,25 +667,55 @@ export class BookingsService {
     return { success: true };
   }
 
+  async recordGridItemAppearance(itemId: string) {
+    const db = this.firebase.getFirestore();
+    const settingsRef = db.collection('lr_settings').doc('screen');
+    const doc = await settingsRef.get();
+    if (!doc.exists) return { success: false };
+    const data = doc.data();
+    if (data && data.contentGrid) {
+      const grid = data.contentGrid.map((item: any) => {
+        if (item.id === itemId) {
+          return {
+            ...item,
+            currentAppearances: (item.currentAppearances || 0) + 1,
+            lastShown: Date.now(),
+          };
+        }
+        return item;
+      });
+      await settingsRef.update({ contentGrid: grid });
+      return { success: true };
+    }
+    return { success: false };
+  }
+
   async clearProjection() {
     const db = this.firebase.getFirestore();
-    await db.collection('lr_settings').doc('screen').set({ currentProjection: null }, { merge: true });
+    await db
+      .collection('lr_settings')
+      .doc('screen')
+      .set({ currentProjection: null }, { merge: true });
     return { success: true };
   }
 
   async projectBooking(bookingId: string) {
     const db = this.firebase.getFirestore();
     const bookingDoc = await db.collection('lr_bookings').doc(bookingId).get();
-    if (!bookingDoc.exists) throw new NotFoundException('Booking no encontrado');
+    if (!bookingDoc.exists)
+      throw new NotFoundException('Booking no encontrado');
     const b = bookingDoc.data();
 
     if (!b) throw new NotFoundException('Booking sin datos');
-    
+
     let transitionEffect = 'fade';
     let frameUrl = '';
 
     if (b.selectedFilter) {
-      const filterDoc = await db.collection('lr_filters').doc(b.selectedFilter).get();
+      const filterDoc = await db
+        .collection('lr_filters')
+        .doc(b.selectedFilter)
+        .get();
       if (filterDoc.exists) {
         const filterData = filterDoc.data();
         if (filterData) {
@@ -618,34 +731,48 @@ export class BookingsService {
       imageUrl: b.generatedImageUrl || b.imageUrl || '',
       timestamp: Date.now(),
       transitionEffect,
-      frameUrl
+      frameUrl,
     };
 
-    await db.collection('lr_settings').doc('screen').set({ currentProjection: projectionData }, { merge: true });
-    await db.collection('lr_bookings').doc(bookingId).update({ status: 'SHOWN' });
+    await db
+      .collection('lr_settings')
+      .doc('screen')
+      .set({ currentProjection: projectionData }, { merge: true });
+    await db
+      .collection('lr_bookings')
+      .doc(bookingId)
+      .update({ status: 'SHOWN' });
     return { success: true };
   }
 
   async completeProjection(bookingId: string) {
     const db = this.firebase.getFirestore();
     // 1. Limpiar pantalla
-    await db.collection('lr_settings').doc('screen').set({ currentProjection: null }, { merge: true });
+    await db
+      .collection('lr_settings')
+      .doc('screen')
+      .set({ currentProjection: null }, { merge: true });
 
     // 2. Obtener reserva
     const bookingRef = db.collection('lr_bookings').doc(bookingId);
     const bookingDoc = await bookingRef.get();
-    if (!bookingDoc.exists) throw new NotFoundException('Booking no encontrado');
-    
+    if (!bookingDoc.exists)
+      throw new NotFoundException('Booking no encontrado');
+
     const b = bookingDoc.data();
     if (!b) return { success: true };
 
     // 3. Evitar doble envío
-    if (b.waSend) return { success: true, message: 'Notificación de WhatsApp ya enviada' };
+    if (b.waSend)
+      return { success: true, message: 'Notificación de WhatsApp ya enviada' };
 
     // 4. Enviar el correo electrónico
     if (b.email && !b.emailSent) {
+      const generalDoc = await db.collection('lr_settings').doc('general').get();
+      const lang = generalDoc.exists ? (generalDoc.data()?.language || 'es') : 'es';
+
       const imageUrl = b.generatedImageUrl || b.imageUrl;
-      const html = `
+      const htmlEs = `
         <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #228be6;">¡Hola ${b.name}!</h1>
           <p>Gracias por ser parte de la experiencia <strong>Led's on Renacer</strong>.</p>
@@ -656,8 +783,27 @@ export class BookingsService {
           <p style="font-size: 12px; color: #999;">Galería Renacer</p>
         </div>
       `;
+      const htmlEn = `
+        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #228be6;">Hello ${b.name}!</h1>
+          <p>Thank you for being part of the <strong>Led's on Renacer</strong> experience.</p>
+          <p>Here is your photobooth memory:</p>
+          <img src="${imageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+          <p>We hope you enjoyed it!</p>
+          <br/>
+          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+        </div>
+      `;
+      
+      const html = lang === 'en' ? htmlEn : htmlEs;
+      const subject = lang === 'en' ? "Your Led's on Renacer photo is ready!" : "¡Tu foto de Led's on Renacer está lista!";
+
       try {
-        await this.emailService.sendEmail(b.email, "¡Tu foto de Led's on Renacer está lista!", html);
+        await this.emailService.sendEmail(
+          b.email,
+          subject,
+          html,
+        );
         await bookingRef.update({ emailSent: true });
       } catch (e: any) {
         console.error('Error enviando correo al cliente:', e.message);
@@ -666,35 +812,54 @@ export class BookingsService {
 
     // Enviar WhatsApp de resultado (Después de la proyección en completeProjection)
     let waSend = b.waSend || false;
-    
+
     console.log(`[Diagnostic] Preparando envío WA para: ${b.name}`);
-    console.log(`[Diagnostic] Whatsapp num: ${b.whatsapp}, waSend state: ${waSend}`);
-    console.log(`[Diagnostic] ENV.WHATSAPP_API_URL: ${process.env.WHATSAPP_API_URL}, ENV.WHATSAPP_ACCOUNT_ID: ${process.env.WHATSAPP_ACCOUNT_ID}`);
-    
+    console.log(
+      `[Diagnostic] Whatsapp num: ${b.whatsapp}, waSend state: ${waSend}`,
+    );
+    console.log(
+      `[Diagnostic] ENV.WHATSAPP_API_URL: ${process.env.WHATSAPP_API_URL}, ENV.WHATSAPP_ACCOUNT_ID: ${process.env.WHATSAPP_ACCOUNT_ID}`,
+    );
+
     if (b.whatsapp && process.env.WHATSAPP_API_URL && !waSend) {
       try {
         const imageUrl = b.generatedImageUrl || b.imageUrl;
-        console.log(`[Diagnostic] Enviando payload a ${process.env.WHATSAPP_API_URL}/api/send-image-result con imageUrl: ${imageUrl}`);
-        
-        const waResponse = await axios.post(`${process.env.WHATSAPP_API_URL}/api/send-image-result`, {
-          accountId: process.env.WHATSAPP_ACCOUNT_ID,
-          to: b.whatsapp,
-          imageUrl,
-          userName: b.name,
-          experienceName: "Led's on Renacer",
-          organizationName: "Galería Renacer",
-        });
-        
-        console.log(`[Diagnostic] Respuesta de WA API: ${waResponse.status} - ${JSON.stringify(waResponse.data)}`);
+        console.log(
+          `[Diagnostic] Enviando payload a ${process.env.WHATSAPP_API_URL}/api/send-image-result con imageUrl: ${imageUrl}`,
+        );
+
+        const waResponse = await axios.post(
+          `${process.env.WHATSAPP_API_URL}/api/send-image-result`,
+          {
+            accountId: process.env.WHATSAPP_ACCOUNT_ID,
+            to: b.whatsapp,
+            imageUrl,
+            userName: b.name,
+            experienceName: "Led's on Renacer",
+            organizationName: 'Galería Renacer',
+          },
+        );
+
+        console.log(
+          `[Diagnostic] Respuesta de WA API: ${waResponse.status} - ${JSON.stringify(waResponse.data)}`,
+        );
         waSend = true;
       } catch (err: any) {
-        console.error('[Diagnostic] Error crítico enviando WhatsApp de resultado:', err.message);
+        console.error(
+          '[Diagnostic] Error crítico enviando WhatsApp de resultado:',
+          err.message,
+        );
         if (err.response) {
-          console.error('[Diagnostic] Detalles del error WA:', err.response.data);
+          console.error(
+            '[Diagnostic] Detalles del error WA:',
+            err.response.data,
+          );
         }
       }
     } else {
-      console.log(`[Diagnostic] Omitiendo envío WA. Motivo: Faltan variables de entorno, whatsapp del usuario está vacío, o waSend ya era true.`);
+      console.log(
+        `[Diagnostic] Omitiendo envío WA. Motivo: Faltan variables de entorno, whatsapp del usuario está vacío, o waSend ya era true.`,
+      );
     }
 
     // 5. Marcar como finalizado (para el panel admin)
@@ -711,7 +876,8 @@ export class BookingsService {
     const abandonedTime = new Date(now.getTime() - 15 * 60000);
 
     try {
-      const snapshot = await db.collection('lr_bookings')
+      const snapshot = await db
+        .collection('lr_bookings')
         .where('status', '==', 'PENDING')
         .where('abandonmentEmailSent', '==', false)
         .where('createdAt', '<', abandonedTime)
@@ -719,10 +885,13 @@ export class BookingsService {
 
       if (snapshot.empty) return;
 
+      const generalDoc = await db.collection('lr_settings').doc('general').get();
+      const lang = generalDoc.exists ? (generalDoc.data()?.language || 'es') : 'es';
+
       for (const doc of snapshot.docs) {
         const b = doc.data();
         if (b.email) {
-          const html = `
+          const htmlEs = `
             <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
               <h1 style="color: #f59f00;">¡Hola ${b.name}!</h1>
               <p>Notamos que no terminaste el pago para tu experiencia <strong>Led's on Renacer</strong>.</p>
@@ -732,11 +901,32 @@ export class BookingsService {
               <p style="font-size: 12px; color: #999;">Galería Renacer</p>
             </div>
           `;
+          const htmlEn = `
+            <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+              <h1 style="color: #f59f00;">Hello ${b.name}!</h1>
+              <p>We noticed you didn't finish the payment for your <strong>Led's on Renacer</strong> experience.</p>
+              <p>Your photo and booking for the slot <strong>${b.timeSlot}</strong> on <strong>${b.bookingDate}</strong> are still saved.</p>
+              <p>You can resume your purchase by contacting us or returning to the virtual point of sale.</p>
+              <br/>
+              <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+            </div>
+          `;
+
+          const html = lang === 'en' ? htmlEn : htmlEs;
+          const subject = lang === 'en' ? "Resume your Led's on Renacer booking!" : "¡Retoma tu reserva de Led's on Renacer!";
+
           try {
-            await this.emailService.sendEmail(b.email, "¡Retoma tu reserva de Led's on Renacer!", html);
+            await this.emailService.sendEmail(
+              b.email,
+              subject,
+              html,
+            );
             await doc.ref.update({ abandonmentEmailSent: true });
           } catch (e: any) {
-            console.error(`Error enviando correo de abandono para ${doc.id}:`, e.message);
+            console.error(
+              `Error enviando correo de abandono para ${doc.id}:`,
+              e.message,
+            );
           }
         }
       }
@@ -746,23 +936,73 @@ export class BookingsService {
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
-  async checkUpcomingProjections() {
-    console.log('[Diagnostic] Ejecutando Cronjob: checkUpcomingProjections');
-    
+  async autoProjectBookings() {
     const db = this.firebase.getFirestore();
     const now = new Date();
-    
+
+    // Convertir la fecha actual al formato YYYY-MM-DD local
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const targetDateStr = `${year}-${month}-${day}`;
+
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+
+    try {
+      const snapshot = await db
+        .collection('lr_bookings')
+        .where('bookingDate', '==', targetDateStr)
+        .where('status', '==', 'GENERATED')
+        .get();
+
+      if (snapshot.empty) return;
+
+      for (const doc of snapshot.docs) {
+        const b = doc.data();
+        if (
+          b.exactTime &&
+          b.exactTime !== 'Sin asignar' &&
+          b.exactTime !== 'Agotado/Lleno'
+        ) {
+          const [h, m] = b.exactTime.split(':').map(Number);
+          const exactMins = h * 60 + m;
+
+          // Si ya es la hora programada para la proyección y no han pasado más de 5 minutos (margen de tolerancia)
+          if (nowMins >= exactMins && nowMins < exactMins + 5) {
+            console.log(
+              `[Diagnostic] Auto-proyectando reserva ${doc.id} (Hora programada: ${b.exactTime}, Minuto actual: ${now.getHours()}:${now.getMinutes()})`,
+            );
+            await this.projectBooking(doc.id);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error('[Diagnostic] Error en autoProjectBookings:', e.message);
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkUpcomingProjections() {
+    console.log('[Diagnostic] Ejecutando Cronjob: checkUpcomingProjections');
+
+    const db = this.firebase.getFirestore();
+    const now = new Date();
+
     const targetDateStr = now.toISOString().split('T')[0];
     const nowMins = now.getHours() * 60 + now.getMinutes();
     const maxMins = nowMins + 10;
-    
+
     try {
-      const snapshot = await db.collection('lr_bookings')
+      const snapshot = await db
+        .collection('lr_bookings')
         .where('bookingDate', '==', targetDateStr)
         .get();
 
       if (snapshot.empty) {
-        console.log('[Diagnostic] No hay bookings para el día de hoy:', targetDateStr);
+        console.log(
+          '[Diagnostic] No hay bookings para el día de hoy:',
+          targetDateStr,
+        );
         return;
       }
 
@@ -770,47 +1010,75 @@ export class BookingsService {
       const accountId = process.env.WHATSAPP_ACCOUNT_ID;
 
       if (!apiUrl) {
-        console.log('[Diagnostic] Omite notificaciones de proyección: FALTA WHATSAPP_API_URL en el entorno.');
+        console.log(
+          '[Diagnostic] Omite notificaciones de proyección: FALTA WHATSAPP_API_URL en el entorno.',
+        );
         return;
       }
 
       let notifsSent = 0;
-      console.log(`[Diagnostic] Revisando ${snapshot.size} bookings para proyecciones próximas...`);
+      console.log(
+        `[Diagnostic] Revisando ${snapshot.size} bookings para proyecciones próximas...`,
+      );
       for (const doc of snapshot.docs) {
         const b = doc.data();
-        
+
         const validStatus = b.status === 'APPROVED' || b.status === 'GENERATED';
 
-        if (validStatus && b.whatsapp && !b.projectionNotificationSent && b.exactTime && b.exactTime !== 'Sin asignar' && b.exactTime !== 'Agotado/Lleno') {
+        if (
+          validStatus &&
+          b.whatsapp &&
+          !b.projectionNotificationSent &&
+          b.exactTime &&
+          b.exactTime !== 'Sin asignar' &&
+          b.exactTime !== 'Agotado/Lleno'
+        ) {
           const [h, m] = b.exactTime.split(':').map(Number);
           const exactMins = h * 60 + m;
-          console.log(`[Diagnostic] Booking ${doc.id} - exactTime: ${b.exactTime}, exactMins: ${exactMins}, nowMins: ${nowMins}, maxMins: ${maxMins}`);
+          console.log(
+            `[Diagnostic] Booking ${doc.id} - exactTime: ${b.exactTime}, exactMins: ${exactMins}, nowMins: ${nowMins}, maxMins: ${maxMins}`,
+          );
           if (exactMins >= nowMins && exactMins <= maxMins) {
-            const shortName = b.name ? b.name.trim().split(' ')[0].substring(0, 20) : 'Amigo';
-            
-            console.log(`[Diagnostic] Enviando Notificación Previa a: ${shortName} (${b.whatsapp}) para la proyección de las ${b.exactTime}`);
+            const shortName = b.name
+              ? b.name.trim().split(' ')[0].substring(0, 20)
+              : 'Amigo';
+
+            console.log(
+              `[Diagnostic] Enviando Notificación Previa a: ${shortName} (${b.whatsapp}) para la proyección de las ${b.exactTime}`,
+            );
             try {
               await axios.post(`${apiUrl}/api/send-projection-notification`, {
                 accountId,
                 to: b.whatsapp,
-                experienceName: "Renacer",
+                experienceName: 'Renacer',
                 userName: shortName,
               });
               await doc.ref.update({ projectionNotificationSent: true });
               notifsSent++;
             } catch (err: any) {
-              console.error(`[Diagnostic] Error enviando WhatsApp previo para ${doc.id}:`, err.message);
+              console.error(
+                `[Diagnostic] Error enviando WhatsApp previo para ${doc.id}:`,
+                err.message,
+              );
               if (err.response) {
-                console.error('[Diagnostic] Detalles del error WA:', err.response.data);
+                console.error(
+                  '[Diagnostic] Detalles del error WA:',
+                  err.response.data,
+                );
               }
             }
           }
         }
       }
-      
-      console.log(`[Diagnostic] Cronjob finalizado. Notificaciones enviadas en este ciclo: ${notifsSent}`);
+
+      console.log(
+        `[Diagnostic] Cronjob finalizado. Notificaciones enviadas en este ciclo: ${notifsSent}`,
+      );
     } catch (e: any) {
-      console.error('[Diagnostic] Error verificando proyecciones próximas:', e.message);
+      console.error(
+        '[Diagnostic] Error verificando proyecciones próximas:',
+        e.message,
+      );
     }
   }
 }
