@@ -47,6 +47,8 @@ export function BookingForm() {
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const [finalResult, setFinalResult] = useState<any>(null);
+  const [selectedFranja, setSelectedFranja] = useState<string | null>(null);
+  const [isAssigningFranja, setIsAssigningFranja] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const { t } = useLanguage();
@@ -249,6 +251,29 @@ export function BookingForm() {
       alert(t('paymentErrorAlert'));
     } finally {
       setIsSubmittingForm(false);
+    }
+  };
+
+  const handleAssignFranja = async () => {
+    if (!selectedFranja) { alert(t('selectFranjaAlert')); return; }
+    if (!bookingId) return;
+    setIsAssigningFranja(true);
+    try {
+      const res = await axios.post(`http://localhost:5000/api/bookings/${bookingId}/assign-franja`, {
+        timeSlot: selectedFranja
+      });
+      if (res.data.franjaFull) {
+        alert(t('franjaNowFull'));
+        setSelectedFranja(null);
+        setFinalResult((prev: any) => ({ ...prev, availableFranjas: res.data.availableFranjas }));
+      } else {
+        setFinalResult({ ...res.data, franjaFull: false });
+      }
+    } catch (err) {
+      console.error('Error asignando franja:', err);
+      alert(t('assignFranjaError'));
+    } finally {
+      setIsAssigningFranja(false);
     }
   };
 
@@ -501,12 +526,49 @@ export function BookingForm() {
         {/* STEP 4: FINAL RESULT / QR VIEW */}
         {activeStep === 3 && (
           <Box className="graffiti-panel" style={{ textAlign: 'center' }}>
-            {paymentStatus === 'APPROVED' ? (
+            {paymentStatus === 'APPROVED' && finalResult?.franjaFull ? (
+              <>
+                <Title order={3} mb="md" className="graffiti-section-title" style={{ color: '#ff8c1e' }}>{t('franjaFullTitle')}</Title>
+                <Text size="lg" mb="md">
+                  {t('franjaFullMsg')}
+                </Text>
+                <Box style={{ maxWidth: '340px', margin: '0 auto' }}>
+                  <Select
+                    label={t('selectFranja')}
+                    placeholder={t('selectFranja')}
+                    data={(finalResult?.availableFranjas?.franjas || [])
+                      .filter((f: any) => f.available && !f.isCurrent)
+                      .map((f: any) => ({
+                        value: f.timeSlot,
+                        label: `${f.timeSlot.replace('-', ' - ')} (${f.spotsLeft} ${t('spotsLabel')})`
+                      }))}
+                    value={selectedFranja}
+                    onChange={setSelectedFranja}
+                  />
+                  <Button
+                    fullWidth
+                    mt="md"
+                    size="lg"
+                    className="graffiti-btn"
+                    loading={isAssigningFranja}
+                    disabled={!selectedFranja || isAssigningFranja}
+                    onClick={handleAssignFranja}
+                  >
+                    {t('confirmFranjaBtn')}
+                  </Button>
+                </Box>
+              </>
+            ) : paymentStatus === 'APPROVED' ? (
               <>
                 <Title order={3} mb="md" className="graffiti-section-title">{t('bookingCompleted')}</Title>
                 {finalResult?.queuePosition && (
                   <Text size="xl" fw={700} style={{ color: '#29c5ff' }} mb="xs">
                     {t('queueTurn')}{finalResult.queuePosition}
+                  </Text>
+                )}
+                {finalResult?.timeSlot && (
+                  <Text size="lg" mb="xs">
+                    {t('franjaAssigned')} <Text span fw={700} style={{ color: '#29c5ff' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
                   </Text>
                 )}
                 <Text size="lg" mb="xl">

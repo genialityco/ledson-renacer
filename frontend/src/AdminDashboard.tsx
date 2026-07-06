@@ -47,6 +47,7 @@ export function AdminDashboard() {
   const [autoSlotInterval, setAutoSlotInterval] = useState<string | null>('60');
   
   const [slotDuration, setSlotDuration] = useState(1);
+  const [franjaDuration, setFranjaDuration] = useState(15);
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
 
@@ -63,6 +64,7 @@ export function AdminDashboard() {
       setFilters(resFilters.data);
       setTemplates(resTemplates.data || []);
       setSlotDuration(resScheduleSettings.data?.slotDuration || 1);
+      setFranjaDuration(resScheduleSettings.data?.franjaDuration || 15);
       setBookingSystemType(resScheduleSettings.data?.bookingSystemType || 'slots');
       setPaymentGateway(resScheduleSettings.data?.paymentGateway || 'wompi');
       if (resScreen.data) {
@@ -285,7 +287,7 @@ export function AdminDashboard() {
 
   const handleUpdateScheduleSettings = async () => {
     try {
-      await axios.put('http://localhost:5000/api/schedules/settings', { slotDuration, bookingSystemType, paymentGateway });
+      await axios.put('http://localhost:5000/api/schedules/settings', { slotDuration, franjaDuration, bookingSystemType, paymentGateway });
       alert('Ajustes guardados correctamente');
     } catch (e) {
       alert('Error guardando ajustes');
@@ -476,6 +478,7 @@ export function AdminDashboard() {
               <Group mt="xs" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '10px' }}>
                 <Radio value="slots" label="Sistema de Franjas (Slots de horario manual)" />
                 <Radio value="queue" label="Sistema de Cola Automática (Por orden de llegada / Pago)" />
+                <Radio value="franjas" label="Franja Inmediata con Cupo (Asigna la franja actual tras el pago; si está llena, el cliente elige otra)" />
               </Group>
             </Radio.Group>
             <Title order={4} mb="sm">Pasarela de Pagos</Title>
@@ -501,13 +504,23 @@ export function AdminDashboard() {
             <Title order={4} mb="sm">Configuración General de Asignación</Title>
             <Grid align="flex-end">
               <Grid.Col span={{ base: 12, md: 4 }}>
-                <NumberInput 
-                  label="Tiempo asignado por usuario (Minutos)" 
+                <NumberInput
+                  label="Tiempo asignado por usuario (Minutos)"
                   description="Intervalo exacto de tiempo asignado para cada proyección"
-                  value={slotDuration} 
-                  onChange={(val) => setSlotDuration(Number(val) || 1)} 
-                  min={1} 
+                  value={slotDuration}
+                  onChange={(val) => setSlotDuration(Number(val) || 1)}
+                  min={1}
                   max={60}
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <NumberInput
+                  label="Duración de la franja (Minutos)"
+                  description={`Solo para "Franja Inmediata con Cupo". Capacidad resultante: ${Math.max(1, Math.floor(franjaDuration / (slotDuration || 1)))} personas por franja`}
+                  value={franjaDuration}
+                  onChange={(val) => setFranjaDuration(Number(val) || 15)}
+                  min={2}
+                  max={120}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 4 }}>

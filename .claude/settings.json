@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx eslint *)",
+      "Bash(node dist/main.js)",
+      "Bash(curl -s \"http://localhost:5000/api/bookings/franjas\")",
+      "Bash(curl -s \"http://localhost:5000/api/schedules/settings\")",
+      "Bash(curl -s -X PUT \"http://localhost:5000/api/schedules/settings\" -H \"Content-Type: application/json\" -d '{\"slotDuration\":2,\"franjaDuration\":15,\"bookingSystemType\":\"franjas\",\"paymentGateway\":\"dlocalgo\"}')",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/init\" -H \"Content-Type: application/json\" -d '{\"name\":\"TEST-FRANJA-1\",\"docId\":\"TEST-000\",\"email\":\"test@test.local\",\"country\":\"Colombia\",\"city\":\"Medellin\",\"selectedFilter\":\"fake-filter-test\",\"imageBase64\":\"\"}')",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/F6wWlv35Mj7VPlcpONht/confirm-payment\" -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/init\" -H \"Content-Type: application/json\" -d '{\"name\":\"TEST-FRANJA-2\",\"docId\":\"TEST-000\",\"email\":\"test@test.local\",\"country\":\"Colombia\",\"city\":\"Medellin\",\"selectedFilter\":\"fake-filter-test\",\"imageBase64\":\"\"}')",
+      "Bash(python -c \"import sys,json; print\\(json.load\\(sys.stdin\\)['id']\\)\")",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/C9TenO0WoITbvomSmxWb/confirm-payment\" -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/init\" -H \"Content-Type: application/json\" -d '{\"name\":\"TEST-FRANJA-3\",\"docId\":\"TEST-000\",\"email\":\"test@test.local\",\"country\":\"Colombia\",\"city\":\"Medellin\",\"selectedFilter\":\"fake-filter-test\",\"imageBase64\":\"\"}')",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/cgCRxABQ4Pv6wmTe5VW9/confirm-payment\" -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/cgCRxABQ4Pv6wmTe5VW9/assign-franja\" -H \"Content-Type: application/json\" -d '{\"timeSlot\":\"14:15-14:30\"}')",
+      "Bash(curl -s -X POST \"http://localhost:5000/api/bookings/cgCRxABQ4Pv6wmTe5VW9/assign-franja\" -H \"Content-Type: application/json\" -d '{\"timeSlot\":\"14:30-14:45\"}')",
+      "Bash(curl -s -X PUT \"http://localhost:5000/api/schedules/settings\" -H \"Content-Type: application/json\" -d '{\"slotDuration\":2,\"franjaDuration\":15,\"bookingSystemType\":\"queue\",\"paymentGateway\":\"dlocalgo\"}')",
+      "Bash(node -e ' *)"
+    ]
+  }
+}
