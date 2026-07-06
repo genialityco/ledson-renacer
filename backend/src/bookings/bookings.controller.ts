@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Put, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Put, Param, Query } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 
 @Controller('api/bookings')
@@ -44,6 +44,19 @@ export class BookingsController {
     @Body() data?: { imageBase64?: string },
   ) {
     return this.bookingsService.confirmPayment(id, data);
+  }
+
+  @Get('franjas')
+  async getFranjas(@Query('date') date?: string) {
+    return this.bookingsService.getFranjasAvailability(date);
+  }
+
+  @Post(':id/assign-franja')
+  async assignFranja(
+    @Param('id') id: string,
+    @Body('timeSlot') timeSlot: string,
+  ) {
+    return this.bookingsService.assignFranja(id, timeSlot);
   }
 
   @Post()

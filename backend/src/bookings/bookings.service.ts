@@ -13,6 +13,179 @@ export class BookingsService {
     private emailService: EmailService,
   ) {}
 
+  private toMins(t: string): number {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  private toTimeStr(m: number): string {
+    const h = Math.floor(m / 60) % 24;
+    return `${String(h).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  }
+
+  private todayStr(now = new Date()): string {
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // Franja actual alineada al reloj (ej: 10:07 con franjas de 15 min -> "10:00-10:15")
+  private currentFranjaSlot(franjaDuration: number, now = new Date()): string {
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const start = nowMins - (nowMins % franjaDuration);
+    return `${this.toTimeStr(start)}-${this.toTimeStr(start + franjaDuration)}`;
+  }
+
+  private async getTakenTimes(
+    date: string,
+    timeSlot: string,
+  ): Promise<string[]> {
+    const db = this.firebase.getFirestore();
+    const snapshot = await db
+      .collection('lr_bookings')
+      .where('bookingDate', '==', date)
+      .where('timeSlot', '==', timeSlot)
+      .get();
+    return snapshot.docs
+      .map((d) => d.data().exactTime)
+      .filter((t) => t && t !== 'Sin asignar' && t !== 'Agotado/Lleno');
+  }
+
+  // Primer minuto libre dentro de la franja; si se pasa fromMins solo considera minutos >= fromMins
+  private async findFreeMinuteInFranja(
+    date: string,
+    timeSlot: string,
+    slotDuration: number,
+    fromMins?: number,
+  ): Promise<string | null> {
+    const [startStr, endStr] = timeSlot.split('-');
+    if (!startStr || !endStr) return null;
+
+    const taken = await this.getTakenTimes(date, timeSlot);
+    const startMins = this.toMins(startStr);
+    let endMins = this.toMins(endStr);
+    if (endMins <= startMins) endMins += 24 * 60; // franja que termina en 00:00
+
+    // Solo turnos que caben completos dentro de la franja (m + slotDuration <= fin)
+    for (let m = startMins; m + slotDuration <= endMins; m += slotDuration) {
+      if (fromMins !== undefined && m < fromMins) continue;
+      const tStr = this.toTimeStr(m);
+      if (!taken.includes(tStr)) return tStr;
+    }
+    return null;
+  }
+
+  // Disponibilidad de todas las franjas del día (desde la franja actual si es hoy)
+  async getFranjasAvailability(dateStr?: string) {
+    const db = this.firebase.getFirestore();
+    const settingsDoc = await db
+      .collection('lr_settings')
+      .doc('schedules')
+      .get();
+    const settings = (settingsDoc.exists ? settingsDoc.data() : {}) || {};
+    const slotDuration = Number(settings.slotDuration) || 1;
+    const franjaDuration = Number(settings.franjaDuration) || 15;
+    const capacity = Math.max(1, Math.floor(franjaDuration / slotDuration));
+
+    const now = new Date();
+    const date = dateStr || this.todayStr(now);
+    const isToday = date === this.todayStr(now);
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const currentStart = nowMins - (nowMins % franjaDuration);
+
+    // Una sola consulta por día; agrupamos los minutos ocupados por franja en memoria
+    const snapshot = await db
+      .collection('lr_bookings')
+      .where('bookingDate', '==', date)
+      .get();
+    const takenBySlot: Record<string, string[]> = {};
+    snapshot.docs.forEach((doc) => {
+      const d = doc.data();
+      if (
+        d.timeSlot &&
+        d.exactTime &&
+        d.exactTime !== 'Sin asignar' &&
+        d.exactTime !== 'Agotado/Lleno'
+      ) {
+        (takenBySlot[d.timeSlot] = takenBySlot[d.timeSlot] || []).push(
+          d.exactTime,
+        );
+      }
+    });
+
+    const franjas: any[] = [];
+    const firstStart = isToday ? currentStart : 0;
+    for (let start = firstStart; start < 24 * 60; start += franjaDuration) {
+      const timeSlot = `${this.toTimeStr(start)}-${this.toTimeStr(start + franjaDuration)}`;
+      const taken = takenBySlot[timeSlot] || [];
+
+      let spotsLeft = 0;
+      for (
+        let m = start;
+        m + slotDuration <= start + franjaDuration &&
+        m + slotDuration <= 24 * 60;
+        m += slotDuration
+      ) {
+        // En la franja actual solo cuentan los minutos que aún no han pasado
+        if (isToday && m < nowMins) continue;
+        if (!taken.includes(this.toTimeStr(m))) spotsLeft++;
+      }
+
+      franjas.push({
+        timeSlot,
+        occupied: taken.length,
+        capacity,
+        spotsLeft,
+        available: spotsLeft > 0,
+        isCurrent: isToday && start === currentStart,
+      });
+    }
+
+    return { date, franjaDuration, slotDuration, capacity, franjas };
+  }
+
+  // Asigna manualmente una franja (cuando la actual estaba llena al confirmar el pago)
+  async assignFranja(id: string, timeSlot: string) {
+    const db = this.firebase.getFirestore();
+    const bookingRef = db.collection('lr_bookings').doc(id);
+    const bookingDoc = await bookingRef.get();
+    if (!bookingDoc.exists)
+      throw new NotFoundException('Booking no encontrado');
+    const booking = bookingDoc.data();
+    if (!booking) throw new NotFoundException('Booking sin datos');
+
+    const settingsDoc = await db
+      .collection('lr_settings')
+      .doc('schedules')
+      .get();
+    const settings = (settingsDoc.exists ? settingsDoc.data() : {}) || {};
+    const slotDuration = Number(settings.slotDuration) || 1;
+
+    const now = new Date();
+    const date = booking.bookingDate || this.todayStr(now);
+    const isToday = date === this.todayStr(now);
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+
+    const exactTime = await this.findFreeMinuteInFranja(
+      date,
+      timeSlot,
+      slotDuration,
+      isToday ? nowMins : undefined,
+    );
+
+    if (!exactTime) {
+      return {
+        success: false,
+        franjaFull: true,
+        availableFranjas: await this.getFranjasAvailability(date),
+      };
+    }
+
+    await bookingRef.update({ timeSlot, exactTime });
+    return { success: true, exactTime, timeSlot };
+  }
+
   async initBooking(data: any) {
     const {
       name,
@@ -67,8 +240,9 @@ export class BookingsService {
     let finalBookingDate = bookingDate;
     const finalTimeSlot = timeSlot || '';
 
-    if (sysType === 'queue') {
-      finalBookingDate = new Date().toISOString().split('T')[0];
+    if (sysType === 'queue' || sysType === 'franjas') {
+      // Publicación inmediata: la reserva siempre es para hoy
+      finalBookingDate = this.todayStr();
     } else if (!finalBookingDate) {
       finalBookingDate = new Date().toISOString().split('T')[0];
     }
@@ -156,10 +330,68 @@ export class BookingsService {
       .get();
 
     let bookingSystemType = 'slots';
+    let franjaDuration = 15;
     if (scheduleSettingsDoc.exists) {
       const data = scheduleSettingsDoc.data() || {};
       slotDuration = Number(data.slotDuration) || 1;
       bookingSystemType = data.bookingSystemType || 'slots';
+      franjaDuration = Number(data.franjaDuration) || 15;
+    }
+
+    if (bookingSystemType === 'franjas') {
+      // Franja inmediata con cupo: se intenta asignar la franja actual tras el pago
+      const now = new Date();
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const currentSlot = this.currentFranjaSlot(franjaDuration, now);
+      const franjaTime = await this.findFreeMinuteInFranja(
+        booking.bookingDate,
+        currentSlot,
+        slotDuration,
+        nowMins,
+      );
+
+      if (franjaTime) {
+        await bookingRef.update({
+          status: 'APPROVED',
+          exactTime: franjaTime,
+          timeSlot: currentSlot,
+          imageUrl,
+        });
+
+        // Generar la imagen automáticamente en segundo plano
+        this.generateImage(id).catch((err) =>
+          console.error(`Error auto-generando imagen para ${id}:`, err),
+        );
+
+        return {
+          success: true,
+          exactTime: franjaTime,
+          timeSlot: currentSlot,
+          franjaFull: false,
+        };
+      }
+
+      // Franja actual llena: el pago ya ocurrió, la reserva queda aprobada
+      // pero sin hora hasta que el usuario elija otra franja (assignFranja).
+      await bookingRef.update({
+        status: 'APPROVED',
+        exactTime: 'Sin asignar',
+        timeSlot: '',
+        imageUrl,
+      });
+
+      this.generateImage(id).catch((err) =>
+        console.error(`Error auto-generando imagen para ${id}:`, err),
+      );
+
+      return {
+        success: true,
+        franjaFull: true,
+        currentFranja: currentSlot,
+        availableFranjas: await this.getFranjasAvailability(
+          booking.bookingDate,
+        ),
+      };
     }
 
     if (bookingSystemType === 'queue') {
@@ -343,13 +575,39 @@ export class BookingsService {
       .get();
 
     let bookingSystemType = 'slots';
+    let franjaDuration = 15;
+    let assignedFranjaSlot = '';
     if (scheduleSettingsDoc.exists) {
       const data = scheduleSettingsDoc.data() || {};
       slotDuration = Number(data.slotDuration) || 1;
       bookingSystemType = data.bookingSystemType || 'slots';
+      franjaDuration = Number(data.franjaDuration) || 15;
     }
 
-    if (bookingSystemType === 'queue') {
+    if (bookingSystemType === 'franjas') {
+      // Flujo asistido: se asigna automáticamente la primera franja con cupo
+      // empezando por la actual (sin pedirle selección al admin).
+      const now = new Date();
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const currentStart = nowMins - (nowMins % franjaDuration);
+
+      for (let start = currentStart; start < 24 * 60; start += franjaDuration) {
+        const slot = `${this.toTimeStr(start)}-${this.toTimeStr(start + franjaDuration)}`;
+        const free = await this.findFreeMinuteInFranja(
+          finalBookingDate,
+          slot,
+          slotDuration,
+          nowMins,
+        );
+        if (free) {
+          exactTime = free;
+          assignedFranjaSlot = slot;
+          break;
+        }
+      }
+
+      if (exactTime === 'Sin asignar') exactTime = 'Agotado/Lleno';
+    } else if (bookingSystemType === 'queue') {
       const existingQueue = await db
         .collection('lr_bookings')
         .where('bookingDate', '==', finalBookingDate)
@@ -454,7 +712,12 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
-      timeSlot: bookingSystemType === 'queue' ? '' : timeSlot,
+      timeSlot:
+        bookingSystemType === 'queue'
+          ? ''
+          : bookingSystemType === 'franjas'
+            ? assignedFranjaSlot
+            : timeSlot,
       exactTime,
       bookingDate: finalBookingDate,
       imageUrl,
