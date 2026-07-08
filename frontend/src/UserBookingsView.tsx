@@ -4,6 +4,7 @@ import { IconSearch, IconArrowLeft } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useLanguage } from './i18n';
+import { API_BASE_URL } from './config';
 
 export function UserBookingsView() {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export function UserBookingsView() {
     setLoading(true);
     setHasSearched(false);
     try {
-      const res = await axios.get(`http://localhost:5000/api/bookings/search/${encodeURIComponent(query)}`);
+      const res = await axios.get(`${API_BASE_URL}/api/bookings/search/${encodeURIComponent(query)}`);
       setBookings(res.data);
     } catch (err) {
       console.error('Error buscando reservas', err);

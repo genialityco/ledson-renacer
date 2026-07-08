@@ -4,6 +4,7 @@ import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalL
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from './config';
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -54,11 +55,11 @@ export function AdminDashboard() {
   const fetchData = async () => {
     try {
       const [resBookings, resFilters, resScreen, resTemplates, resScheduleSettings] = await Promise.all([
-        axios.get('http://localhost:5000/api/bookings'),
-        axios.get('http://localhost:5000/api/images/admin'),
-        axios.get('http://localhost:5000/api/bookings/screen-settings'),
-        axios.get('http://localhost:5000/api/schedules/templates'),
-        axios.get('http://localhost:5000/api/schedules/settings')
+        axios.get(`${API_BASE_URL}/api/bookings`),
+        axios.get(`${API_BASE_URL}/api/images/admin`),
+        axios.get(`${API_BASE_URL}/api/bookings/screen-settings`),
+        axios.get(`${API_BASE_URL}/api/schedules/templates`),
+        axios.get(`${API_BASE_URL}/api/schedules/settings`)
       ]);
       setBookings(resBookings.data);
       setFilters(resFilters.data);
@@ -88,7 +89,7 @@ export function AdminDashboard() {
     // Auto-refresh bookings every 5 seconds without reloading the page
     const intervalId = setInterval(async () => {
       try {
-        const resBookings = await axios.get('http://localhost:5000/api/bookings');
+        const resBookings = await axios.get(`${API_BASE_URL}/api/bookings`);
         setBookings(resBookings.data);
       } catch (e) {
         console.error('Error auto-refreshing bookings', e);
@@ -99,7 +100,7 @@ export function AdminDashboard() {
   }, []);
 
   /* const handleUpdateBookingStatus = async (id: string, status: string) => {
-    await axios.put(`http://localhost:5000/api/bookings/${id}/status`, { status });
+    await axios.put(`${API_BASE_URL}/api/bookings/${id}/status`, { status });
     fetchData();
   }; */
 
@@ -107,10 +108,10 @@ export function AdminDashboard() {
     if (newFilter._id) {
       // Editar
       const { _id, ...updateData } = newFilter;
-      await axios.put(`http://localhost:5000/api/images/${_id}`, updateData);
+      await axios.put(`${API_BASE_URL}/api/images/${_id}`, updateData);
     } else {
       // Crear
-      await axios.post('http://localhost:5000/api/images', newFilter);
+      await axios.post(`${API_BASE_URL}/api/images`, newFilter);
     }
     
     setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '' });
@@ -124,14 +125,14 @@ export function AdminDashboard() {
   };
 
   const handleToggleFilterStatus = async (id: string, active: boolean) => {
-    await axios.put(`http://localhost:5000/api/images/${id}`, { active });
+    await axios.put(`${API_BASE_URL}/api/images/${id}`, { active });
     fetchData();
   };
 
   const handleGenerateImage = async (id: string) => {
     setGeneratingId(id);
     try {
-      await axios.post(`http://localhost:5000/api/bookings/${id}/generate`);
+      await axios.post(`${API_BASE_URL}/api/bookings/${id}/generate`);
       fetchData();
     } catch (e) {
       console.error(e);
@@ -142,7 +143,7 @@ export function AdminDashboard() {
   };
 
   const handleUpdateSettings = async (overrideGrid?: any[]) => {
-    await axios.put('http://localhost:5000/api/bookings/screen-settings', { 
+    await axios.put(`${API_BASE_URL}/api/bookings/screen-settings`, { 
       backgroundUrl: screenBgUrl,
       headerUrl,
       footerUrl,
@@ -180,7 +181,7 @@ export function AdminDashboard() {
     reader.onloadend = async () => {
       const base64 = reader.result as string;
       try {
-        const res = await axios.post('http://localhost:5000/api/images/upload-base64', { 
+        const res = await axios.post(`${API_BASE_URL}/api/images/upload-base64`, { 
           imageBase64: base64, 
           folder: 'screen-assets',
           contentType: file.type,
@@ -198,18 +199,18 @@ export function AdminDashboard() {
   };
 
   const handleClearScreen = async () => {
-    await axios.post('http://localhost:5000/api/bookings/screen-settings/clear');
+    await axios.post(`${API_BASE_URL}/api/bookings/screen-settings/clear`);
     alert('Pantalla gigante despejada');
   };
 
   const handleProject = async (id: string) => {
-    await axios.post(`http://localhost:5000/api/bookings/${id}/project`);
+    await axios.post(`${API_BASE_URL}/api/bookings/${id}/project`);
     fetchData();
   };
 
   const handleSaveTemplate = async () => {
     try {
-      await axios.post('http://localhost:5000/api/schedules/templates', newTemplate);
+      await axios.post(`${API_BASE_URL}/api/schedules/templates`, newTemplate);
       setNewTemplate({ name: '', slots: [], deadTimes: [] });
       closeTemplateModal();
       fetchData();
@@ -220,7 +221,7 @@ export function AdminDashboard() {
 
   const handleDeleteTemplate = async (id: string) => {
     if (confirm('¿Eliminar plantilla?')) {
-      await axios.delete(`http://localhost:5000/api/schedules/templates/${id}`);
+      await axios.delete(`${API_BASE_URL}/api/schedules/templates/${id}`);
       fetchData();
     }
   };
@@ -274,7 +275,7 @@ export function AdminDashboard() {
     }
 
     try {
-      await axios.post('http://localhost:5000/api/schedules/apply-template', {
+      await axios.post(`${API_BASE_URL}/api/schedules/apply-template`, {
         templateId: selectedTemplateToApply,
         dates
       });
@@ -287,7 +288,7 @@ export function AdminDashboard() {
 
   const handleUpdateScheduleSettings = async () => {
     try {
-      await axios.put('http://localhost:5000/api/schedules/settings', { slotDuration, franjaDuration, bookingSystemType, paymentGateway });
+      await axios.put(`${API_BASE_URL}/api/schedules/settings`, { slotDuration, franjaDuration, bookingSystemType, paymentGateway });
       alert('Ajustes guardados correctamente');
     } catch (e) {
       alert('Error guardando ajustes');

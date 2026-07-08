@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from './i18n';
 import './falling.css';
 import './graffiti.css';
+import { API_BASE_URL } from './config';
 
 interface PhotoboothImage {
   _id: string;
@@ -19,8 +20,8 @@ export function Home() {
   const { t } = useLanguage();
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/images/seed', { method: 'POST' })
-      .then(() => fetch('http://localhost:5000/api/images'))
+    fetch(`${API_BASE_URL}/api/images/seed`, { method: 'POST' })
+      .then(() => fetch(`${API_BASE_URL}/api/images`))
       .then((res) => res.json())
       .then((data) => setImages(data))
       .catch((err) => console.error('Error fetching images:', err));

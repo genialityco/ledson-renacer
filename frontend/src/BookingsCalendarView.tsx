@@ -8,6 +8,7 @@ import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/es';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+import { API_BASE_URL } from './config';
 
 moment.locale('es');
 const localizer = momentLocalizer(moment);
@@ -45,7 +46,7 @@ export function BookingsCalendarView() {
 
   const fetchData = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/bookings');
+      const res = await axios.get(`${API_BASE_URL}/api/bookings`);
       const bookings = res.data || [];
       
       const parsedEvents = bookings.map((booking: any) => {

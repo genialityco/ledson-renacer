@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Stepper, Badge, Loader } from '@mantine/core';
-import { IconCamera, IconUpload, IconDeviceFloppy, IconCheck, IconX, IconSearch } from '@tabler/icons-react';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Stepper, Badge } from '@mantine/core';
+import { IconCamera, IconUpload, IconDeviceFloppy, IconCheck, IconX } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
+import { API_BASE_URL } from './config';
 
 interface FilterOption {
   id: string;
@@ -13,7 +13,6 @@ interface FilterOption {
 }
 
 export function AssistedBookingForm() {
-  const navigate = useNavigate();
   const [countries, setCountries] = useState<{ value: string; label: string }[]>([]);
   const [cities, setCities] = useState<{ value: string; label: string }[]>([]);
   const [isFetchingCities, setIsFetchingCities] = useState(false);
@@ -48,17 +47,17 @@ export function AssistedBookingForm() {
         setCountries(res.data.data.map((item: any) => ({ value: item.country, label: item.country })));
       }
     });
-    axios.get('http://localhost:5000/api/images').then((res) => {
+    axios.get(`${API_BASE_URL}/api/images`).then((res) => {
       setFilters(res.data.map((img: any) => ({ id: img._id, name: img.label || img.altText, url: img.imageUrl })));
     });
-    axios.get('http://localhost:5000/api/schedules/settings').then((res) => {
+    axios.get(`${API_BASE_URL}/api/schedules/settings`).then((res) => {
       if (res.data && res.data.bookingSystemType) setBookingSystemType(res.data.bookingSystemType);
     });
   }, []);
 
   useEffect(() => {
     if (bookingDate) {
-      axios.get(`http://localhost:5000/api/schedules/daily?date=${bookingDate}`)
+      axios.get(`${API_BASE_URL}/api/schedules/daily?date=${bookingDate}`)
         .then((res) => {
           let slots = res.data.slots || [];
           if (slots.length === 0) {
@@ -139,7 +138,7 @@ export function AssistedBookingForm() {
     setIsUploadingPhoto(true);
     try {
       finalImage = await resizeImage(finalImage);
-      const res = await axios.post('http://localhost:5000/api/bookings', {
+      const res = await axios.post(`${API_BASE_URL}/api/bookings`, {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
         imageBase64: finalImage, paymentMethod, requiresInvoice: requiresInvoice === 'SI'
       });

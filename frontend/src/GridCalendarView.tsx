@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Container, Title, Box, Button, Modal, TextInput, Select, NumberInput, Group, FileButton, ActionIcon, Switch } from '@mantine/core';
 import { IconUpload, IconArrowLeft } from '@tabler/icons-react';
 import axios from 'axios';
@@ -8,6 +8,7 @@ import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/es';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+import { API_BASE_URL } from './config';
 
 moment.locale('es');
 const localizer = momentLocalizer(moment);
@@ -34,7 +35,7 @@ export function GridCalendarView() {
 
   const fetchData = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/bookings/screen-settings');
+      const res = await axios.get(`${API_BASE_URL}/api/bookings/screen-settings`);
       setScreenSettings(res.data);
       const grid = res.data?.contentGrid || [];
       
@@ -84,7 +85,7 @@ export function GridCalendarView() {
     }));
 
     try {
-      await axios.put('http://localhost:5000/api/bookings/screen-settings', { 
+      await axios.put(`${API_BASE_URL}/api/bookings/screen-settings`, { 
         ...screenSettings,
         contentGrid: gridToSave
       });
@@ -166,7 +167,7 @@ export function GridCalendarView() {
     reader.onloadend = async () => {
       const base64 = reader.result as string;
       try {
-        const res = await axios.post('http://localhost:5000/api/images/upload-base64', { 
+        const res = await axios.post(`${API_BASE_URL}/api/images/upload-base64`, { 
           imageBase64: base64, 
           folder: 'screen-assets',
           contentType: file.type,
@@ -243,7 +244,7 @@ export function GridCalendarView() {
   date={currentDate}
   view={currentView}
   onNavigate={(date) => setCurrentDate(date)}
-  onView={(view) => setCurrentView(view)}
+  onView={(view) => setCurrentView(view as 'month' | 'week' | 'day')}
 
   defaultView="week"
   views={['month', 'week', 'day']}

@@ -6,6 +6,7 @@ import { Box } from '@mantine/core';
 import * as THREE from 'three';
 import sprayObjPath from './assets/Spray_Color_obj.obj?url';
 import stickerTexturePath from './assets/StickerBox.jpg';
+import { API_BASE_URL } from './config';
 
 // Componente para cargar el modelo 3D
 function SprayModel() {
@@ -144,7 +145,7 @@ export function SprayEffect({ imageUrl, frameUrl, onComplete }: { imageUrl: stri
       frameImg = new Image();
       frameImg.crossOrigin = 'anonymous';
       // Pasamos la URL del marco por el proxy
-      frameImg.src = `http://localhost:5000/api/images/proxy?url=${encodeURIComponent(frameUrl)}`;
+      frameImg.src = `${API_BASE_URL}/api/images/proxy?url=${encodeURIComponent(frameUrl)}`;
     }
 
     let animationFrameId: number;
@@ -268,7 +269,7 @@ export function SprayEffect({ imageUrl, frameUrl, onComplete }: { imageUrl: stri
     };
 
     // Pasamos la URL de la imagen por nuestro proxy de backend para evadir los problemas de CORS de Firebase
-    img.src = `http://localhost:5000/api/images/proxy?url=${encodeURIComponent(imageUrl)}`;
+    img.src = `${API_BASE_URL}/api/images/proxy?url=${encodeURIComponent(imageUrl)}`;
 
     return () => {
       cancelAnimationFrame(animationFrameId);

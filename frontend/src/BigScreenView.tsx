@@ -6,6 +6,7 @@ import './falling.css';
 import { SprayEffect } from './SprayEffect';
 import QRCode from 'react-qr-code';
 import { useLanguage } from './i18n';
+import { API_BASE_URL } from './config';
 
 const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: any) => {
   const nodeRef = useRef(null);
@@ -46,7 +47,7 @@ export function BigScreenView() {
     contentGrid: [],
     currentProjection: null
   });
-  const [currentTimeStr, setCurrentTimeString] = useState('');
+  const [, setCurrentTimeString] = useState('');
   
   const [currentItem, setCurrentItem] = useState<any>(null);
   const lastGridItemIdRef = useRef<string | null>(null);
@@ -62,7 +63,7 @@ export function BigScreenView() {
 
   const fetchSettings = async () => {
     try {
-      const res = await axios.get(`http://${window.location.hostname}:5000/api/bookings/screen-settings`);
+      const res = await axios.get(`${API_BASE_URL}/api/bookings/screen-settings`);
       if (res.data) {
         setSettings(res.data);
       }
@@ -148,7 +149,7 @@ export function BigScreenView() {
       };
       
       lastGridItemIdRef.current = selected.id;
-      axios.post(`http://${window.location.hostname}:5000/api/bookings/screen-settings/grid-item-shown/${selected.id}`).catch(console.error);
+      axios.post(`${API_BASE_URL}/api/bookings/screen-settings/grid-item-shown/${selected.id}`).catch(console.error);
     } else {
       nextItem = null;
     }
@@ -195,11 +196,11 @@ export function BigScreenView() {
       
       if (timeRemaining > 0) {
         const timer = setTimeout(() => {
-          axios.post(`http://${window.location.hostname}:5000/api/bookings/${settings.currentProjection.id}/complete`);
+          axios.post(`${API_BASE_URL}/api/bookings/${settings.currentProjection.id}/complete`);
         }, timeRemaining);
         return () => clearTimeout(timer);
       } else {
-        axios.post(`http://${window.location.hostname}:5000/api/bookings/${settings.currentProjection.id}/complete`);
+        axios.post(`${API_BASE_URL}/api/bookings/${settings.currentProjection.id}/complete`);
       }
     } else if (!settings.currentProjection) {
       // Cuando la proyección se acaba, forzamos al carrusel a avanzar al siguiente contenido 

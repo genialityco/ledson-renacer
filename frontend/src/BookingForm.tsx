@@ -7,6 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useLanguage } from './i18n';
 import './graffiti.css';
+import { API_BASE_URL } from './config';
 
 interface FilterOption {
   id: string;
@@ -67,7 +68,7 @@ export function BookingForm() {
     } else if (dlocalBookingId && dlocalPaymentId) {
       setActiveStep(2);
       setBookingId(dlocalBookingId);
-      axios.get(`http://localhost:5000/api/dlocalgo/status/${dlocalPaymentId}`)
+      axios.get(`${API_BASE_URL}/api/dlocalgo/status/${dlocalPaymentId}`)
         .then(res => {
           if (res.data && (res.data.status === 'PAID' || res.data.status === 'APPROVED' || res.data.status === 'COMPLETED' || res.data.status === 'AUTHORIZED')) {
             setPaymentStatus('APPROVED');
@@ -92,12 +93,12 @@ export function BookingForm() {
       })
       .catch((err) => console.error("Error fetching countries", err));
 
-    axios.get('http://localhost:5000/api/images')
+    axios.get(`${API_BASE_URL}/api/images`)
       .then((res) => {
         setFilters(res.data.map((img: any) => ({ id: img._id, name: img.label || img.altText, url: img.imageUrl })));
       });
 
-    axios.get('http://localhost:5000/api/schedules/settings')
+    axios.get(`${API_BASE_URL}/api/schedules/settings`)
       .then((res) => {
         if (res.data && res.data.bookingSystemType) setBookingSystemType(res.data.bookingSystemType);
         if (res.data && res.data.paymentGateway) setPaymentGateway(res.data.paymentGateway);
@@ -107,7 +108,7 @@ export function BookingForm() {
 
   useEffect(() => {
     if (bookingDate) {
-      axios.get(`http://localhost:5000/api/schedules/daily?date=${bookingDate}`)
+      axios.get(`${API_BASE_URL}/api/schedules/daily?date=${bookingDate}`)
         .then((res) => {
           let slots = res.data.slots || [];
           if (slots.length === 0) {
@@ -199,7 +200,7 @@ export function BookingForm() {
 
     setIsSubmittingForm(true);
     try {
-      const initRes = await axios.post('http://localhost:5000/api/bookings/init', {
+      const initRes = await axios.post(`${API_BASE_URL}/api/bookings/init`, {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
         imageBase64: '',
         paymentMethod: paymentGateway === 'dlocalgo' ? 'DLocal Go' : 'Wompi'
@@ -212,7 +213,7 @@ export function BookingForm() {
       const reference = `booking-${generatedBookingId}`;
 
       if (paymentGateway === 'dlocalgo') {
-        const dlocalRes = await axios.post('http://localhost:5000/api/dlocalgo/create-link', {
+        const dlocalRes = await axios.post(`${API_BASE_URL}/api/dlocalgo/create-link`, {
           amount: amountInDollars,
           currency: 'COP',
           reference: reference,
@@ -229,13 +230,13 @@ export function BookingForm() {
           throw new Error('No redirect URL received from DLocal Go');
         }
       } else {
-        const wompiRes = await axios.get(`http://localhost:5000/api/wompi/integrity-signature?reference=${reference}&amountInCents=${amountInCents}&currency=COP`);
+        const wompiRes = await axios.get(`${API_BASE_URL}/api/wompi/integrity-signature?reference=${reference}&amountInCents=${amountInCents}&currency=COP`);
         const { signature } = wompiRes.data;
         const checkout = new (window as any).WidgetCheckout({
           currency: 'COP',
           amountInCents: amountInCents,
           reference: reference,
-          publicKey: import.meta.env.VITE_WOMPI_PUBLIC_KEY || 'pub_test_Q5yDA9xoKdePzhSGeVe9HAez7HgGORGf',
+          publicKey: import.meta.env.VITE_WOMPI_PUBLIC_KEY,
           signature: { integrity: signature },
         });
         checkout.open((result: any) => {
@@ -259,7 +260,7 @@ export function BookingForm() {
     if (!bookingId) return;
     setIsAssigningFranja(true);
     try {
-      const res = await axios.post(`http://localhost:5000/api/bookings/${bookingId}/assign-franja`, {
+      const res = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/assign-franja`, {
         timeSlot: selectedFranja
       });
       if (res.data.franjaFull) {
@@ -283,7 +284,7 @@ export function BookingForm() {
     setIsUploadingPhoto(true);
     try {
       finalImage = await resizeImage(finalImage);
-      const confirmRes = await axios.post(`http://localhost:5000/api/bookings/${bookingId}/confirm-payment`, {
+      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, {
         imageBase64: finalImage
       });
       setFinalResult(confirmRes.data);
@@ -441,7 +442,7 @@ export function BookingForm() {
                       onClick={async () => {
                         try {
                           const pid = paymentStatus.split('_')[1];
-                          const res = await axios.get(`http://localhost:5000/api/dlocalgo/status/${pid}`);
+                          const res = await axios.get(`${API_BASE_URL}/api/dlocalgo/status/${pid}`);
                           if (res.data && res.data.status === 'PAID') {
                             setPaymentStatus('APPROVED');
                             setActiveStep(2);
