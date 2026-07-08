@@ -24,8 +24,7 @@ export class WompiController {
     const isProd = process.env.WOMPI_ENV === 'production';
     const secret = isProd
       ? process.env.WOMPI_INTEGRITY_SECRET_PROD
-      : process.env.WOMPI_INTEGRITY_SECRET_TEST ||
-        'test_integrity_secret_12345'; // Default for testing
+      : process.env.WOMPI_INTEGRITY_SECRET_TEST;
 
     if (!secret) {
       throw new Error(

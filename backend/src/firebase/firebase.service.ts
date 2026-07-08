@@ -9,19 +9,35 @@ export class FirebaseService implements OnModuleInit {
   private storage: admin.storage.Storage;
 
   onModuleInit() {
-    const serviceAccountPath = join(
-      process.cwd(),
-      'sured-883e9-firebase-adminsdk.json',
-    );
     let serviceAccount: any;
 
-    try {
-      serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
-    } catch (e) {
-      console.error(
-        'No se pudo leer el archivo JSON de Firebase Admin SDK. Asegúrate de que existe en la raíz del backend.',
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+      try {
+        serviceAccount = JSON.parse(
+          Buffer.from(
+            process.env.FIREBASE_SERVICE_ACCOUNT_BASE64,
+            'base64',
+          ).toString('utf8'),
+        );
+      } catch (e) {
+        console.error(
+          'No se pudo parsear FIREBASE_SERVICE_ACCOUNT_BASE64. Verifica que sea el JSON del service account codificado en base64.',
+        );
+        return;
+      }
+    } else {
+      const serviceAccountPath = join(
+        process.cwd(),
+        'sured-883e9-firebase-adminsdk.json',
       );
-      return;
+      try {
+        serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+      } catch (e) {
+        console.error(
+          'No se pudo leer el archivo JSON de Firebase Admin SDK. Asegúrate de que existe en la raíz del backend, o define FIREBASE_SERVICE_ACCOUNT_BASE64.',
+        );
+        return;
+      }
     }
 
     if (!admin.apps.length) {

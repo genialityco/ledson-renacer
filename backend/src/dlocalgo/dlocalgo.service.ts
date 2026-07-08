@@ -4,15 +4,21 @@ import { Injectable, Logger } from '@nestjs/common';
 export class DlocalgoService {
   private readonly logger = new Logger(DlocalgoService.name);
 
-  private readonly apiKey =
-    process.env.DLOCALGO_API_KEY || 'MwhAAVCgSdlyUOgzmbERAYHDptHpGkmf';
-  private readonly apiSecret =
-    process.env.DLOCALGO_API_SECRET ||
-    'XHpKVC6jm3w1TrqVutrzNeN9BIOnep9r0vG1ghrv';
+  private readonly apiKey = process.env.DLOCALGO_API_KEY;
+  private readonly apiSecret = process.env.DLOCALGO_API_SECRET;
 
-  // DLocal Go has a slightly different URL for sandbox/prod or just uses API keys to differentiate.
-  // Using generic endpoint. It should be confirmed by user's docs.
-  private readonly baseUrl = 'https://api-sbx.dlocalgo.com/v1';
+  private readonly baseUrl =
+    process.env.DLOCALGO_ENV === 'production'
+      ? 'https://api.dlocalgo.com/v1'
+      : 'https://api-sbx.dlocalgo.com/v1';
+
+  constructor() {
+    if (!this.apiKey || !this.apiSecret) {
+      this.logger.error(
+        'DLOCALGO_API_KEY / DLOCALGO_API_SECRET no configuradas. Los pagos con dLocal Go fallarán.',
+      );
+    }
+  }
 
   async createPaymentLink(
     amount: number,

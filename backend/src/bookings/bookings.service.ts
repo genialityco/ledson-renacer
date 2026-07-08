@@ -832,7 +832,8 @@ export class BookingsService {
     // Llamar a la API externa de generación
     let generateRes;
     try {
-      generateRes = await axios.post('http://localhost:8000/generate', form, {
+      const aiApiUrl = process.env.AI_GENERATION_API_URL || 'http://localhost:8000';
+      generateRes = await axios.post(`${aiApiUrl}/generate`, form, {
         headers: form.getHeaders(),
         responseType: 'arraybuffer',
       });
