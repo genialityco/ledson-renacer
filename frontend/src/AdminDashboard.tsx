@@ -340,6 +340,7 @@ export function AdminDashboard() {
                   <Table.Th>Filtro</Table.Th>
                   <Table.Th>Horario Asignado</Table.Th>
                   <Table.Th>Método Pago</Table.Th>
+                  <Table.Th>Factura Electrónica</Table.Th>
                   <Table.Th>Estado</Table.Th>
                   <Table.Th>Foto</Table.Th>
                 </Table.Tr>
@@ -358,6 +359,9 @@ export function AdminDashboard() {
                       <Text size="xs" fw={700} c="dimmed">Exacto: {b.exactTime || 'N/A'}</Text>
                     </Table.Td>
                     <Table.Td>{b.paymentMethod}</Table.Td>
+                    <Table.Td>
+                      <Badge color={b.requiresInvoice ? 'yellow' : 'gray'} variant="light">{b.requiresInvoice ? 'Sí' : 'No'}</Badge>
+                    </Table.Td>
                     <Table.Td>
                       <Badge color={b.status === 'SHOWN' ? 'blue' : b.status === 'COMPLETED' ? 'grape' : b.status === 'GENERATED' ? 'teal' : 'orange'}>
                         {b.status === 'SHOWN' ? 'PROYECTADA' : b.status === 'COMPLETED' ? 'FINALIZADA' : b.status === 'GENERATED' ? 'GENERADA' : 'EN COLA'}

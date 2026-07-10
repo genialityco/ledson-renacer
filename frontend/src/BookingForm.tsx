@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Stepper, Badge } from '@mantine/core';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Stepper, Badge, Radio } from '@mantine/core';
 import { IconCamera, IconUpload, IconCreditCard, IconX, IconCheck } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -40,6 +40,7 @@ export function BookingForm() {
   const [availableSlots, setAvailableSlots] = useState<{ value: string; label: string }[]>([]);
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
   const [habeasData, setHabeasData] = useState(false);
+  const [requiresInvoice, setRequiresInvoice] = useState('NO');
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
   const [dlocalgoLink, setDlocalgoLink] = useState('');
@@ -203,7 +204,8 @@ export function BookingForm() {
       const initRes = await axios.post(`${API_BASE_URL}/api/bookings/init`, {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
         imageBase64: '',
-        paymentMethod: paymentGateway === 'dlocalgo' ? 'DLocal Go' : 'Wompi'
+        paymentMethod: paymentGateway === 'dlocalgo' ? 'DLocal Go' : 'Wompi',
+        requiresInvoice: requiresInvoice === 'SI'
       });
       const generatedBookingId = initRes.data.id;
       setBookingId(generatedBookingId);
@@ -422,6 +424,15 @@ export function BookingForm() {
                   </Grid.Col>
                 </>
               )}
+
+              <Grid.Col span={12}>
+                <Radio.Group label={t('requiresInvoiceLabel')} withAsterisk value={requiresInvoice} onChange={setRequiresInvoice}>
+                  <Group mt="xs">
+                    <Radio value="SI" label={t('yesLabel')} />
+                    <Radio value="NO" label={t('noLabel')} />
+                  </Group>
+                </Radio.Group>
+              </Grid.Col>
 
               <Grid.Col span={12} mt="sm">
                 <Checkbox
