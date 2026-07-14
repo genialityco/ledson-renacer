@@ -11,8 +11,8 @@ export function AdminDashboard() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [filters, setFilters] = useState<any[]>([]);
   const [opened, { open, close }] = useDisclosure(false);
-  const [newFilter, setNewFilter] = useState<any>({ 
-    label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '' 
+  const [newFilter, setNewFilter] = useState<any>({
+    label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: ''
   });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [screenBgUrl, setScreenBgUrl] = useState('');
@@ -114,7 +114,7 @@ export function AdminDashboard() {
       await axios.post(`${API_BASE_URL}/api/images`, newFilter);
     }
     
-    setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '' });
+    setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: '' });
     close();
     fetchData();
   };
@@ -424,7 +424,7 @@ export function AdminDashboard() {
           </Table>
 
           <Modal opened={opened} onClose={() => {
-            setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '' });
+            setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: '' });
             close();
           }} title={newFilter._id ? "Editar Filtro" : "Añadir Nuevo Filtro"}>
             <TextInput label="Label (Ej: Estilo Acuarela)" value={newFilter.label} onChange={e => setNewFilter({...newFilter, label: e.currentTarget.value})} mb="sm" />
@@ -436,6 +436,33 @@ export function AdminDashboard() {
             <TextInput label="Prompt" value={newFilter.prompt} onChange={e => setNewFilter({...newFilter, prompt: e.currentTarget.value})} mb="sm" required />
             <TextInput type="number" step="0.1" label="Fuerza del LoRA (0.0 a 1.0)" value={newFilter.lora_strength} onChange={e => setNewFilter({...newFilter, lora_strength: Number(e.currentTarget.value)})} mb="sm" />
             <TextInput type="number" step="0.1" label="Denoise (0.0 a 1.0)" value={newFilter.denoise} onChange={e => setNewFilter({...newFilter, denoise: Number(e.currentTarget.value)})} mb="md" />
+
+            <Text fw={500} mt="md" mb="xs">Alternativa con Gemini (si falla la API principal)</Text>
+            <Text size="xs" c="dimmed" mb="sm">Imágenes de referencia del estilo de arte. Se usan junto con la foto de la persona para que Gemini genere una imagen siguiendo ese arte.</Text>
+            <TextInput
+              label="Imagen de Referencia 1"
+              placeholder="URL o subir archivo..."
+              value={newFilter.referenceImageUrl1}
+              onChange={e => setNewFilter({...newFilter, referenceImageUrl1: e.currentTarget.value})}
+              mb="sm"
+              rightSection={
+                <FileButton onChange={(f) => handleUploadFile(f, (url) => setNewFilter({...newFilter, referenceImageUrl1: url}))} accept="image/*">
+                  {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
+                </FileButton>
+              }
+            />
+            <TextInput
+              label="Imagen de Referencia 2"
+              placeholder="URL o subir archivo..."
+              value={newFilter.referenceImageUrl2}
+              onChange={e => setNewFilter({...newFilter, referenceImageUrl2: e.currentTarget.value})}
+              mb="md"
+              rightSection={
+                <FileButton onChange={(f) => handleUploadFile(f, (url) => setNewFilter({...newFilter, referenceImageUrl2: url}))} accept="image/*">
+                  {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
+                </FileButton>
+              }
+            />
 
             <Text fw={500} mt="md" mb="xs">Visualización en Pantalla Gigante</Text>
             <Select 

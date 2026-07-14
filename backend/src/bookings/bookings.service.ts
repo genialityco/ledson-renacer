@@ -829,53 +829,63 @@ export class BookingsService {
       contentType: 'image/jpeg',
     });
 
-    // Llamar a la API externa de generación
-    let generateRes;
+    // Llamar a la API externa de generación (principal)
+    let generatedBuffer: Buffer | null = null;
     try {
       const aiApiUrl = process.env.AI_GENERATION_API_URL || 'http://localhost:8000';
-      generateRes = await axios.post(`${aiApiUrl}/generate`, form, {
+      const generateRes = await axios.post(`${aiApiUrl}/generate`, form, {
         headers: form.getHeaders(),
         responseType: 'arraybuffer',
       });
+
+      const contentType = generateRes.headers['content-type'];
+      if (
+        typeof contentType === 'string' &&
+        contentType.includes('application/json')
+      ) {
+        const json = JSON.parse(generateRes.data.toString());
+        // Extrae la imagen en base64 de la respuesta JSON (depende de cómo responda tu API)
+        generatedBuffer = Buffer.from(
+          json.image || json.base64 || json.imageUrl || '',
+          'base64',
+        );
+      } else {
+        // Si la API devuelve directamente la imagen binaria
+        generatedBuffer = Buffer.from(generateRes.data);
+      }
     } catch (apiError: any) {
       if (apiError.response && apiError.response.data) {
         const errorString = Buffer.from(apiError.response.data).toString(
           'utf-8',
         );
-        console.error('Error 422 de la API de imágenes:', errorString);
+        console.error('Error de la API de imágenes:', errorString);
       } else {
         console.error('Error llamando a la API de imágenes:', apiError.message);
       }
       console.log(
-        'API de generación no disponible. Se proyectará la imagen original inmediatamente.',
+        'API de generación no disponible. Intentando generar la imagen con Gemini como alternativa...',
       );
-      
-      // Proyectar la imagen original inmediatamente
+    }
+
+    // Si la API principal falló, intentar con Gemini usando las imágenes de referencia del filtro
+    if (!generatedBuffer) {
+      generatedBuffer = await this.generateImageWithGemini(filter, imageBuffer);
+    }
+
+    // Si tampoco Gemini pudo generar la imagen, proyectar la foto original
+    if (!generatedBuffer) {
+      console.log(
+        'Gemini no disponible o sin resultado. Se proyectará la imagen original inmediatamente.',
+      );
+
       await this.projectBooking(id);
 
       return {
         success: true,
         message:
-          'Falló la generación, se proyectó la imagen original',
+          'Falló la generación (API principal y Gemini), se proyectó la imagen original',
         generatedImageUrl: booking.imageUrl,
       };
-    }
-
-    let generatedBuffer: Buffer;
-    const contentType = generateRes.headers['content-type'];
-    if (
-      typeof contentType === 'string' &&
-      contentType.includes('application/json')
-    ) {
-      const json = JSON.parse(generateRes.data.toString());
-      // Extrae la imagen en base64 de la respuesta JSON (depende de cómo responda tu API)
-      generatedBuffer = Buffer.from(
-        json.image || json.base64 || json.imageUrl || '',
-        'base64',
-      );
-    } else {
-      // Si la API devuelve directamente la imagen binaria
-      generatedBuffer = Buffer.from(generateRes.data);
     }
 
     // Subir imagen final a Firebase Storage
@@ -904,6 +914,79 @@ export class BookingsService {
     await bookingRef.update({ generatedImageUrl, status: 'GENERATED' });
 
     return { success: true, generatedImageUrl };
+  }
+
+  // Alternativa a la API de generación principal: usa Gemini con las dos imágenes
+  // de referencia del filtro (el arte a imitar) más la foto de la persona para
+  // generar una imagen de la persona siguiendo ese estilo de arte.
+  private async generateImageWithGemini(
+    filter: any,
+    personImageBuffer: Buffer,
+  ): Promise<Buffer | null> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
+    const referenceUrls = [
+      filter.referenceImageUrl1,
+      filter.referenceImageUrl2,
+    ].filter(Boolean);
+
+    try {
+      const parts: any[] = [];
+
+      for (const url of referenceUrls) {
+        const refRes = await axios.get(url, { responseType: 'arraybuffer' });
+        parts.push({
+          inlineData: {
+            mimeType: refRes.headers['content-type'] || 'image/jpeg',
+            data: Buffer.from(refRes.data).toString('base64'),
+          },
+        });
+      }
+
+      parts.push({
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: personImageBuffer.toString('base64'),
+        },
+      });
+
+      const instructions = [
+        'Las primeras imágenes son referencias de un estilo artístico.',
+        'La última imagen es la foto de una persona.',
+        'Genera una nueva imagen de esa persona aplicando el estilo artístico, colores y técnica de las imágenes de referencia.',
+        'Es prioritario que se mantenga fielmente el estilo de arte de las referencias, incluso si eso implica sacrificar el parecido exacto o la identidad reconocible de la persona.',
+        filter.prompt || '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      parts.push({ text: instructions });
+
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        { contents: [{ parts }] },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+        },
+      );
+
+      const candidateParts =
+        response.data?.candidates?.[0]?.content?.parts || [];
+      const imagePart = candidateParts.find((p: any) => p.inlineData?.data);
+
+      return imagePart ? Buffer.from(imagePart.inlineData.data, 'base64') : null;
+    } catch (geminiError: any) {
+      console.error(
+        'Error llamando a Gemini:',
+        geminiError.response?.data || geminiError.message,
+      );
+      return null;
+    }
   }
 
   async getScreenSettings() {
