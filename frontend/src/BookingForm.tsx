@@ -44,6 +44,8 @@ export function BookingForm() {
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
   const [dlocalgoLink, setDlocalgoLink] = useState('');
+  const [filtersEnabled, setFiltersEnabled] = useState(true);
+  const [servicePrice, setServicePrice] = useState(15000);
 
   const [activeStep, setActiveStep] = useState(0);
   const [bookingId, setBookingId] = useState<string | null>(null);
@@ -105,6 +107,13 @@ export function BookingForm() {
         if (res.data && res.data.paymentGateway) setPaymentGateway(res.data.paymentGateway);
       })
       .catch((err) => console.error("Error fetching settings", err));
+
+    axios.get(`${API_BASE_URL}/api/plans/settings`)
+      .then((res) => {
+        setFiltersEnabled(res.data?.filtersEnabled ?? true);
+        setServicePrice(res.data?.price ?? 15000);
+      })
+      .catch((err) => console.error("Error fetching plan settings", err));
   }, []);
 
   useEffect(() => {
@@ -196,7 +205,7 @@ export function BookingForm() {
 
   const handleDataSubmitAndPay = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFilter) { alert('Debes seleccionar un filtro primero.'); return; }
+    if (filtersEnabled && filters.length > 0 && !selectedFilter) { alert('Debes seleccionar un filtro primero.'); return; }
     if (!habeasData) { alert('Debes aceptar la política de tratamiento de datos personales para continuar.'); return; }
 
     setIsSubmittingForm(true);
@@ -210,13 +219,12 @@ export function BookingForm() {
       const generatedBookingId = initRes.data.id;
       setBookingId(generatedBookingId);
 
-      const amountInCents = 1500000;
-      const amountInDollars = 15000;
+      const amountInCents = servicePrice * 100;
       const reference = `booking-${generatedBookingId}`;
 
       if (paymentGateway === 'dlocalgo') {
         const dlocalRes = await axios.post(`${API_BASE_URL}/api/dlocalgo/create-link`, {
-          amount: amountInDollars,
+          amount: servicePrice,
           currency: 'COP',
           reference: reference,
           successUrl: `${window.location.origin}/booking?status=success&bookingId=${generatedBookingId}`,
@@ -380,7 +388,7 @@ export function BookingForm() {
                 size="lg"
                 className="graffiti-btn"
                 onClick={() => {
-                  if (!selectedFilter) return alert(t('selectFilterAlert'));
+                  if (filtersEnabled && filters.length > 0 && !selectedFilter) return alert(t('selectFilterAlert'));
                   setActiveStep(1);
                 }}
               >

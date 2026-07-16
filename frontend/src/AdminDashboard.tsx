@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio } from '@mantine/core';
-import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock } from '@tabler/icons-react';
+import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect } from '@mantine/core';
+import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -52,14 +52,20 @@ export function AdminDashboard() {
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
 
+  // Plan de uso
+  const [planFiltersEnabled, setPlanFiltersEnabled] = useState(true);
+  const [planAllowedFilterIds, setPlanAllowedFilterIds] = useState<string[]>([]);
+  const [planPrice, setPlanPrice] = useState(15000);
+
   const fetchData = async () => {
     try {
-      const [resBookings, resFilters, resScreen, resTemplates, resScheduleSettings] = await Promise.all([
+      const [resBookings, resFilters, resScreen, resTemplates, resScheduleSettings, resPlanSettings] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/bookings`),
         axios.get(`${API_BASE_URL}/api/images/admin`),
         axios.get(`${API_BASE_URL}/api/bookings/screen-settings`),
         axios.get(`${API_BASE_URL}/api/schedules/templates`),
-        axios.get(`${API_BASE_URL}/api/schedules/settings`)
+        axios.get(`${API_BASE_URL}/api/schedules/settings`),
+        axios.get(`${API_BASE_URL}/api/plans/settings`)
       ]);
       setBookings(resBookings.data);
       setFilters(resFilters.data);
@@ -68,6 +74,9 @@ export function AdminDashboard() {
       setFranjaDuration(resScheduleSettings.data?.franjaDuration || 15);
       setBookingSystemType(resScheduleSettings.data?.bookingSystemType || 'slots');
       setPaymentGateway(resScheduleSettings.data?.paymentGateway || 'wompi');
+      setPlanFiltersEnabled(resPlanSettings.data?.filtersEnabled ?? true);
+      setPlanAllowedFilterIds(resPlanSettings.data?.allowedFilterIds || []);
+      setPlanPrice(resPlanSettings.data?.price ?? 15000);
       if (resScreen.data) {
         setScreenBgUrl(resScreen.data.backgroundUrl || '');
         setHeaderUrl(resScreen.data.headerUrl || '');
@@ -295,6 +304,19 @@ export function AdminDashboard() {
     }
   };
 
+  const handleUpdatePlanSettings = async () => {
+    try {
+      await axios.put(`${API_BASE_URL}/api/plans/settings`, {
+        filtersEnabled: planFiltersEnabled,
+        allowedFilterIds: planAllowedFilterIds,
+        price: planPrice
+      });
+      alert('Plan de uso guardado correctamente');
+    } catch (e) {
+      alert('Error guardando el plan de uso');
+    }
+  };
+
   return (
     <Container size="xl" py="xl">
       <Group justify="space-between" align="center" mb="xl">
@@ -319,6 +341,7 @@ export function AdminDashboard() {
         <Tabs.List mb="md">
           <Tabs.Tab value="bookings" leftSection={<IconUsers size={16} />}>Reservas y Pagos</Tabs.Tab>
           <Tabs.Tab value="filters" leftSection={<IconFilter size={16} />}>Gestión de Filtros</Tabs.Tab>
+          <Tabs.Tab value="plans" leftSection={<IconCoin size={16} />}>Planes de Uso</Tabs.Tab>
           <Tabs.Tab value="schedules" leftSection={<IconCalendar size={16} />}>Gestión de Horarios</Tabs.Tab>
           <Tabs.Tab value="screen" leftSection={<IconDeviceTv size={16} />}>Pantalla Gigante</Tabs.Tab>
           <Tabs.Tab value="policies" leftSection={<IconShieldLock size={16} />}>Políticas</Tabs.Tab>
@@ -494,6 +517,43 @@ export function AdminDashboard() {
 
             <Button fullWidth onClick={handleAddFilter}>Guardar Filtro</Button>
           </Modal>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="plans">
+          <Box mb="xl" p="md" style={{ border: '1px solid #eee', borderRadius: '8px', maxWidth: '600px' }}>
+            <Title order={4} mb="sm">Configuración del Servicio</Title>
+            <Switch
+              label="Usar filtros de IA en las reservas"
+              description="Si se desactiva, los clientes no verán el paso de selección de estilo y la foto se proyectará sin estilizar."
+              checked={planFiltersEnabled}
+              onChange={(e) => setPlanFiltersEnabled(e.currentTarget.checked)}
+              mb="lg"
+            />
+            <MultiSelect
+              label="Filtros habilitados para los clientes"
+              description="Deja vacío para permitir todos los filtros activos de la pestaña 'Gestión de Filtros'"
+              placeholder={planFiltersEnabled ? "Todos los filtros activos (opcional restringir)" : "Filtros desactivados"}
+              data={filters.map(f => ({ value: f._id, label: f.label }))}
+              value={planAllowedFilterIds}
+              onChange={setPlanAllowedFilterIds}
+              disabled={!planFiltersEnabled}
+              searchable
+              clearable
+              mb="lg"
+            />
+            <NumberInput
+              label="Valor del servicio (COP)"
+              description="Precio cobrado por cada reserva en el flujo de pago en línea (Wompi / DLocal Go)"
+              value={planPrice}
+              onChange={(val) => setPlanPrice(Number(val) || 0)}
+              min={0}
+              step={1000}
+              thousandSeparator="."
+              decimalSeparator=","
+              mb="lg"
+            />
+            <Button onClick={handleUpdatePlanSettings} color="blue">Guardar Plan de Uso</Button>
+          </Box>
         </Tabs.Panel>
 
         <Tabs.Panel value="policies">

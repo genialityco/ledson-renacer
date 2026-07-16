@@ -15,6 +15,11 @@ export class ImagesService implements OnModuleInit {
     if (!db) return [];
 
     try {
+      const planDoc = await db.collection('lr_settings').doc('plans').get();
+      const planSettings = planDoc.exists ? planDoc.data() : null;
+      if (planSettings?.filtersEnabled === false) return [];
+      const allowedFilterIds: string[] = planSettings?.allowedFilterIds || [];
+
       // Retiramos orderBy para que Firestore no exija un índice compuesto
       // al mezclar 'where' con 'orderBy' en diferentes campos.
       const snapshot = await db
@@ -23,10 +28,14 @@ export class ImagesService implements OnModuleInit {
         .get();
 
       // Ordenamos en memoria
-      const docs = snapshot.docs.map((doc) => ({
+      let docs = snapshot.docs.map((doc) => ({
         _id: doc.id,
         ...doc.data(),
       }));
+
+      if (allowedFilterIds.length > 0) {
+        docs = docs.filter((d: any) => allowedFilterIds.includes(d._id));
+      }
 
       return docs.sort((a: any, b: any) => {
         const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;

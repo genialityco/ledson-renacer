@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Stepper, Badge } from '@mantine/core';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Stepper, Badge, Modal, ScrollArea } from '@mantine/core';
 import { IconCamera, IconUpload, IconDeviceFloppy, IconCheck, IconX } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -35,7 +35,10 @@ export function AssistedBookingForm() {
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
   const [requiresInvoice, setRequiresInvoice] = useState('NO');
   const [habeasData, setHabeasData] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
   const [bookingSystemType, setBookingSystemType] = useState('slots');
+  const [filtersEnabled, setFiltersEnabled] = useState(true);
+  const [servicePrice, setServicePrice] = useState(15000);
 
   const [activeStep, setActiveStep] = useState(0);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -52,6 +55,10 @@ export function AssistedBookingForm() {
     });
     axios.get(`${API_BASE_URL}/api/schedules/settings`).then((res) => {
       if (res.data && res.data.bookingSystemType) setBookingSystemType(res.data.bookingSystemType);
+    });
+    axios.get(`${API_BASE_URL}/api/plans/settings`).then((res) => {
+      setFiltersEnabled(res.data?.filtersEnabled ?? true);
+      setServicePrice(res.data?.price ?? 15000);
     });
   }, []);
 
@@ -127,7 +134,7 @@ export function AssistedBookingForm() {
 
   const handleDataSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFilter) return alert('Debes seleccionar un filtro primero.');
+    if (filtersEnabled && filters.length > 0 && !selectedFilter) return alert('Debes seleccionar un filtro primero.');
     if (!habeasData) return alert('Debes aceptar la política de datos.');
     setActiveStep(2);
   };
@@ -179,7 +186,7 @@ export function AssistedBookingForm() {
             </Grid>
           )}
           <Group justify="center" mt="xl">
-            <Button size="lg" color="grape" onClick={() => { if(!selectedFilter) return alert('Selecciona un filtro'); setActiveStep(1); }}>Siguiente Paso</Button>
+            <Button size="lg" color="grape" onClick={() => { if(filtersEnabled && filters.length > 0 && !selectedFilter) return alert('Selecciona un filtro'); setActiveStep(1); }}>Siguiente Paso</Button>
           </Group>
         </Box>
       )}
@@ -202,13 +209,24 @@ export function AssistedBookingForm() {
               </>
             )}
 
+            <Grid.Col span={12}>
+              <Text size="sm" fw={500} mb={4}>Valor del servicio a cobrar</Text>
+              <Text size="xl" fw={700} c="grape.7" mb="sm">${servicePrice.toLocaleString('es-CO')} COP</Text>
+            </Grid.Col>
             <Grid.Col span={12}><Select label="Método de pago físico recibido" placeholder="Efectivo, Datáfono o QR" data={['Efectivo', 'Datáfono', 'QR']} required value={paymentMethod} onChange={(val) => val && setPaymentMethod(val)} /></Grid.Col>
             <Grid.Col span={12}>
               <Radio.Group label="¿Requiere factura electrónica?" withAsterisk value={requiresInvoice} onChange={setRequiresInvoice}>
                 <Group mt="xs"><Radio value="SI" label="Sí" /><Radio value="NO" label="No" /></Group>
               </Radio.Group>
             </Grid.Col>
-            <Grid.Col span={12} mt="sm"><Checkbox label={<Text size="sm">Acepto la <a href="#" target="_blank" style={{color: '#228be6'}}>política de tratamiento de datos personales</a>.</Text>} checked={habeasData} onChange={(event) => setHabeasData(event.currentTarget.checked)} required /></Grid.Col>
+            <Grid.Col span={12} mt="sm">
+              <Checkbox
+                label={<Text size="sm">Acepto los <a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }} style={{ color: '#228be6' }}>términos y condiciones y la política de tratamiento de datos personales</a>.</Text>}
+                checked={habeasData}
+                onChange={(event) => setHabeasData(event.currentTarget.checked)}
+                required
+              />
+            </Grid.Col>
             <Grid.Col span={12}>
               <Group justify="space-between" mt="md">
                 <Button variant="default" onClick={() => setActiveStep(0)}>Volver</Button>
@@ -259,6 +277,43 @@ export function AssistedBookingForm() {
           <Group justify="center"><Button size="lg" onClick={() => window.location.reload()}>Registrar Nuevo Cliente</Button></Group>
         </Box>
       )}
+
+      <Modal opened={termsModalOpen} onClose={() => setTermsModalOpen(false)} title="Términos y Condiciones - Política de Tratamiento de Datos Personales" size="lg" centered>
+        <ScrollArea h={400} mb="md">
+          <Text size="sm" mb="sm">
+            Al participar en la experiencia "Led's on Renacer" de Galería Renacer, el cliente acepta los siguientes términos:
+          </Text>
+          <Text size="sm" fw={600} mt="md" mb="xs">1. Uso de la fotografía</Text>
+          <Text size="sm" mb="sm">
+            La fotografía capturada será procesada mediante un sistema de inteligencia artificial para generar una versión estilizada,
+            la cual será proyectada en la pantalla principal del evento en el horario asignado, y posteriormente enviada al cliente por correo electrónico y/o WhatsApp.
+          </Text>
+          <Text size="sm" fw={600} mt="md" mb="xs">2. Tratamiento de datos personales (Habeas Data)</Text>
+          <Text size="sm" mb="sm">
+            Los datos personales suministrados (nombre, documento de identidad, correo electrónico, número de WhatsApp, país y ciudad)
+            serán utilizados exclusivamente para la gestión de la reserva, la generación y entrega de la fotografía, y el envío de
+            comunicaciones relacionadas con el evento, de conformidad con la Ley 1581 de 2012 y demás normas aplicables sobre protección de datos personales.
+          </Text>
+          <Text size="sm" mb="sm">
+            El cliente podrá ejercer sus derechos de acceso, corrección, actualización y supresión de sus datos personales
+            contactando a la organización del evento.
+          </Text>
+          <Text size="sm" fw={600} mt="md" mb="xs">3. Autorización de imagen</Text>
+          <Text size="sm" mb="sm">
+            El cliente autoriza a Galería Renacer el uso de su imagen fotográfica y su versión estilizada para su proyección
+            en el evento y su envío personal, sin que esto implique un uso comercial adicional sin previa autorización expresa.
+          </Text>
+          <Text size="sm" fw={600} mt="md" mb="xs">4. Pagos</Text>
+          <Text size="sm" mb="sm">
+            El pago realizado por el servicio corresponde al derecho a participar en la experiencia fotográfica y no es reembolsable,
+            salvo casos de fallas atribuibles a la organización.
+          </Text>
+        </ScrollArea>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setTermsModalOpen(false)}>Cerrar</Button>
+          <Button color="grape" onClick={() => { setHabeasData(true); setTermsModalOpen(false); }}>Aceptar</Button>
+        </Group>
+      </Modal>
     </Container>
   );
 }

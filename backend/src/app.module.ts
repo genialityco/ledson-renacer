@@ -10,6 +10,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { EmailModule } from './email/email.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { DlocalgoModule } from './dlocalgo/dlocalgo.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { DlocalgoModule } from './dlocalgo/dlocalgo.module';
     EmailModule,
     SchedulesModule,
     DlocalgoModule,
+    PlansModule,
   ],
   controllers: [AppController],
   providers: [AppService],
