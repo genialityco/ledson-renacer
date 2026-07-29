@@ -39,6 +39,8 @@ export function BookingForm() {
   const [bookingDate, setBookingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [availableSlots, setAvailableSlots] = useState<{ value: string; label: string }[]>([]);
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
+  const [franjasAvailability, setFranjasAvailability] = useState<{ franjas: any[] } | null>(null);
+  const [userPickedFranja, setUserPickedFranja] = useState(false);
   const [habeasData, setHabeasData] = useState(false);
   const [requiresInvoice, setRequiresInvoice] = useState('NO');
   const [bookingSystemType, setBookingSystemType] = useState('slots');
@@ -146,6 +148,28 @@ export function BookingForm() {
         .catch(() => setAvailableSlots([]));
     }
   }, [bookingDate]);
+
+  // En modo "franjas", antes de pagar se le muestra al usuario la franja actual
+  // (aproximada) y se refresca periódicamente mientras no elija otra manualmente.
+  useEffect(() => {
+    if (bookingSystemType !== 'franjas' || activeStep >= 2) return;
+
+    const fetchFranjas = () => {
+      axios.get(`${API_BASE_URL}/api/bookings/franjas`)
+        .then((res) => {
+          setFranjasAvailability(res.data);
+          if (!userPickedFranja) {
+            const current = (res.data?.franjas || []).find((f: any) => f.isCurrent);
+            if (current) setTimeSlot(current.timeSlot);
+          }
+        })
+        .catch((err) => console.error('Error fetching franjas', err));
+    };
+
+    fetchFranjas();
+    const interval = setInterval(fetchFranjas, 20000);
+    return () => clearInterval(interval);
+  }, [bookingSystemType, activeStep, userPickedFranja]);
 
   const handleCountryChange = (selectedCountry: string | null) => {
     setCountry(selectedCountry);
@@ -431,6 +455,30 @@ export function BookingForm() {
                     <Select label={t('timeSlot')} placeholder={t('selectTimeSlot')} data={availableSlots} required value={timeSlot} onChange={setTimeSlot} disabled={availableSlots.length === 0} />
                   </Grid.Col>
                 </>
+              )}
+
+              {bookingSystemType === 'franjas' && (
+                <Grid.Col span={12}>
+                  <Text size="sm" mb={4}>
+                    {t('approxFranjaLabel')}{' '}
+                    <Text span fw={700} style={{ color: '#29c5ff' }}>
+                      {timeSlot ? timeSlot.replace('-', ' - ') : '...'}
+                    </Text>
+                  </Text>
+                  <Select
+                    label={t('changeFranjaLabel')}
+                    placeholder={t('selectFranja')}
+                    data={(franjasAvailability?.franjas || [])
+                      .filter((f: any) => f.available)
+                      .map((f: any) => ({
+                        value: f.timeSlot,
+                        label: `${f.timeSlot.replace('-', ' - ')}${f.isCurrent ? ` (${t('currentFranjaTag')})` : ''} — ${f.spotsLeft} ${t('spotsLabel')}`,
+                      }))}
+                    value={timeSlot}
+                    onChange={(val) => { setTimeSlot(val); setUserPickedFranja(true); }}
+                    disabled={!franjasAvailability}
+                  />
+                </Grid.Col>
               )}
 
               <Grid.Col span={12}>
