@@ -339,13 +339,17 @@ export class BookingsService {
     }
 
     if (bookingSystemType === 'franjas') {
-      // Franja inmediata con cupo: se intenta asignar la franja actual tras el pago
+      // Franja inmediata con cupo: se respeta la franja que el usuario eligió
+      // antes de pagar (booking.timeSlot); si no eligió ninguna, se usa la franja
+      // actual alineada al reloj. findFreeMinuteInFranja con fromMins=nowMins
+      // descarta automáticamente franjas ya vencidas (se tratan como "llenas").
       const now = new Date();
       const nowMins = now.getHours() * 60 + now.getMinutes();
-      const currentSlot = this.currentFranjaSlot(franjaDuration, now);
+      const chosenSlot =
+        booking.timeSlot || this.currentFranjaSlot(franjaDuration, now);
       const franjaTime = await this.findFreeMinuteInFranja(
         booking.bookingDate,
-        currentSlot,
+        chosenSlot,
         slotDuration,
         nowMins,
       );
@@ -354,7 +358,7 @@ export class BookingsService {
         await bookingRef.update({
           status: 'APPROVED',
           exactTime: franjaTime,
-          timeSlot: currentSlot,
+          timeSlot: chosenSlot,
           imageUrl,
         });
 
@@ -366,13 +370,13 @@ export class BookingsService {
         return {
           success: true,
           exactTime: franjaTime,
-          timeSlot: currentSlot,
+          timeSlot: chosenSlot,
           franjaFull: false,
         };
       }
 
-      // Franja actual llena: el pago ya ocurrió, la reserva queda aprobada
-      // pero sin hora hasta que el usuario elija otra franja (assignFranja).
+      // Franja elegida llena o vencida: el pago ya ocurrió, la reserva queda
+      // aprobada pero sin hora hasta que el usuario elija otra franja (assignFranja).
       await bookingRef.update({
         status: 'APPROVED',
         exactTime: 'Sin asignar',
@@ -387,7 +391,7 @@ export class BookingsService {
       return {
         success: true,
         franjaFull: true,
-        currentFranja: currentSlot,
+        currentFranja: chosenSlot,
         availableFranjas: await this.getFranjasAvailability(
           booking.bookingDate,
         ),
