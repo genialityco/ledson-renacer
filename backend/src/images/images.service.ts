@@ -69,6 +69,7 @@ export class ImagesService implements OnModuleInit {
       const sampleFilters = [
         {
           label: 'Estilo Botero',
+          description: 'Formas voluminosas y colores cálidos inspirados en el maestro colombiano.',
           value: 'botero',
           imageUrl:
             'https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?auto=format&fit=crop&q=80&w=400',
@@ -77,6 +78,7 @@ export class ImagesService implements OnModuleInit {
         },
         {
           label: 'Estilo Picasso',
+          description: 'Formas geométricas y cubismo aplicados a tu retrato.',
           value: 'picasso',
           imageUrl:
             'https://images.unsplash.com/photo-1543857778-c4a1a3e0b2eb?auto=format&fit=crop&q=80&w=400',

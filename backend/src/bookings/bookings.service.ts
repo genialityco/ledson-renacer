@@ -23,11 +23,142 @@ export class BookingsService {
     return `${String(h).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   }
 
+  // Código corto de reserva (ej: "A3-F9-K2"). Evita caracteres ambiguos
+  // (0/O, 1/I) porque el cliente puede necesitar transcribirlo a mano.
+  private generateBookingCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let raw = '';
+    for (let i = 0; i < 6; i++) {
+      raw += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return `${raw.slice(0, 2)}-${raw.slice(2, 4)}-${raw.slice(4, 6)}`;
+  }
+
+  // Correo de agradecimiento enviado al confirmar la foto (antes de que la
+  // proyección ocurra). Es adicional al correo con la imagen ya estilizada
+  // que se envía en completeProjection() cuando termina la proyección.
+  private async sendBookingCodeEmail(
+    booking: any,
+    opts: { code: string; timeSlot?: string; exactTime?: string; franjaFull?: boolean },
+  ) {
+    if (!booking.email || !opts.code) return;
+    const db = this.firebase.getFirestore();
+    const generalDoc = await db.collection('lr_settings').doc('general').get();
+    const lang = generalDoc.exists ? generalDoc.data()?.language || 'es' : 'es';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const statusLink = `${frontendUrl}/my-bookings?code=${opts.code}`;
+    const hasExactTime =
+      opts.exactTime && opts.exactTime !== 'Sin asignar' && opts.exactTime !== 'Agotado/Lleno';
+
+    const scheduleLineEs = opts.franjaFull
+      ? 'Tu foto ya quedó confirmada. El horario que habías elegido se llenó justo antes de confirmar — entra al enlace de abajo para elegir otro.'
+      : hasExactTime
+        ? `Vivirás tu experiencia en pantalla aproximadamente a las <strong>${opts.exactTime}</strong>${opts.timeSlot ? ` (horario ${opts.timeSlot.replace('-', ' - ')})` : ''}.`
+        : '';
+    const scheduleLineEn = opts.franjaFull
+      ? 'Your photo is confirmed. The slot you picked filled up right before confirming — use the link below to choose another one.'
+      : hasExactTime
+        ? `You'll live your experience on screen at approximately <strong>${opts.exactTime}</strong>${opts.timeSlot ? ` (slot ${opts.timeSlot.replace('-', ' - ')})` : ''}.`
+        : '';
+
+    const htmlEs = `
+      <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #1c5cab;">¡Gracias, ${booking.name}!</h1>
+        <p>Ya confirmamos tu foto para la experiencia <strong>Led's on Renacer</strong>.</p>
+        ${scheduleLineEs ? `<p>${scheduleLineEs}</p>` : ''}
+        <p>Tu código de reserva:</p>
+        <p style="font-size: 26px; font-weight: 700; letter-spacing: 3px; color: #1c5cab; border: 2px dashed #1c5cab; border-radius: 12px; padding: 12px 24px; display: inline-block;">${opts.code}</p>
+        <p>Guárdalo para consultar el estado de tu proyección, o entra directo aquí:</p>
+        <p><a href="${statusLink}" style="color: #1c5cab; font-weight: 700;">Consultar el estado de mi reserva</a></p>
+        <p>Cuando tu imagen se proyecte en la pantalla grande, te enviaremos tu recuerdo digital a este correo.</p>
+        <br/>
+        <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+      </div>
+    `;
+    const htmlEn = `
+      <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #1c5cab;">Thank you, ${booking.name}!</h1>
+        <p>We've confirmed your photo for the <strong>Led's on Renacer</strong> experience.</p>
+        ${scheduleLineEn ? `<p>${scheduleLineEn}</p>` : ''}
+        <p>Your booking code:</p>
+        <p style="font-size: 26px; font-weight: 700; letter-spacing: 3px; color: #1c5cab; border: 2px dashed #1c5cab; border-radius: 12px; padding: 12px 24px; display: inline-block;">${opts.code}</p>
+        <p>Save it to check your projection status, or go straight here:</p>
+        <p><a href="${statusLink}" style="color: #1c5cab; font-weight: 700;">Check my booking status</a></p>
+        <p>Once your image is projected on the big screen, we'll email you your digital keepsake.</p>
+        <br/>
+        <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+      </div>
+    `;
+
+    const subject =
+      lang === 'en'
+        ? "Thanks for your Led's on Renacer booking!"
+        : "¡Gracias por tu reserva en Led's on Renacer!";
+
+    try {
+      await this.emailService.sendEmail(booking.email, subject, lang === 'en' ? htmlEn : htmlEs);
+    } catch (e: any) {
+      console.error('Error enviando correo de confirmación de foto:', e.message);
+    }
+  }
+
   private todayStr(now = new Date()): string {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  // Sube una foto o video en base64 a Storage. El tipo se detecta del propio
+  // prefijo "data:<mime>;base64,..." que genera FileReader en el navegador —
+  // el frontend no tiene que declararlo aparte, el mismo campo (imageBase64)
+  // sirve para ambos. El video no se procesa ni recomprime, se sube tal cual.
+  private async uploadMediaBase64(
+    mediaBase64: string,
+    folder = 'bookings',
+  ): Promise<{ url: string; mediaType: 'image' | 'video'; contentType: string }> {
+    const match = mediaBase64.match(/^data:([\w/+.-]+);base64,/);
+    const contentType = match?.[1] || 'image/jpeg';
+    const mediaType: 'image' | 'video' = contentType.startsWith('video/')
+      ? 'video'
+      : 'image';
+
+    const extensionByType: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'video/mp4': 'mp4',
+      'video/webm': 'webm',
+      'video/quicktime': 'mov',
+      'video/ogg': 'ogv',
+    };
+    const extension =
+      extensionByType[contentType] || (mediaType === 'video' ? 'mp4' : 'jpg');
+
+    const base64Data = mediaBase64.replace(/^data:[\w/+.-]+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const storage = this.firebase.getStorage();
+    const bucket = storage.bucket();
+    const fileName = `${folder}/${uuidv4()}.${extension}`;
+    const file = bucket.file(fileName);
+
+    await file.save(buffer, { metadata: { contentType } });
+
+    let url = '';
+    try {
+      await file.makePublic();
+      url = file.publicUrl();
+    } catch (e) {
+      const [signedUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: '01-01-2100',
+      });
+      url = signedUrl;
+    }
+
+    return { url, mediaType, contentType };
   }
 
   // Franja actual alineada al reloj (ej: 10:07 con franjas de 15 min -> "10:00-10:15")
@@ -201,31 +332,13 @@ export class BookingsService {
     } = data;
 
     let imageUrl = '';
+    let mediaType: 'image' | 'video' = 'image';
 
-    // Si se envía una imagen en base64, se sube a Firebase Storage
+    // Si se envía una foto o video en base64, se sube a Firebase Storage
     if (imageBase64) {
-      const storage = this.firebase.getStorage();
-      const bucket = storage.bucket();
-      const fileName = `bookings/${uuidv4()}.jpg`;
-      const file = bucket.file(fileName);
-
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-
-      await file.save(buffer, {
-        metadata: { contentType: 'image/jpeg' },
-      });
-
-      try {
-        await file.makePublic();
-        imageUrl = file.publicUrl();
-      } catch (e) {
-        const [url] = await file.getSignedUrl({
-          action: 'read',
-          expires: '01-01-2100',
-        });
-        imageUrl = url;
-      }
+      const uploaded = await this.uploadMediaBase64(imageBase64, 'bookings');
+      imageUrl = uploaded.url;
+      mediaType = uploaded.mediaType;
     }
 
     const db = this.firebase.getFirestore();
@@ -257,10 +370,12 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
+      code: this.generateBookingCode(),
       timeSlot: finalTimeSlot,
       exactTime: 'Sin asignar', // Se asignará al confirmar el pago
       bookingDate: finalBookingDate,
       imageUrl,
+      mediaType,
       status: 'PENDING', // Queda como pendiente de pago
       paymentMethod: data.paymentMethod || 'Wompi',
       requiresInvoice: data.requiresInvoice || false,
@@ -273,7 +388,7 @@ export class BookingsService {
     return { id: bookingRef.id, ...booking };
   }
 
-  async confirmPayment(id: string, data?: { imageBase64?: string }) {
+  async confirmPayment(id: string, data?: { imageBase64?: string; timeSlot?: string }) {
     const db = this.firebase.getFirestore();
     const bookingRef = db.collection('lr_bookings').doc(id);
     const bookingDoc = await bookingRef.get();
@@ -288,31 +403,13 @@ export class BookingsService {
     }
 
     let imageUrl = booking.imageUrl;
+    let mediaType: 'image' | 'video' = booking.mediaType || 'image';
 
-    // Si se envía la foto después del pago, se sube ahora
+    // Si se envía la foto o video después del pago, se sube ahora
     if (data?.imageBase64) {
-      const storage = this.firebase.getStorage();
-      const bucket = storage.bucket();
-      const fileName = `bookings/${uuidv4()}.jpg`;
-      const file = bucket.file(fileName);
-
-      const base64Data = data.imageBase64.replace(
-        /^data:image\/\w+;base64,/,
-        '',
-      );
-      const buffer = Buffer.from(base64Data, 'base64');
-
-      await file.save(buffer, { metadata: { contentType: 'image/jpeg' } });
-      try {
-        await file.makePublic();
-        imageUrl = file.publicUrl();
-      } catch (e) {
-        const [url] = await file.getSignedUrl({
-          action: 'read',
-          expires: '01-01-2100',
-        });
-        imageUrl = url;
-      }
+      const uploaded = await this.uploadMediaBase64(data.imageBase64, 'bookings');
+      imageUrl = uploaded.url;
+      mediaType = uploaded.mediaType;
     }
 
     // Calcular slot exacto de proyección
@@ -345,8 +442,12 @@ export class BookingsService {
       // descarta automáticamente franjas ya vencidas (se tratan como "llenas").
       const now = new Date();
       const nowMins = now.getHours() * 60 + now.getMinutes();
+      // La franja puede venir recién elegida en el paso de la foto (data.timeSlot);
+      // si no, se respeta la que ya traía la reserva o se usa la franja actual.
       const chosenSlot =
-        booking.timeSlot || this.currentFranjaSlot(franjaDuration, now);
+        data?.timeSlot ||
+        booking.timeSlot ||
+        this.currentFranjaSlot(franjaDuration, now);
       const franjaTime = await this.findFreeMinuteInFranja(
         booking.bookingDate,
         chosenSlot,
@@ -360,11 +461,20 @@ export class BookingsService {
           exactTime: franjaTime,
           timeSlot: chosenSlot,
           imageUrl,
+          mediaType,
         });
 
         // Generar la imagen automáticamente en segundo plano
         this.generateImage(id).catch((err) =>
           console.error(`Error auto-generando imagen para ${id}:`, err),
+        );
+        // Correo de agradecimiento con el código de reserva (no bloquea la respuesta)
+        this.sendBookingCodeEmail(booking, {
+          code: booking.code,
+          timeSlot: chosenSlot,
+          exactTime: franjaTime,
+        }).catch((err) =>
+          console.error(`Error enviando correo de código para ${id}:`, err),
         );
 
         return {
@@ -372,6 +482,7 @@ export class BookingsService {
           exactTime: franjaTime,
           timeSlot: chosenSlot,
           franjaFull: false,
+          code: booking.code,
         };
       }
 
@@ -382,10 +493,17 @@ export class BookingsService {
         exactTime: 'Sin asignar',
         timeSlot: '',
         imageUrl,
+        mediaType,
       });
 
       this.generateImage(id).catch((err) =>
         console.error(`Error auto-generando imagen para ${id}:`, err),
+      );
+      this.sendBookingCodeEmail(booking, {
+        code: booking.code,
+        franjaFull: true,
+      }).catch((err) =>
+        console.error(`Error enviando correo de código para ${id}:`, err),
       );
 
       return {
@@ -395,6 +513,7 @@ export class BookingsService {
         availableFranjas: await this.getFranjasAvailability(
           booking.bookingDate,
         ),
+        code: booking.code,
       };
     }
 
@@ -506,13 +625,19 @@ export class BookingsService {
       status: 'APPROVED',
       exactTime,
       imageUrl,
+      mediaType,
       ...(bookingSystemType === 'queue' ? { queuePosition } : {}),
     });
 
     // Generar la imagen automáticamente en segundo plano
     this.generateImage(id).catch(err => console.error(`Error auto-generando imagen para ${id}:`, err));
+    this.sendBookingCodeEmail(booking, {
+      code: booking.code,
+      timeSlot: booking.timeSlot,
+      exactTime,
+    }).catch((err) => console.error(`Error enviando correo de código para ${id}:`, err));
 
-    return { success: true, exactTime, queuePosition };
+    return { success: true, exactTime, queuePosition, code: booking.code };
   }
 
   async createBooking(data: any) {
@@ -530,33 +655,13 @@ export class BookingsService {
     } = data;
 
     let imageUrl = '';
+    let mediaType: 'image' | 'video' = 'image';
 
-    // Si se envía una imagen en base64, se sube a Firebase Storage
+    // Si se envía una foto o video en base64, se sube a Firebase Storage
     if (imageBase64) {
-      const storage = this.firebase.getStorage();
-      const bucket = storage.bucket();
-      const fileName = `bookings/${uuidv4()}.jpg`;
-      const file = bucket.file(fileName);
-
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-
-      await file.save(buffer, {
-        metadata: { contentType: 'image/jpeg' },
-      });
-
-      // Intentar hacer pública la imagen
-      try {
-        await file.makePublic();
-        imageUrl = file.publicUrl();
-      } catch (e) {
-        // Fallback: generar Signed URL duradera en caso de reglas restrictivas del bucket
-        const [url] = await file.getSignedUrl({
-          action: 'read',
-          expires: '01-01-2100',
-        });
-        imageUrl = url;
-      }
+      const uploaded = await this.uploadMediaBase64(imageBase64, 'bookings');
+      imageUrl = uploaded.url;
+      mediaType = uploaded.mediaType;
     }
 
     // Guardar los datos en Firestore
@@ -716,6 +821,7 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
+      code: this.generateBookingCode(),
       timeSlot:
         bookingSystemType === 'queue'
           ? ''
@@ -725,6 +831,7 @@ export class BookingsService {
       exactTime,
       bookingDate: finalBookingDate,
       imageUrl,
+      mediaType,
       status: 'APPROVED', // Lo marcamos como APPROVED
       paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
       requiresInvoice: data.requiresInvoice || false, // boolean
@@ -751,18 +858,32 @@ export class BookingsService {
 
   async searchBookings(query: string) {
     const db = this.firebase.getFirestore();
+    const trimmed = (query || '').trim();
 
-    // Primero buscamos por docId
+    // Primero buscamos por docId (cédula) — lo que usa el staff en punto de venta
     let snapshot = await db
       .collection('lr_bookings')
-      .where('docId', '==', query)
+      .where('docId', '==', trimmed)
       .get();
 
     // Si no hay por docId, buscamos por email
     if (snapshot.empty) {
       snapshot = await db
         .collection('lr_bookings')
-        .where('email', '==', query)
+        .where('email', '==', trimmed)
+        .get();
+    }
+
+    // Si tampoco hay por email, buscamos por código de reserva (ej: "A3-F9-K2").
+    // Normalizamos mayúsculas/espacios y, si viene sin guiones, los insertamos.
+    if (snapshot.empty) {
+      let normalizedCode = trimmed.toUpperCase().replace(/\s+/g, '');
+      if (/^[A-Z0-9]{6}$/.test(normalizedCode)) {
+        normalizedCode = `${normalizedCode.slice(0, 2)}-${normalizedCode.slice(2, 4)}-${normalizedCode.slice(4, 6)}`;
+      }
+      snapshot = await db
+        .collection('lr_bookings')
+        .where('code', '==', normalizedCode)
         .get();
     }
 
@@ -801,9 +922,24 @@ export class BookingsService {
     if (!bookingDoc.exists)
       throw new NotFoundException('Booking no encontrado');
     const booking = bookingDoc.data();
+    if (!booking) throw new NotFoundException('Booking sin datos');
 
-    if (!booking || !booking.selectedFilter)
-      throw new NotFoundException('Filtro no asignado');
+    // Sin filtro seleccionado (política de filtros desactivada, o el cliente
+    // reservó cuando estaba desactivada), o el archivo subido es un video (no
+    // se edita ni se le aplica generación de IA, solo se proyecta tal cual):
+    // no hay nada que generar, se respeta el horario agendado (igual que
+    // cualquier booking GENERATED, vía el cron de autoProjectBookings).
+    if (!booking.selectedFilter || booking.mediaType === 'video') {
+      await bookingRef.update({
+        generatedImageUrl: booking.imageUrl,
+        status: 'GENERATED',
+      });
+      return {
+        success: true,
+        generatedImageUrl: booking.imageUrl,
+        skippedAi: true,
+      };
+    }
 
     // Obtener el filtro
     const filterDoc = await db
@@ -1005,6 +1141,7 @@ export class BookingsService {
           carouselImages: [],
           carouselDuration: 5,
           projectionDuration: 15,
+          videoProjectionDuration: 15,
           carouselTransitionDirection: 'right',
           contentGrid: [],
           deadTimes: [], // Tiempos muertos (descansos)
@@ -1080,6 +1217,7 @@ export class BookingsService {
       id: bookingId,
       name: b.name || '',
       imageUrl: b.generatedImageUrl || b.imageUrl || '',
+      mediaType: b.mediaType || 'image',
       timestamp: Date.now(),
       transitionEffect,
       frameUrl,
@@ -1123,12 +1261,22 @@ export class BookingsService {
       const lang = generalDoc.exists ? (generalDoc.data()?.language || 'es') : 'es';
 
       const imageUrl = b.generatedImageUrl || b.imageUrl;
+      const isVideo = b.mediaType === 'video';
+      // Los clientes de correo en general no reproducen <video> embebido, así
+      // que para video mandamos un enlace directo en vez de incrustarlo.
+      const mediaBlockEs = isVideo
+        ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Ver tu video</a></p>`
+        : `<img src="${imageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
+      const mediaBlockEn = isVideo
+        ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Watch your video</a></p>`
+        : `<img src="${imageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
+
       const htmlEs = `
         <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #228be6;">¡Hola ${b.name}!</h1>
           <p>Gracias por ser parte de la experiencia <strong>Led's on Renacer</strong>.</p>
           <p>Aquí tienes el recuerdo de tu photobooth:</p>
-          <img src="${imageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+          ${mediaBlockEs}
           <p>¡Esperamos que lo hayas disfrutado!</p>
           <br/>
           <p style="font-size: 12px; color: #999;">Galería Renacer</p>
@@ -1139,15 +1287,17 @@ export class BookingsService {
           <h1 style="color: #228be6;">Hello ${b.name}!</h1>
           <p>Thank you for being part of the <strong>Led's on Renacer</strong> experience.</p>
           <p>Here is your photobooth memory:</p>
-          <img src="${imageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+          ${mediaBlockEn}
           <p>We hope you enjoyed it!</p>
           <br/>
           <p style="font-size: 12px; color: #999;">Galería Renacer</p>
         </div>
       `;
-      
+
       const html = lang === 'en' ? htmlEn : htmlEs;
-      const subject = lang === 'en' ? "Your Led's on Renacer photo is ready!" : "¡Tu foto de Led's on Renacer está lista!";
+      const subject = isVideo
+        ? (lang === 'en' ? "Your Led's on Renacer video is ready!" : "¡Tu video de Led's on Renacer está listo!")
+        : (lang === 'en' ? "Your Led's on Renacer photo is ready!" : "¡Tu foto de Led's on Renacer está lista!");
 
       try {
         await this.emailService.sendEmail(
@@ -1172,7 +1322,7 @@ export class BookingsService {
       `[Diagnostic] ENV.WHATSAPP_API_URL: ${process.env.WHATSAPP_API_URL}, ENV.WHATSAPP_ACCOUNT_ID: ${process.env.WHATSAPP_ACCOUNT_ID}`,
     );
 
-    if (b.whatsapp && process.env.WHATSAPP_API_URL && !waSend) {
+    if (b.whatsapp && process.env.WHATSAPP_API_URL && !waSend && b.mediaType !== 'video') {
       try {
         const imageUrl = b.generatedImageUrl || b.imageUrl;
         console.log(
@@ -1242,11 +1392,20 @@ export class BookingsService {
       for (const doc of snapshot.docs) {
         const b = doc.data();
         if (b.email) {
+          // El horario puede no estar elegido todavía (en modo franjas se elige
+          // recién en el paso de la foto, después del pago).
+          const savedLineEs = b.timeSlot
+            ? `Tu foto y tu horario <strong>${b.timeSlot}</strong> del <strong>${b.bookingDate}</strong> aún están guardados.`
+            : `Tu foto para el <strong>${b.bookingDate}</strong> aún está guardada.`;
+          const savedLineEn = b.timeSlot
+            ? `Your photo and your time slot <strong>${b.timeSlot}</strong> on <strong>${b.bookingDate}</strong> are still saved.`
+            : `Your photo for <strong>${b.bookingDate}</strong> is still saved.`;
+
           const htmlEs = `
             <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
               <h1 style="color: #f59f00;">¡Hola ${b.name}!</h1>
               <p>Notamos que no terminaste el pago para tu experiencia <strong>Led's on Renacer</strong>.</p>
-              <p>Tu foto y reserva en la franja <strong>${b.timeSlot}</strong> del <strong>${b.bookingDate}</strong> aún están guardadas.</p>
+              <p>${savedLineEs}</p>
               <p>Puedes retomar tu compra contactándonos o regresando al punto de venta virtual.</p>
               <br/>
               <p style="font-size: 12px; color: #999;">Galería Renacer</p>
@@ -1256,7 +1415,7 @@ export class BookingsService {
             <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
               <h1 style="color: #f59f00;">Hello ${b.name}!</h1>
               <p>We noticed you didn't finish the payment for your <strong>Led's on Renacer</strong> experience.</p>
-              <p>Your photo and booking for the slot <strong>${b.timeSlot}</strong> on <strong>${b.bookingDate}</strong> are still saved.</p>
+              <p>${savedLineEn}</p>
               <p>You can resume your purchase by contacting us or returning to the virtual point of sale.</p>
               <br/>
               <p style="font-size: 12px; color: #999;">Galería Renacer</p>
