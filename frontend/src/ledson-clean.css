@@ -1,0 +1,583 @@
+/* ============================================================
+   LED'S ON — DISEÑO LIMPIO
+   Fuente de verdad: frontend/design_handoff_ledson_booking/
+   (README.md + "LedsOn Booking.dc.html"). Alta fidelidad: colores,
+   tipografía, radios y espaciados tomados con precisión de ahí.
+   Se usa SOLO dentro de App.tsx (header/footer/switch), Home.tsx y
+   BookingForm.tsx, como capa de contenido flotando sobre el fondo
+   animado de graffiti.css (que se mantiene intacto).
+
+   Nota de arquitectura: el handoff envuelve header+contenido+footer
+   en UN solo panel flotante de 576px. Aquí mantenemos el header y el
+   footer como barras de ancho completo (iguales en toda la app,
+   incluido /admin) — decisión explícita para no romper esas vistas.
+   Por eso el título/subtítulo/stepper (que en el handoff viven DENTRO
+   del panel claro) siguen viviendo sobre el muro oscuro acá, y por
+   eso conservan texto claro con sombra en vez del texto oscuro del
+   handoff (que asume fondo claro detrás).
+   ============================================================ */
+
+:root {
+  --ledson-blue: #1c5cab;
+  --ledson-blue-dark: #123f7a;
+  --ledson-blue-light: #dbeafe;
+  --ledson-blue-soft: #eff6ff;
+  --ledson-blue-muted: #a9c3de;
+  --ledson-green: #2fae4a;
+  --ledson-red: #e5484d;
+  --ledson-text: #14151a;
+  --ledson-text-secondary: #33363b;
+  --ledson-text-body: #3a3d42;
+  --ledson-text-muted: #6b7280;
+  --ledson-text-faint: #9aa0a6;
+  --ledson-border: #e3e6e8;
+  --ledson-border-input: #d8dcdf;
+  --ledson-border-pending: #e1e4e6;
+  --ledson-header-bg: #e9edf0;
+  --ledson-header-h: 64px;
+  --ledson-footer-h: 40px;
+}
+
+/* Fuente global de la app (fuera de las zonas grafiti, que mantienen
+   su propia tipografía vía font-family + !important). */
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+/* ============================================================
+   HEADER / FOOTER / SWITCH DE IDIOMA (globales, todas las vistas)
+   ============================================================ */
+.ledson-header {
+  position: relative !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ledson-header-h) !important;
+  padding: 0 clamp(14px, 4vw, 20px) !important;
+  background: var(--ledson-header-bg) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.ledson-logo-group {
+  cursor: pointer;
+}
+.ledson-logo-group:hover {
+  opacity: 0.75;
+}
+.ledson-logo-icon {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--ledson-text);
+  border-radius: 5px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.ledson-logo {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.3px;
+  font-size: 20px !important;
+  color: var(--ledson-text) !important;
+  line-height: 1.2;
+}
+.ledson-logo-thin {
+  font-weight: 400;
+}
+
+.ledson-footer {
+  position: relative !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  height: var(--ledson-footer-h) !important;
+  background: #ffffff !important;
+  border: none !important;
+  border-top: 1px solid var(--ledson-border) !important;
+}
+.ledson-footer-text {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+  color: var(--ledson-text-faint) !important;
+}
+
+/* Switch de idioma a medida (no usa Mantine Switch): pista gris neutra
+   fija, ES/EN afuera con peso/color que cambia según el activo. */
+.ledson-lang {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ledson-lang-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  transition: color 0.15s ease, font-weight 0.15s ease;
+}
+.ledson-lang-label[data-active='true'] {
+  font-weight: 700;
+  color: var(--ledson-text);
+}
+.ledson-lang-label[data-active='false'] {
+  font-weight: 400;
+  color: var(--ledson-text-faint);
+}
+.ledson-lang-track {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: #c7ccd0;
+  position: relative;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
+}
+.ledson-lang-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: left 0.15s ease;
+}
+.ledson-lang-track[data-lang='en'] .ledson-lang-thumb {
+  left: 20px;
+}
+
+/* ============================================================
+   TARJETA FLOTANTE (pasos de reserva + tarjeta de bienvenida)
+   Sombra propia (más marcada que el handoff) porque acá la tarjeta
+   flota directo sobre el muro animado oscuro, no dentro de un panel
+   claro — necesita más contraste para despegar del fondo.
+   ============================================================ */
+.ledson-card {
+  position: relative;
+  max-width: 576px;
+  margin: 0 auto;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid var(--ledson-border);
+  border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  text-align: left;
+}
+.ledson-card--center {
+  text-align: center;
+}
+
+/* Imagen que se extiende de borde a borde en la parte superior de la
+   tarjeta, "rompiendo" el padding normal (mismo truco que Card.Section). */
+.ledson-card-bleed-top {
+  display: block;
+  margin: -24px -24px 20px;
+}
+.ledson-card-bleed-top img {
+  display: block;
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+}
+
+/* ============ TIPOGRAFÍA ============
+   .ledson-title/.ledson-subtitle/.ledson-progress-caption viven SIEMPRE
+   fuera de la tarjeta, sobre el muro animado oscuro (ver nota de
+   arquitectura arriba), por eso van en blanco con sombra.
+   .ledson-section-title/.ledson-welcome-title/.ledson-body-text viven
+   DENTRO de la tarjeta blanca, con los colores oscuros exactos del handoff. */
+.ledson-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+  font-size: 26px !important;
+  margin-bottom: 6px !important;
+}
+.ledson-subtitle {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 14px !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  line-height: 1.5;
+  font-weight: 400;
+  margin-bottom: 0 !important;
+}
+.ledson-section-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 800 !important;
+  color: var(--ledson-text);
+  letter-spacing: -0.2px;
+  line-height: 1.25;
+  font-size: 18px !important;
+  margin-bottom: 4px !important;
+}
+.ledson-step-subtitle {
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  color: var(--ledson-text-muted);
+  line-height: 1.45;
+  margin-bottom: 18px;
+}
+.ledson-welcome-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 800 !important;
+  color: var(--ledson-blue) !important;
+  font-size: 21px !important;
+  line-height: 1.25;
+  margin-bottom: 16px !important;
+}
+.ledson-body-text {
+  font-family: 'Inter', sans-serif;
+  color: var(--ledson-text-body);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.ledson-qr-caption {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--ledson-text-faint);
+  margin-top: 8px;
+}
+.ledson-qr-box {
+  display: inline-block;
+  padding: 10px;
+  margin-top: 18px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--ledson-border);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  line-height: 0;
+}
+
+/* ============ BARRA DE PROGRESO SEGMENTADA ============ */
+.ledson-progress {
+  margin-bottom: 18px;
+}
+.ledson-progress-bars {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ledson-progress-seg {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ledson-border-pending);
+  transition: background 0.25s ease;
+}
+.ledson-progress-seg[data-state='done'] {
+  background: var(--ledson-green);
+  cursor: pointer;
+}
+.ledson-progress-seg[data-state='active'] {
+  background: var(--ledson-blue);
+}
+.ledson-progress-caption {
+  display: block;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* ============ BOTÓN PRINCIPAL ============ */
+.ledson-btn-primary {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 15px !important;
+  color: #fff !important;
+  background: var(--ledson-blue) !important;
+  border: none !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  transition: background 0.15s ease, filter 0.15s ease !important;
+}
+.ledson-btn-primary:hover {
+  filter: brightness(1.08);
+}
+.ledson-btn-primary:active {
+  filter: brightness(0.95);
+}
+.ledson-btn-primary:disabled,
+.ledson-btn-primary[data-disabled] {
+  background: var(--ledson-blue-muted) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+}
+.ledson-btn-primary,
+.ledson-btn-outline {
+  height: auto !important;
+  min-height: 48px !important;
+  padding: 12px 16px !important;
+}
+.ledson-btn-primary .mantine-Button-label,
+.ledson-btn-outline .mantine-Button-label {
+  white-space: normal !important;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* ============ BOTÓN CONTORNO (Atrás) — cuadrado 48x48, solo ícono ============ */
+.ledson-btn-outline {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 15px !important;
+  color: var(--ledson-blue) !important;
+  background: #fff !important;
+  border: 1.5px solid var(--ledson-blue) !important;
+  border-radius: 10px !important;
+  transition: background 0.15s ease !important;
+}
+.ledson-btn-outline:hover {
+  background: var(--ledson-blue-soft) !important;
+}
+.ledson-btn-back {
+  width: 48px !important;
+  min-width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  padding: 0 !important;
+  flex-shrink: 0;
+}
+
+/* ============ TARJETA DE FILTRO ============ */
+.ledson-filter-card {
+  background: #fff !important;
+  border: 2px solid var(--ledson-border) !important;
+  border-radius: 12px !important;
+  padding: 8px !important;
+  box-shadow: none !important;
+  transition: border-color 0.12s ease !important;
+  cursor: pointer;
+}
+.ledson-filter-card:hover {
+  border-color: var(--ledson-blue-muted) !important;
+}
+.ledson-filter-card[data-selected='true'] {
+  border-color: var(--ledson-blue) !important;
+}
+.ledson-filter-card .mantine-Text-root {
+  color: var(--ledson-text) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  text-align: left !important;
+  margin-top: 8px !important;
+}
+.ledson-filter-card .mantine-Card-section img {
+  border-radius: 8px !important;
+  height: 90px !important;
+}
+.ledson-badge-selected {
+  background: var(--ledson-green) !important;
+  border: none !important;
+  box-shadow: none !important;
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+}
+
+/* ============ FORMULARIO ============ */
+.ledson-card .mantine-Text-root {
+  color: var(--ledson-text-secondary);
+}
+.ledson-card .mantine-InputWrapper-label,
+.ledson-card .mantine-Checkbox-label,
+.ledson-card .mantine-Radio-label {
+  color: var(--ledson-text-secondary) !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  font-family: 'Inter', sans-serif;
+}
+.ledson-card .mantine-InputWrapper-required {
+  color: var(--ledson-red) !important;
+}
+.ledson-card input,
+.ledson-card .mantine-Select-input,
+.ledson-card textarea {
+  background: #fff !important;
+  border: 1.5px solid var(--ledson-border-input) !important;
+  border-radius: 9px !important;
+  color: var(--ledson-text) !important;
+  font-size: 14px !important;
+  padding: 11px 14px !important;
+  font-family: 'Inter', sans-serif;
+}
+.ledson-card input::placeholder {
+  color: var(--ledson-text-faint) !important;
+}
+.ledson-card input:focus,
+.ledson-card .mantine-Select-input:focus {
+  border-color: var(--ledson-blue) !important;
+  box-shadow: 0 0 0 3px rgba(28, 92, 171, 0.15) !important;
+}
+.ledson-card .mantine-Checkbox-input:checked,
+.ledson-card .mantine-Radio-radio:checked {
+  background-color: var(--ledson-blue) !important;
+  border-color: var(--ledson-blue) !important;
+}
+.ledson-card a {
+  color: var(--ledson-blue) !important;
+  font-weight: 600;
+}
+
+/* ============ TARJETAS DE CARGA DE FOTO ============ */
+.ledson-upload-card {
+  border: 2px dashed var(--ledson-border-input) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  min-height: 130px !important;
+  height: 130px !important;
+  transition: border-color 0.15s ease, background 0.15s ease !important;
+}
+.ledson-upload-card:hover {
+  border-color: var(--ledson-blue) !important;
+  background: var(--ledson-blue-soft) !important;
+}
+.ledson-upload-card .mantine-FileInput-wrapper,
+.ledson-upload-card .mantine-FileInput-input {
+  height: 100% !important;
+  width: 100% !important;
+}
+.ledson-upload-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ledson-blue-light);
+  color: var(--ledson-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============ PREVIEW DE FOTO ============ */
+.ledson-preview-wrap {
+  display: block;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ledson-preview-wrap img {
+  display: block;
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+}
+.ledson-preview-remove-btn {
+  margin-top: 10px !important;
+  padding: 9px 16px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  border: 1.5px solid var(--ledson-border-input) !important;
+  background: #fff !important;
+  color: var(--ledson-text-secondary) !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  box-shadow: none !important;
+}
+
+/* ============ ESTADO DE RESULTADO ============ */
+.ledson-result-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ledson-green);
+  color: var(--ledson-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
+}
+
+/* ============ MODAL WEBCAM ============ */
+.ledson-modal .mantine-Modal-content {
+  border-radius: 16px !important;
+}
+.ledson-modal .mantine-Modal-header {
+  font-family: 'Inter', sans-serif !important;
+}
+
+/* ============================================================
+   CRECIMIENTO MODERADO EN DESKTOP
+   El diseño de referencia del handoff es 576px (pensado para el
+   kiosco vertical y para celulares, que son los destinos reales).
+   En pantallas más anchas (uso ocasional de escritorio/demo) la
+   tarjeta y los textos crecen un poco para no verse perdidos, sin
+   alejarse demasiado del diseño de referencia.
+   ============================================================ */
+@media (min-width: 700px) {
+  .ledson-card {
+    max-width: 640px;
+    padding: 32px;
+    border-radius: 18px;
+  }
+  .ledson-card-bleed-top {
+    margin: -32px -32px 24px;
+  }
+  .ledson-card-bleed-top img {
+    height: 240px;
+  }
+  .ledson-title {
+    font-size: 32px !important;
+  }
+  .ledson-subtitle {
+    font-size: 16px !important;
+  }
+  .ledson-section-title {
+    font-size: 21px !important;
+  }
+  .ledson-welcome-title {
+    font-size: 24px !important;
+  }
+  .ledson-body-text {
+    font-size: 15px;
+  }
+}
+
+/* ============================================================
+   MODO COMPACTO EN CELULAR CHICO (evitar scroll vertical)
+   Igual que el diseño de referencia (576px) pero un poco más
+   apretado para que quepa sin scroll en celulares chicos/bajos.
+   ============================================================ */
+@media (max-width: 400px) {
+  :root {
+    --ledson-header-h: 52px;
+    --ledson-footer-h: 28px;
+  }
+  .ledson-title {
+    font-size: 21px !important;
+  }
+  .ledson-progress {
+    margin-bottom: 10px;
+  }
+  .ledson-card {
+    padding: 16px;
+  }
+  .ledson-card-bleed-top {
+    margin: -16px -16px 12px;
+  }
+  .ledson-card-bleed-top img {
+    height: 110px;
+  }
+  .ledson-welcome-title {
+    font-size: 17px !important;
+    margin-bottom: 8px !important;
+  }
+  .ledson-body-text {
+    font-size: 12.5px;
+    line-height: 1.4;
+    margin-bottom: 7px;
+  }
+  .ledson-qr-box {
+    padding: 6px;
+    margin-top: 8px;
+  }
+}

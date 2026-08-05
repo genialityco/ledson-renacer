@@ -7,7 +7,7 @@ import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MantineProvider>
+    <MantineProvider theme={{ fontFamily: "'Inter', sans-serif" }}>
       <BrowserRouter>
         <App />
       </BrowserRouter>

@@ -8,9 +8,14 @@ const translations = {
     appTitle: "Led's on Renacer Photobooth",
 
     // Home
-    captureMoment: "Captura el Momento",
+    homeTitle: "Reserva tu espacio",
+    homeSubtitle: "en la pantalla más grande de la Comuna 13, Medellín",
+    welcomeTitle: "Bienvenido(a) a la Experiencia LED'S ON",
+    welcomeText1: "Sube tu foto o video, reserva tu espacio en pantalla y conviértete en arte vivo de la Comuna 13 de Medellín.",
+    welcomeText2: "Cada experiencia incluye un recuerdo digital para que puedas verlo de nuevo y compartir tu momento estelar.",
     scanQR: "Escanea el código QR con tu teléfono para reservar, tomarte tu foto y aparecer en la pantalla gigante.",
-    simulateScan: "Simular Escaneo (Ir al Formulario)",
+    qrCaption: "Escanea este código con tu teléfono para reservar desde tu celular.",
+    startBtn: "Comenzar",
 
     // BookingForm
     bookPhotobooth: "Reserva tu Photobooth",
@@ -23,10 +28,12 @@ const translations = {
     result: "Resultado",
     yourTurn: "Tu turno",
     step1Title: "1. Selecciona el estilo que deseas para tu proyección",
+    step1Subtitle: "Este será el estilo que se aplicará a tu fotografía.",
     noFilters: "No hay filtros activos en este momento.",
     selectFilterAlert: "Selecciona un filtro para continuar",
     nextStep: "Siguiente Paso",
     step2Title: "2. Llena tus datos para realizar el pago",
+    step2Subtitle: "Usaremos estos datos para registrar tu reserva y el pago.",
     fullName: "Nombre completo",
     docId: "ID / Cédula",
     email: "Correo Electrónico",
@@ -110,9 +117,14 @@ const translations = {
     appTitle: "Led's on Renacer Photobooth",
 
     // Home
-    captureMoment: "Capture the Moment",
+    homeTitle: "Book your spot",
+    homeSubtitle: "on the biggest screen in Comuna 13, Medellín",
+    welcomeTitle: "Welcome to the LED'S ON Experience",
+    welcomeText1: "Upload your photo or video, book your spot on screen, and become living art of Comuna 13, Medellín.",
+    welcomeText2: "Each experience includes a digital keepsake so you can watch it again and share your standout moment.",
     scanQR: "Scan the QR code with your phone to book, take your photo, and appear on the big screen.",
-    simulateScan: "Simulate Scan (Go to Form)",
+    qrCaption: "Scan this code with your phone to book from your mobile.",
+    startBtn: "Start",
 
     // BookingForm
     bookPhotobooth: "Book your Photobooth",
@@ -125,10 +137,12 @@ const translations = {
     result: "Result",
     yourTurn: "Your turn",
     step1Title: "1. Select the style for your projection",
+    step1Subtitle: "This will be the style applied to your photo.",
     noFilters: "No active filters at the moment.",
     selectFilterAlert: "Select a filter to continue",
     nextStep: "Next Step",
     step2Title: "2. Fill in your details to make the payment",
+    step2Subtitle: "We'll use this information to register your booking and payment.",
     fullName: "Full Name",
     docId: "ID / Passport",
     email: "Email",

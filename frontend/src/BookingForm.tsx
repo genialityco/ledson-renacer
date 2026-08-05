@@ -1,18 +1,46 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Stepper, Badge, Radio } from '@mantine/core';
-import { IconCamera, IconUpload, IconCreditCard, IconX, IconCheck } from '@tabler/icons-react';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton } from '@mantine/core';
+import { IconCamera, IconUpload, IconCreditCard, IconX, IconCheck, IconArrowLeft } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useLanguage } from './i18n';
 import './graffiti.css';
+import './ledson-clean.css';
 import { API_BASE_URL } from './config';
 
 interface FilterOption {
   id: string;
   name: string;
   url: string;
+}
+
+const STEP_CAPTIONS = [
+  'PASO 1 DE 4 : ELEGIR ESTILO',
+  'PASO 2 DE 4 : DATOS Y PAGO',
+  'PASO 3 DE 4 : TU FOTO',
+  'RESERVA CONFIRMADA',
+];
+
+function StepProgress({ active, onStepClick }: { active: number; onStepClick: (index: number) => void }) {
+  return (
+    <Box className="ledson-progress">
+      <Box className="ledson-progress-bars">
+        {STEP_CAPTIONS.map((_, index) => (
+          <span
+            key={index}
+            className="ledson-progress-seg"
+            data-state={index < active ? 'done' : index === active ? 'active' : undefined}
+            onClick={() => { if (index < active) onStepClick(index); }}
+          />
+        ))}
+      </Box>
+      <Text component="span" className="ledson-progress-caption">
+        {STEP_CAPTIONS[active]}
+      </Text>
+    </Box>
+  );
 }
 
 export function BookingForm() {
@@ -42,7 +70,8 @@ export function BookingForm() {
   const [franjasAvailability, setFranjasAvailability] = useState<{ franjas: any[] } | null>(null);
   const [userPickedFranja, setUserPickedFranja] = useState(false);
   const [habeasData, setHabeasData] = useState(false);
-  const [requiresInvoice, setRequiresInvoice] = useState('NO');
+  // Factura electrónica: se envía siempre como "SI" sin mostrar el campo al usuario.
+  const requiresInvoice = 'SI';
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
   const [dlocalgoLink, setDlocalgoLink] = useState('');
@@ -332,7 +361,7 @@ export function BookingForm() {
   };
 
   return (
-    <Box className="graffiti-wall" style={{ position: 'relative', minHeight: 'calc(100vh - 60px)', overflow: 'hidden' }}>
+    <Box className="graffiti-wall" style={{ position: 'relative', minHeight: 'calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h))', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
 
  <div className="paint-particles">
         <span className="particle" />
@@ -357,49 +386,35 @@ export function BookingForm() {
       <div className="drip drip--3" />
 
       <Container size="md" py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
-        <Title order={2} ta="center" mb="xl" className="graffiti-section-title">
+        <Title order={2} ta="center" className="ledson-title">
           {t('bookPhotobooth')}
         </Title>
 
-        <Stepper
-          className="graffiti-stepper"
-          active={activeStep}
-          onStepClick={setActiveStep}
-          allowNextStepsSelect={false}
-          mb="xl"
-          size={isMobile ? 'sm' : 'md'}
-        >
-          <Stepper.Step label={isMobile ? null : "Elegir Estilo"} description={isMobile ? null : "Selecciona el filtro"} />
-          <Stepper.Step label={isMobile ? null : "Pago"} description={isMobile ? null : "Ingresa datos y paga"} />
-          <Stepper.Step label={isMobile ? null : "Foto"} description={isMobile ? null : "Tómate la foto"} />
-          <Stepper.Step label={isMobile ? null : "Resultado"} description={isMobile ? null : "Tu turno"} />
-        </Stepper>
+        <StepProgress active={activeStep} onStepClick={setActiveStep} />
 
         {/* STEP 1: FILTERS */}
         {activeStep === 0 && (
-          <Box className="graffiti-panel">
-            <Text ta="center" size="lg" mb="md" fw={500}>{t('step1Title')}</Text>
+          <Box className="ledson-card">
+            <Text className="ledson-section-title">{t('step1Title')}</Text>
+            <Text className="ledson-step-subtitle">{t('step1Subtitle')}</Text>
             {filters.length === 0 ? (
-              <Text c="dimmed" ta="center">{t('noFilters')}</Text>
+              <Text c="dimmed" ta="center" mb="md">{t('noFilters')}</Text>
             ) : (
-              <Grid>
+              <Grid gutter={12} mb={22}>
                 {filters.map(f => (
-                  <Grid.Col span={{ base: 6, sm: 4 }} key={f.id}>
+                  <Grid.Col span={6} key={f.id}>
                     <Card
-                      className="graffiti-filter-card"
+                      className="ledson-filter-card"
                       data-selected={selectedFilter === f.id}
-                      shadow="sm"
-                      padding="sm"
-                      radius="md"
                       onClick={() => setSelectedFilter(f.id)}
                     >
                       <Card.Section>
-                        <Image src={f.url} height={160} alt={f.name} />
+                        <Image src={f.url} height={90} alt={f.name} />
                       </Card.Section>
-                      <Text fw={500} ta="center" mt="md">{f.name}</Text>
+                      <Text>{f.name}</Text>
                       {selectedFilter === f.id && (
-                        <Badge className="graffiti-badge" variant="filled" style={{ position: 'absolute', top: 10, right: 10 }}>
-                          <IconCheck size={14} />
+                        <Badge className="ledson-badge-selected" variant="filled" style={{ position: 'absolute', top: 14, right: 14 }}>
+                          <IconCheck size={13} />
                         </Badge>
                       )}
                     </Card>
@@ -407,25 +422,24 @@ export function BookingForm() {
                 ))}
               </Grid>
             )}
-            <Group justify="center" mt="xl">
-              <Button
-                size="lg"
-                className="graffiti-btn"
-                onClick={() => {
-                  if (filtersEnabled && filters.length > 0 && !selectedFilter) return alert(t('selectFilterAlert'));
-                  setActiveStep(1);
-                }}
-              >
-                {t('nextStep')}
-              </Button>
-            </Group>
+            <Button
+              fullWidth
+              className="ledson-btn-primary"
+              onClick={() => {
+                if (filtersEnabled && filters.length > 0 && !selectedFilter) return alert(t('selectFilterAlert'));
+                setActiveStep(1);
+              }}
+            >
+              {t('nextStep')}
+            </Button>
           </Box>
         )}
 
         {/* STEP 2: DATA & PAYMENT */}
         {activeStep === 1 && (
-          <Box component="form" onSubmit={handleDataSubmitAndPay} className="graffiti-panel">
-            <Text fw={500} size="lg" mb="md">{t('step2Title')}</Text>
+          <Box component="form" onSubmit={handleDataSubmitAndPay} className="ledson-card">
+            <Text className="ledson-section-title">{t('step2Title')}</Text>
+            <Text className="ledson-step-subtitle">{t('step2Subtitle')}</Text>
             <Grid>
               <Grid.Col span={12}>
                 <TextInput label={t('fullName')} required value={name} onChange={(e) => setName(e.currentTarget.value)} />
@@ -461,7 +475,7 @@ export function BookingForm() {
                 <Grid.Col span={12}>
                   <Text size="sm" mb={4}>
                     {t('approxFranjaLabel')}{' '}
-                    <Text span fw={700} style={{ color: '#29c5ff' }}>
+                    <Text span fw={700} style={{ color: '#1c5cab' }}>
                       {timeSlot ? timeSlot.replace('-', ' - ') : '...'}
                     </Text>
                   </Text>
@@ -481,18 +495,9 @@ export function BookingForm() {
                 </Grid.Col>
               )}
 
-              <Grid.Col span={12}>
-                <Radio.Group label={t('requiresInvoiceLabel')} withAsterisk value={requiresInvoice} onChange={setRequiresInvoice}>
-                  <Group mt="xs">
-                    <Radio value="SI" label={t('yesLabel')} />
-                    <Radio value="NO" label={t('noLabel')} />
-                  </Group>
-                </Radio.Group>
-              </Grid.Col>
-
               <Grid.Col span={12} mt="sm">
                 <Checkbox
-                  label={<Text size="sm">{t('habeasDataText1')}<a href="#" target="_blank" style={{ color: '#ffd23f' }}>{t('habeasDataText2')}</a>.</Text>}
+                  label={<Text size="sm">{t('habeasDataText1')}<a href="#" target="_blank">{t('habeasDataText2')}</a>.</Text>}
                   checked={habeasData}
                   onChange={(event) => setHabeasData(event.currentTarget.checked)}
                   required
@@ -501,11 +506,13 @@ export function BookingForm() {
 
               <Grid.Col span={12}>
                 <Group justify="space-between" mt="md">
-                  <Button className="graffiti-btn-ghost" onClick={() => setActiveStep(0)}>{t('back')}</Button>
+                  <Button className="ledson-btn-outline ledson-btn-back" onClick={() => setActiveStep(0)} aria-label={t('back')}>
+                    <IconArrowLeft size={18} />
+                  </Button>
                   {paymentGateway === 'dlocalgo' && dlocalgoLink && paymentStatus?.startsWith('PENDING_') ? (
                     <Button
-                      size="lg"
-                      className="graffiti-btn"
+                      className="ledson-btn-primary"
+                      style={{ flex: 1 }}
                       onClick={async () => {
                         try {
                           const pid = paymentStatus.split('_')[1];
@@ -527,13 +534,13 @@ export function BookingForm() {
                   ) : (
                     <Button
                       type="submit"
-                      size="lg"
-                      className="graffiti-btn"
-                      leftSection={<IconCreditCard size={24} />}
+                      className="ledson-btn-primary"
+                      style={{ flex: 1 }}
+                      leftSection={<IconCreditCard size={20} />}
                       loading={isSubmittingForm}
                       disabled={isSubmittingForm}
                     >
-                      {t('payWith')} {paymentGateway === 'dlocalgo' ? 'DLocal Go' : 'Wompi'} ($15.000 COP)
+                      {t('payWith')} {paymentGateway === 'dlocalgo' ? 'DLocal Go' : 'Wompi'} (${servicePrice.toLocaleString('es-CO')} COP)
                     </Button>
                   )}
                 </Group>
@@ -544,59 +551,82 @@ export function BookingForm() {
 
         {/* STEP 3: PHOTO CAPTURE */}
         {activeStep === 2 && (
-          <Box className="graffiti-panel" style={{ textAlign: 'center' }}>
-            <Title order={3} mb="sm" className="graffiti-section-title">{t('paymentApproved')}</Title>
-            <Text fw={500} size="lg" mb="xl">{t('nowUploadPhoto')}</Text>
+          <Box className="ledson-card">
+            <Text className="ledson-section-title">{t('paymentApproved')}</Text>
+            <Text className="ledson-step-subtitle">{t('nowUploadPhoto')}</Text>
 
-            <Group justify="center" mb="md">
-              <FileInput
-                key={fileImageBase64 ? 'loaded' : 'empty'}
-                placeholder={t('gallery')}
-                accept="image/*"
-                onChange={(file) => { setUseWebcam(false); handleFileChange(file); }}
-                leftSection={<IconUpload size={16} />}
-                style={{ flex: 1, maxWidth: '200px' }}
-              />
-              <Button className="graffiti-btn-ghost" onClick={() => { setUseWebcam(true); openCameraModal(); }} leftSection={<IconCamera size={16} />}>
-                {t('takeSelfie')}
-              </Button>
-            </Group>
+            {!((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
+              <Grid mb={20} gutter={12}>
+                <Grid.Col span={6}>
+                  <UnstyledButton
+                    className="ledson-upload-card"
+                    onClick={() => { setUseWebcam(true); openCameraModal(); }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%' }}
+                  >
+                    <Box className="ledson-upload-icon"><IconCamera size={20} /></Box>
+                    <Text size="sm" fw={500} style={{ color: '#33363b' }}>{t('takeSelfie')}</Text>
+                  </UnstyledButton>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <Box
+                    className="ledson-upload-card"
+                    style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                  >
+                    <Box className="ledson-upload-icon"><IconUpload size={18} /></Box>
+                    <Text size="sm" fw={500} style={{ color: '#33363b' }}>{t('gallery')}</Text>
+                    <FileInput
+                      key={fileImageBase64 ? 'loaded' : 'empty'}
+                      accept="image/*"
+                      onChange={(file) => { setUseWebcam(false); handleFileChange(file); }}
+                      variant="unstyled"
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                    />
+                  </Box>
+                </Grid.Col>
+              </Grid>
+            )}
 
             {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
-              <Box ta="center" mt="md" p="sm" style={{ maxWidth: '300px', margin: '0 auto' }}>
-                <Text size="xs" c="dimmed" mb="xs">{t('selectedImage')}</Text>
-                <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" className="graffiti-preview" style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'cover' }} />
-                <Button fullWidth variant="light" color="red" mt="sm" leftSection={<IconX size={16} />} onClick={() => { setCapturedImage(null); setFileImageBase64(null); setUseWebcam(false); }}>
+              <Box mb={18}>
+                <Box className="ledson-preview-wrap">
+                  <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" />
+                </Box>
+                <Button
+                  className="ledson-preview-remove-btn"
+                  leftSection={<IconX size={14} />}
+                  onClick={() => { setCapturedImage(null); setFileImageBase64(null); setUseWebcam(false); }}
+                >
                   {t('removeImage')}
                 </Button>
               </Box>
             )}
 
-            <Box mt="xl" ta="center">
-              <Text fw={600} size="md" mb="md" style={{ color: '#ffd23f' }}>
-                {t('magicReady')}
-              </Text>
-              <Group justify="center">
-                <Button
-                  size="lg"
-                  className="graffiti-btn"
-                  loading={isUploadingPhoto}
-                  onClick={submitPhotoAndConfirm}
-                  disabled={(!useWebcam && !fileImageBase64) || (useWebcam && !capturedImage)}
-                >
-                  {t('next')}
-                </Button>
-              </Group>
-            </Box>
+            <Text size="sm" fw={500} mb="md" style={{ color: '#1c5cab' }}>
+              {t('magicReady')}
+            </Text>
+            <Group gap={10}>
+              <Button className="ledson-btn-outline ledson-btn-back" onClick={() => setActiveStep(1)} aria-label={t('back')}>
+                <IconArrowLeft size={18} />
+              </Button>
+              <Button
+                className="ledson-btn-primary"
+                style={{ flex: 1 }}
+                loading={isUploadingPhoto}
+                onClick={submitPhotoAndConfirm}
+                disabled={(!useWebcam && !fileImageBase64) || (useWebcam && !capturedImage)}
+              >
+                {t('next')}
+              </Button>
+            </Group>
           </Box>
         )}
 
         {/* STEP 4: FINAL RESULT / QR VIEW */}
         {activeStep === 3 && (
-          <Box className="graffiti-panel" style={{ textAlign: 'center' }}>
+          <Box className="ledson-card ledson-card--center">
             {paymentStatus === 'APPROVED' && finalResult?.franjaFull ? (
               <>
-                <Title order={3} mb="md" className="graffiti-section-title" style={{ color: '#ff8c1e' }}>{t('franjaFullTitle')}</Title>
+                <Title order={3} mb="md" className="ledson-section-title" style={{ color: '#d97706' }}>{t('franjaFullTitle')}</Title>
                 <Text size="lg" mb="md">
                   {t('franjaFullMsg')}
                 </Text>
@@ -616,8 +646,7 @@ export function BookingForm() {
                   <Button
                     fullWidth
                     mt="md"
-                    size="lg"
-                    className="graffiti-btn"
+                    className="ledson-btn-primary"
                     loading={isAssigningFranja}
                     disabled={!selectedFranja || isAssigningFranja}
                     onClick={handleAssignFranja}
@@ -628,38 +657,41 @@ export function BookingForm() {
               </>
             ) : paymentStatus === 'APPROVED' ? (
               <>
-                <Title order={3} mb="md" className="graffiti-section-title">{t('bookingCompleted')}</Title>
+                <Box className="ledson-result-icon"><IconCheck size={28} /></Box>
+                <Title order={3} mb="md" className="ledson-section-title">{t('bookingCompleted')}</Title>
                 {finalResult?.queuePosition && (
-                  <Text size="xl" fw={700} style={{ color: '#29c5ff' }} mb="xs">
+                  <Text size="xl" fw={700} style={{ color: '#1c5cab' }} mb="xs">
                     {t('queueTurn')}{finalResult.queuePosition}
                   </Text>
                 )}
                 {finalResult?.timeSlot && (
-                  <Text size="lg" mb="xs">
-                    {t('franjaAssigned')} <Text span fw={700} style={{ color: '#29c5ff' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
+                  <Text size="sm" mb="xs" style={{ color: '#33363b' }}>
+                    {t('franjaAssigned')} <Text span fw={700} style={{ color: '#1c5cab' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
                   </Text>
                 )}
-                <Text size="lg" mb="xl">
-                  {t('assignedTime')} <Text span fw={700} style={{ color: '#ffd23f' }}>{finalResult?.exactTime || t('unassigned')}</Text>.
+                <Text size="sm" mb="xl" style={{ color: '#33363b' }}>
+                  {t('assignedTime')} <Text span fw={700} style={{ color: '#1c5cab' }}>{finalResult?.exactTime || t('unassigned')}</Text>.
                 </Text>
-                <Box ta="center" mt="md" p="sm" mb="xl">
+                <Box mb="xl">
                   <Text size="sm" c="dimmed" mb="xs">{t('yourPhotoReady')}</Text>
-                  <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Tu Foto" className="graffiti-preview" style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'cover' }} />
+                  <Box className="ledson-preview-wrap">
+                    <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Tu Foto" />
+                  </Box>
                 </Box>
-                <Text c="dimmed" mb="md">
+                <Text size="sm" c="dimmed" mb="md">
                   {t('searchBookingText')}
                 </Text>
-                <Button size="lg" className="graffiti-btn" onClick={() => navigate('/my-bookings')}>
+                <Button fullWidth className="ledson-btn-primary" onClick={() => navigate('/my-bookings')}>
                   {t('goToMyBookings')}
                 </Button>
               </>
             ) : (
               <>
-                <Title order={3} mb="md" className="graffiti-section-title" style={{ color: '#ff8c1e' }}>{t('paymentProcessing')}</Title>
-                <Text size="lg" mb="xl">
+                <Title order={3} mb="md" className="ledson-section-title" style={{ color: '#d97706' }}>{t('paymentProcessing')}</Title>
+                <Text size="sm" mb="xl" style={{ color: '#33363b' }}>
                   {t('dontWorry')}
                 </Text>
-                <Button size="lg" className="graffiti-btn" onClick={() => navigate('/my-bookings')}>
+                <Button fullWidth className="ledson-btn-primary" onClick={() => navigate('/my-bookings')}>
                   {t('goToMyBookings')}
                 </Button>
               </>
@@ -673,13 +705,14 @@ export function BookingForm() {
           fullScreen={isMobile}
           size="xl"
           title={t('poseTitle')}
+          className="ledson-modal"
           styles={{ body: { height: isMobile ? 'calc(100vh - 60px)' : 'auto', display: 'flex', flexDirection: 'column' } }}
         >
           <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <Box style={{ width: '100%', maxWidth: '600px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000' }}>
               <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={{ facingMode: 'user', height: 720 }} style={{ width: '100%', height: '60vh', objectFit: 'cover', display: 'block' }} />
             </Box>
-            <Button size="xl" radius="xl" className="graffiti-btn" mt="xl" onClick={capture} leftSection={<IconCamera size={24} />}>
+            <Button className="ledson-btn-primary" mt="xl" onClick={capture} leftSection={<IconCamera size={20} />}>
               {t('capture')}
             </Button>
           </Box>

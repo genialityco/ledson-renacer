@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Container, Title, Text, Button, Box, Group } from '@mantine/core';
-import { IconCamera } from '@tabler/icons-react';
+import { IconArrowRight } from '@tabler/icons-react';
 import QRCode from 'react-qr-code';
 import { useNavigate } from 'react-router-dom';
+import { useMediaQuery } from '@mantine/hooks';
 import { useLanguage } from './i18n';
 import './falling.css';
 import './graffiti.css';
+import './ledson-clean.css';
 import { API_BASE_URL } from './config';
 
 interface PhotoboothImage {
@@ -18,6 +20,11 @@ export function Home() {
   const [images, setImages] = useState<PhotoboothImage[]>([]);
   const navigate = useNavigate();
   const { t } = useLanguage();
+  // Mismos puntos de quiebre que ledson-clean.css (400 / 700) para que el
+  // QR quede proporcional a la tarjeta en cada tamaño.
+  const isTinyMobile = useMediaQuery('(max-width: 400px)');
+  const isDesktop = useMediaQuery('(min-width: 700px)');
+  const qrSize = isTinyMobile ? 90 : isDesktop ? 170 : 140;
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/images/seed`, { method: 'POST' })
@@ -28,7 +35,7 @@ export function Home() {
   }, []);
 
   return (
-    <Box className="graffiti-wall" style={{ position: 'relative', minHeight: 'calc(100vh - 60px)', overflow: 'hidden' }}>
+    <Box className="graffiti-wall" style={{ position: 'relative', minHeight: 'calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h))', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
  <div className="paint-particles">
         <span className="particle" />
         <span className="particle" />
@@ -87,32 +94,50 @@ export function Home() {
       </div>
 
       {/* Contenido principal */}
-      <Container size="md" style={{ position: 'relative', zIndex: 2, paddingTop: '8vh' }}>
-        <Box className="graffiti-card">
-          <span className="tag-corner tag-corner--tl">★</span>
-          <span className="tag-corner tag-corner--br">✦</span>
+      <Container size="md" py={{ base: 6, sm: 'xl' }} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
+        <Title order={1} ta="center" className="ledson-title">
+          {t('homeTitle')}
+        </Title>
+        <Text ta="center" className="ledson-subtitle">
+          {t('homeSubtitle')}
+        </Text>
 
-          <Title order={1} className="graffiti-title">
-            {t('captureMoment')}
-          </Title>
+        <Box className="ledson-progress">
+          <Box className="ledson-progress-bars">
+            <span className="ledson-progress-seg" data-state="active" />
+            <span className="ledson-progress-seg" />
+            <span className="ledson-progress-seg" />
+            <span className="ledson-progress-seg" />
+            <span className="ledson-progress-seg" />
+          </Box>
+          <Text component="span" className="ledson-progress-caption">INICIO</Text>
+        </Box>
 
-          <Text className="graffiti-sub">
-            {t('scanQR')}
-          </Text>
-
-          <Box className="qr-frame">
-            <QRCode value={`${window.location.origin}/booking`} size={200} />
+        <Box className="ledson-card ledson-card--center">
+          <Box className="ledson-card-bleed-top">
+            <img src="/imagenes/inicioc13.png" alt="Comuna 13, Medellín" />
           </Box>
 
-          <Group justify="center" align="center" gap="md">
+          <Title order={2} className="ledson-welcome-title">
+            {t('welcomeTitle')}
+          </Title>
+          <Text className="ledson-body-text">{t('welcomeText1')}</Text>
+          <Text className="ledson-body-text">{t('welcomeText2')}</Text>
+
+          <Box className="ledson-qr-box">
+            <QRCode value={`${window.location.origin}/booking`} size={qrSize} />
+          </Box>
+          <Text className="ledson-qr-caption">{t('qrCaption')}</Text>
+
+          <Group justify="center" align="center" gap="md" mt={{ base: 'xs', sm: 'lg' }}>
             <Button
-              size="xl"
-              className="graffiti-btn"
-              leftSection={<IconCamera size={24} />}
-              radius="md"
+              fullWidth
+              size="lg"
+              className="ledson-btn-primary"
+              rightSection={<IconArrowRight size={20} />}
               onClick={() => navigate('/booking')}
             >
-              {t('simulateScan')}
+              {t('startBtn')}
             </Button>
           </Group>
         </Box>

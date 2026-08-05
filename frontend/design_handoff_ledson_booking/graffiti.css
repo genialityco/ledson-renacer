@@ -1,0 +1,561 @@
+/* ============ IMPORT FUENTES ============ */
+/* Asegúrate de tener esto también en index.html para mejor carga:
+   <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Bangers&family=Anton&display=swap" rel="stylesheet" /> */
+
+/* ============ FONDO DE MURO PINTADO ============ */
+.graffiti-wall {
+  background:
+    radial-gradient(circle at 18% 22%, rgba(255, 80, 160, 0.16), transparent 30%),
+    radial-gradient(circle at 82% 28%, rgba(40, 200, 255, 0.14), transparent 34%),
+    radial-gradient(circle at 45% 80%, rgba(255, 190, 30, 0.13), transparent 38%),
+    linear-gradient(160deg, #1f1d24 0%, #2b2832 45%, #161419 100%);
+  background-color: #1f1d24;
+}
+
+/* Textura de concreto rugoso */
+.graffiti-wall::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23c)' opacity='0.14'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ============ NUBES DE SPRAY (halo difuso + partículas) ============ */
+.spray-cloud {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 50%;
+}
+.spray-cloud::after {
+  content: '';
+  position: absolute;
+  inset: -25%;
+  border-radius: 50%;
+  background-image:
+    radial-gradient(circle, currentColor 0.8px, transparent 1.4px),
+    radial-gradient(circle, currentColor 1.1px, transparent 1.8px);
+  background-size: 7px 7px, 15px 15px;
+  background-position: 0 0, 4px 6px;
+  -webkit-mask-image: radial-gradient(circle, #000 25%, transparent 70%);
+  mask-image: radial-gradient(circle, #000 25%, transparent 70%);
+  opacity: 0.6;
+}
+.spray-cloud--pink {
+  width: 380px; height: 380px;
+  top: -100px; left: -80px;
+  color: #ff2d8b;
+  background: radial-gradient(circle, rgba(255,45,139,0.40) 0%, transparent 60%);
+}
+.spray-cloud--cyan {
+  width: 320px; height: 320px;
+  bottom: -90px; right: -70px;
+  color: #1fc4ff;
+  background: radial-gradient(circle, rgba(31,196,255,0.36) 0%, transparent 60%);
+}
+.spray-cloud--yellow {
+  width: 260px; height: 260px;
+  top: 46%; right: 9%;
+  color: #ffc107;
+  background: radial-gradient(circle, rgba(255,193,7,0.34) 0%, transparent 60%);
+}
+
+/* ============ CHORREADOS DE PINTURA (forma orgánica + gota que cae) ============ */
+.drip {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* clip-path da el borde irregular del escurrido, ancho variable */
+  clip-path: polygon(
+    35% 0%, 65% 0%,
+    68% 12%, 60% 28%, 70% 42%, 58% 58%,
+    66% 74%, 50% 100%, 34% 74%,
+    42% 58%, 30% 42%, 40% 28%, 32% 12%
+  );
+  filter: drop-shadow(1px 2px 1px rgba(0,0,0,0.45));
+}
+/* brillo (highlight) lateral para dar volumen al chorreado */
+.drip::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 35%;
+  width: 25%; height: 100%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.55), rgba(255,255,255,0.05));
+  border-radius: 50%;
+  filter: blur(1px);
+}
+/* gota que se desprende y cae */
+.drip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 14px; height: 18px;
+  background: inherit;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  transform: translateX(-50%);
+  box-shadow: inset 2px -2px 3px rgba(0,0,0,0.3), inset -2px 1px 2px rgba(255,255,255,0.4);
+  animation: drip-fall 4.5s cubic-bezier(0.55, 0.06, 0.68, 0.19) infinite;
+}
+.drip--1 { left: 24%; width: 26px; height: 160px; background: #ff2d8b; }
+.drip--1::after { animation-delay: 0s; }
+.drip--2 { left: 56%; width: 30px; height: 220px; background: #1fc4ff; }
+.drip--2::after { animation-delay: 1.4s; }
+.drip--3 { left: 79%; width: 22px; height: 120px; background: #ffc107; }
+.drip--3::after { animation-delay: 0.7s; }
+
+@keyframes drip-fall {
+  0%   { transform: translateX(-50%) translateY(0) scaleY(1); opacity: 0; }
+  8%   { opacity: 1; }
+  70%  { transform: translateX(-50%) translateY(50px) scaleY(1.4); opacity: 1; }
+  100% { transform: translateX(-50%) translateY(90px) scaleY(1.8); opacity: 0; }
+}
+
+/* ============ SALPICADURAS IRREGULARES (SVG inyectado en TSX) ============ */
+.splat {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.88;
+  filter: drop-shadow(2px 3px 2px rgba(0,0,0,0.4));
+}
+.splat--1 { top: 12%; left: 5%;  width: 150px; transform: rotate(-18deg); }
+.splat--2 { bottom: 14%; left: 11%; width: 110px; transform: rotate(40deg); }
+.splat--3 { top: 30%; right: 4%;  width: 130px; transform: rotate(12deg); }
+
+/* ============ TARJETA / PANEL CENTRAL ============ */
+.graffiti-card,
+.graffiti-panel {
+  position: relative;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 3rem 2.5rem 3.2rem;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    rgba(18, 17, 23, 0.88);
+  backdrop-filter: blur(10px);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 0 7px #0a0a0a,
+    10px 12px 0 rgba(255,45,139,0.5),
+    0 22px 55px rgba(0, 0, 0, 0.6);
+  transform: rotate(-0.7deg);
+}
+.graffiti-panel { text-align: left; }
+.graffiti-card { text-align: center; }
+
+/* cinta adhesiva esquina superior del panel */
+.graffiti-panel::before {
+  content: '';
+  position: absolute;
+  top: -14px; left: 32px;
+  width: 90px; height: 28px;
+  background: rgba(255, 193, 7, 0.5);
+  transform: rotate(-6deg);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+  z-index: 3;
+}
+
+.tag-corner {
+  position: absolute;
+  font-size: 2rem;
+  color: #ffc107;
+  text-shadow: 2px 2px 0 #ff2d8b;
+  z-index: 3;
+}
+.tag-corner--tl { top: 12px; left: 18px; transform: rotate(-15deg); }
+.tag-corner--br { bottom: 12px; right: 18px; transform: rotate(20deg); }
+
+/* ============ TIPOGRAFÍA SPRAY 3D (alto contraste) ============ */
+.graffiti-title,
+.graffiti-section-title {
+  font-family: 'Anton', 'Bangers', 'Impact', sans-serif !important;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  line-height: 1.02;
+  color: #ffd83f;
+  /* contorno negro grueso para despegar del fondo */
+  -webkit-text-stroke: 2.5px #0a0a0a;
+  paint-order: stroke fill;
+  /* relieve 3D: bloque de sombras apiladas (extrusión) + brillo de spray arriba */
+  text-shadow:
+    1px 1px 0 #0a0a0a,
+    2px 2px 0 #ff2d8b,
+    3px 3px 0 #ff2d8b,
+    4px 4px 0 #c91d6c,
+    5px 5px 0 #1fc4ff,
+    6px 6px 0 #1497c4,
+    7px 7px 0 #0a0a0a,
+    8px 9px 14px rgba(0,0,0,0.65),
+    0 0 18px rgba(255,216,63,0.45);
+  transform: rotate(-2deg);
+}
+.graffiti-title {
+  font-size: clamp(2.8rem, 8vw, 4.4rem) !important;
+  margin-bottom: 1.4rem !important;
+}
+.graffiti-section-title {
+  font-size: clamp(1.8rem, 5vw, 2.6rem) !important;
+}
+
+.graffiti-sub {
+  font-size: 1.12rem !important;
+  color: #f2f2f2 !important;
+  line-height: 1.6;
+  margin-bottom: 2rem !important;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+}
+
+/* ============ MARCO DEL QR ============ */
+.qr-frame {
+  position: relative;
+  display: inline-block;
+  padding: 16px;
+  margin-bottom: 2rem;
+  background: #fff;
+  border-radius: 6px;
+  transform: rotate(1.6deg);
+  box-shadow:
+    0 0 0 4px #0a0a0a,
+    5px 5px 0 #1fc4ff,
+    0 0 18px rgba(31,196,255,0.5);
+}
+.qr-frame::before {
+  content: '';
+  position: absolute;
+  top: -14px; right: -14px;
+  width: 38px; height: 38px;
+  background: #ff2d8b;
+  border-radius: 48% 52% 60% 40% / 55% 45% 55% 45%;
+  box-shadow: 0 0 10px rgba(255,45,139,0.7);
+}
+
+/* ============ BOTÓN PINTADO ============ */
+.graffiti-btn {
+  position: relative;
+  font-family: 'Anton', 'Bangers', 'Impact', sans-serif !important;
+  font-size: 1.1rem !important;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #fff !important;
+  background: #ff2d8b !important;
+  border: none !important;
+  border-radius: 8px !important;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+  box-shadow:
+    0 0 0 3px #0a0a0a,
+    5px 5px 0 #ffc107,
+    0 0 16px rgba(255,45,139,0.5) !important;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.2s ease !important;
+}
+.graffiti-btn:hover {
+  filter: saturate(1.25) brightness(1.05);
+  transform: translate(-2px, -2px) rotate(-1deg);
+  box-shadow: 0 0 0 3px #0a0a0a, 7px 7px 0 #1fc4ff, 0 0 22px rgba(31,196,255,0.6) !important;
+}
+.graffiti-btn:active {
+  transform: translate(3px, 3px) rotate(0deg);
+  box-shadow: 0 0 0 3px #0a0a0a, 1px 1px 0 #ffc107 !important;
+}
+
+.graffiti-btn-ghost {
+  font-family: 'Anton', 'Bangers', 'Impact', sans-serif !important;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background: transparent !important;
+  color: #fff !important;
+  border: 2.5px solid #fff !important;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.6);
+  box-shadow: 3px 3px 0 #0a0a0a !important;
+  transition: transform 0.1s ease !important;
+}
+.graffiti-btn-ghost:hover {
+  background: rgba(255,255,255,0.12) !important;
+  transform: translate(-1px,-1px);
+}
+
+/* ============ FOTOS / PREVIEW ============ */
+.graffiti-photo {
+  border: 5px solid #fff;
+  border-radius: 2px;
+  box-shadow: 3px 3px 0 #ff2d8b, 6px 6px 14px rgba(0,0,0,0.5);
+  transform: rotate(-3deg);
+}
+.graffiti-preview {
+  border: 4px solid #fff !important;
+  border-radius: 2px !important;
+  box-shadow: 4px 4px 0 #ff2d8b, 6px 6px 14px rgba(0,0,0,0.5) !important;
+  transform: rotate(-1.5deg);
+}
+
+/* ============ STEPPER ============ */
+.graffiti-stepper .mantine-Stepper-stepIcon {
+  background: #161419 !important;
+  border: 3px solid #fff !important;
+  color: #ffd83f !important;
+  font-family: 'Anton', 'Bangers', 'Impact', sans-serif !important;
+  font-size: 1.1rem !important;
+  box-shadow: 3px 3px 0 #ff2d8b !important;
+}
+.graffiti-stepper .mantine-Stepper-stepIcon[data-progress] {
+  border-color: #ffd83f !important;
+  box-shadow: 3px 3px 0 #1fc4ff !important;
+}
+.graffiti-stepper .mantine-Stepper-stepIcon[data-completed] {
+  background: #ff2d8b !important;
+  border-color: #fff !important;
+  color: #fff !important;
+}
+.graffiti-stepper .mantine-Stepper-stepLabel {
+  font-family: 'Anton', 'Bangers', 'Impact', sans-serif !important;
+  color: #fff !important;
+  letter-spacing: 0.5px;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+}
+.graffiti-stepper .mantine-Stepper-stepDescription { color: #cfcfcf !important; }
+.graffiti-stepper .mantine-Stepper-separator { background: rgba(255,255,255,0.3) !important; }
+.graffiti-stepper .mantine-Stepper-separatorActive { background: #ffd83f !important; }
+
+/* ============ PANEL: textos e inputs legibles ============ */
+.graffiti-panel .mantine-Text-root { color: #ededed; }
+.graffiti-panel .mantine-InputWrapper-label,
+.graffiti-panel .mantine-Checkbox-label { color: #ffd83f !important; font-weight: 600; }
+.graffiti-panel input,
+.graffiti-panel .mantine-Select-input {
+  background: rgba(255,255,255,0.96) !important;
+  border: 2px solid #0a0a0a !important;
+  color: #161419 !important;
+}
+.graffiti-panel input:focus,
+.graffiti-panel .mantine-Select-input:focus {
+  border-color: #ff2d8b !important;
+  box-shadow: 0 0 0 2px rgba(255,45,139,0.4) !important;
+}
+
+/* ============ FILTRO CARD ============ */
+.graffiti-filter-card {
+  background: rgba(16, 16, 24, 0.72) !important;
+  border: 3px solid #fff !important;
+  border-radius: 4px !important;
+  box-shadow: 4px 4px 0 #1fc4ff !important;
+  transition: transform 0.12s ease, box-shadow 0.12s ease !important;
+  cursor: pointer;
+}
+.graffiti-filter-card:hover {
+  transform: translate(-2px, -2px) rotate(-1deg) !important;
+  box-shadow: 6px 6px 0 #ff2d8b !important;
+}
+.graffiti-filter-card[data-selected="true"] {
+  border-color: #ffd83f !important;
+  box-shadow: 5px 5px 0 #ff2d8b, 0 0 18px rgba(255,216,63,0.55) !important;
+  transform: scale(1.02) rotate(-1deg) !important;
+}
+.graffiti-filter-card .mantine-Text-root { color: #fff !important; }
+
+.graffiti-badge {
+  background: #ff2d8b !important;
+  border: 2px solid #fff !important;
+  box-shadow: 2px 2px 0 #0a0a0a !important;
+}
+/* ============================================================
+   FONDO ANIMADO COMPARTIDO (Home + BookingForm)
+   ============================================================ */
+
+/* El muro respira: el gradiente de color deriva lentamente */
+.graffiti-wall {
+  background-size: 200% 200%, 200% 200%, 200% 200%, 100% 100%;
+  animation: wall-drift 30s ease-in-out infinite alternate;
+}
+@keyframes wall-drift {
+  0%   { background-position: 0% 0%, 100% 0%, 50% 100%, 0 0; }
+  50%  { background-position: 30% 20%, 70% 30%, 40% 80%, 0 0; }
+  100% { background-position: 10% 40%, 90% 10%, 60% 90%, 0 0; }
+}
+
+/* La textura de concreto tiene un parpadeo casi imperceptible (luz de neón) */
+.graffiti-wall::before {
+  animation: concrete-flicker 8s steps(40) infinite;
+}
+@keyframes concrete-flicker {
+  0%, 100% { opacity: 1; }
+  48%      { opacity: 0.92; }
+  50%      { opacity: 1; }
+  72%      { opacity: 0.96; }
+}
+
+/* Las nubes de spray pulsan y se mueven suavemente */
+.spray-cloud--pink {
+  animation: cloud-float-a 18s ease-in-out infinite alternate;
+}
+.spray-cloud--cyan {
+  animation: cloud-float-b 22s ease-in-out infinite alternate;
+}
+.spray-cloud--yellow {
+  animation: cloud-pulse 14s ease-in-out infinite alternate;
+}
+@keyframes cloud-float-a {
+  0%   { transform: translate(0, 0) scale(1);     opacity: 0.85; }
+  100% { transform: translate(40px, 30px) scale(1.15); opacity: 1; }
+}
+@keyframes cloud-float-b {
+  0%   { transform: translate(0, 0) scale(1.1);   opacity: 0.8; }
+  100% { transform: translate(-50px, -25px) scale(0.95); opacity: 1; }
+}
+@keyframes cloud-pulse {
+  0%   { transform: translate(0, 0) scale(0.92);  opacity: 0.7; }
+  100% { transform: translate(20px, -30px) scale(1.2); opacity: 1; }
+}
+
+/* Las partículas dentro de cada nube giran lento (textura viva) */
+.spray-cloud::after {
+  animation: particle-spin 40s linear infinite;
+}
+@keyframes particle-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ============ PARTÍCULAS DE PINTURA FLOTANDO ============ */
+.paint-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.particle {
+  position: absolute;
+  bottom: -20px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0;
+  animation: particle-rise linear infinite;
+}
+/* gotitas de distintos colores y tamaños */
+.particle:nth-child(1)  { left: 6%;  width: 10px; height: 10px; background: #ff2d8b; animation-duration: 16s; animation-delay: 0s;  }
+.particle:nth-child(2)  { left: 14%; width: 6px;  height: 6px;  background: #1fc4ff; animation-duration: 22s; animation-delay: 3s;  }
+.particle:nth-child(3)  { left: 23%; width: 12px; height: 12px; background: #ffc107; animation-duration: 19s; animation-delay: 6s;  }
+.particle:nth-child(4)  { left: 31%; width: 7px;  height: 7px;  background: #ff2d8b; animation-duration: 25s; animation-delay: 1s;  }
+.particle:nth-child(5)  { left: 42%; width: 9px;  height: 9px;  background: #1fc4ff; animation-duration: 17s; animation-delay: 8s;  }
+.particle:nth-child(6)  { left: 50%; width: 5px;  height: 5px;  background: #ffc107; animation-duration: 28s; animation-delay: 4s;  }
+.particle:nth-child(7)  { left: 58%; width: 11px; height: 11px; background: #ff2d8b; animation-duration: 20s; animation-delay: 11s; }
+.particle:nth-child(8)  { left: 67%; width: 6px;  height: 6px;  background: #1fc4ff; animation-duration: 23s; animation-delay: 2s;  }
+.particle:nth-child(9)  { left: 76%; width: 13px; height: 13px; background: #ffc107; animation-duration: 18s; animation-delay: 7s;  }
+.particle:nth-child(10) { left: 84%; width: 7px;  height: 7px;  background: #ff2d8b; animation-duration: 26s; animation-delay: 5s;  }
+.particle:nth-child(11) { left: 91%; width: 9px;  height: 9px;  background: #1fc4ff; animation-duration: 21s; animation-delay: 9s;  }
+.particle:nth-child(12) { left: 38%; width: 8px;  height: 8px;  background: #ffc107; animation-duration: 24s; animation-delay: 13s; }
+
+@keyframes particle-rise {
+  0%   { transform: translateY(0) translateX(0) scale(0.6); opacity: 0; }
+  10%  { opacity: 0.9; }
+  50%  { transform: translateY(-50vh) translateX(20px) scale(1); }
+  90%  { opacity: 0.9; }
+  100% { transform: translateY(-105vh) translateX(-15px) scale(0.7); opacity: 0; }
+}
+
+/* ============ RESPETAR PREFERENCIAS DE MOVIMIENTO ============ */
+@media (prefers-reduced-motion: reduce) {
+  .graffiti-wall,
+  .graffiti-wall::before,
+  .spray-cloud,
+  .spray-cloud::after,
+  .particle,
+  .drip::after {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   HEADER GRAFITI
+   ============================================================ */
+.graffiti-header {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px !important;
+  height: 50px !important;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='hn'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23hn)' opacity='0.1'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, #1f1d24 0%, #161419 100%) !important;
+  border: none !important;
+  /* borde inferior pintado, irregular */
+  position: relative;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+
+/* franja de pintura bajo el header con borde inferior ondulado */
+.graffiti-header::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -8px;
+  height: 12px;
+  background: repeating-linear-gradient(
+    90deg,
+    #ff2d8b 0, #ff2d8b 18%,
+    #ffc107 18%, #ffc107 36%,
+    #1fc4ff 36%, #1fc4ff 54%,
+    #ff2d8b 54%, #ff2d8b 72%,
+    #ffc107 72%, #ffc107 90%,
+    #1fc4ff 90%, #1fc4ff 100%
+  );
+  /* borde inferior tipo chorreado */
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='12' preserveAspectRatio='none'%3E%3Cpath d='M0 0 H100 V5 Q92 12 84 6 Q76 11 68 6 Q60 13 52 7 Q44 12 36 6 Q28 13 20 7 Q12 11 4 6 Q2 8 0 6 Z' fill='%23000'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='12' preserveAspectRatio='none'%3E%3Cpath d='M0 0 H100 V5 Q92 12 84 6 Q76 11 68 6 Q60 13 52 7 Q44 12 36 6 Q28 13 20 7 Q12 11 4 6 Q2 8 0 6 Z' fill='%23000'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100px 12px;
+  mask-size: 100px 12px;
+  -webkit-mask-repeat: repeat-x;
+  mask-repeat: repeat-x;
+  z-index: 2;
+}
+
+/* ============ LOGO ============ */
+.graffiti-logo {
+  cursor: pointer;
+  font-family: 'Anton', 'Bangers', 'Impact', sans-serif !important;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 1.5rem !important;
+  color: #ffd83f !important;
+  -webkit-text-stroke: 1.5px #0a0a0a;
+  paint-order: stroke fill;
+  text-shadow:
+    1px 1px 0 #ff2d8b,
+    2px 2px 0 #c91d6c,
+    3px 3px 0 #1fc4ff,
+    4px 5px 8px rgba(0,0,0,0.6);
+  transform: rotate(-1.5deg);
+  transition: transform 0.12s ease, filter 0.2s ease;
+}
+.graffiti-logo:hover {
+  transform: rotate(-1.5deg) scale(1.05);
+  filter: saturate(1.2) brightness(1.08);
+}
+
+/* ============ SWITCH DE IDIOMA ============ */
+.graffiti-switch .mantine-Switch-track {
+  background: #161419 !important;
+  border: 2.5px solid #fff !important;
+  box-shadow: 2px 2px 0 #ff2d8b;
+  cursor: pointer;
+}
+.graffiti-switch input:checked + .mantine-Switch-track {
+  background: #ff2d8b !important;
+  box-shadow: 2px 2px 0 #1fc4ff;
+}
+.graffiti-switch .mantine-Switch-thumb {
+  background: #ffd83f !important;
+  border: 2px solid #0a0a0a !important;
+}
+.graffiti-switch .mantine-Switch-trackLabel {
+  font-family: 'Anton', 'Bangers', 'Impact', sans-serif !important;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff !important;
+}
