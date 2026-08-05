@@ -1,27 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Container, Title, TextInput, Button, Card, Image, Text, Badge, Group, Box, Grid } from '@mantine/core';
 import { IconSearch, IconArrowLeft } from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { useLanguage } from './i18n';
 import { API_BASE_URL } from './config';
 
 export function UserBookingsView() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t, language } = useLanguage();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(searchParams.get('code') || '');
   const [bookings, setBookings] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query) return;
-
+  const runSearch = async (q: string) => {
+    if (!q) return;
     setLoading(true);
     setHasSearched(false);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/bookings/search/${encodeURIComponent(query)}`);
+      const res = await axios.get(`${API_BASE_URL}/api/bookings/search/${encodeURIComponent(q)}`);
       setBookings(res.data);
     } catch (err) {
       console.error('Error buscando reservas', err);
@@ -31,6 +30,19 @@ export function UserBookingsView() {
       setHasSearched(true);
     }
   };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runSearch(query);
+  };
+
+  // Si se llega desde el enlace del correo de confirmación (/my-bookings?code=XX-XX-XX),
+  // busca automáticamente con el código ya puesto en el campo.
+  useEffect(() => {
+    const codeFromLink = searchParams.get('code');
+    if (codeFromLink) runSearch(codeFromLink);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -109,18 +121,32 @@ export function UserBookingsView() {
             <Grid.Col span={{ base: 12, sm: 6 }} key={booking.id}>
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Card.Section>
-                  <Image
-                    src={booking.generatedImageUrl || booking.imageUrl}
-                    height={250}
-                    alt="Tu imagen"
-                    style={{ objectFit: 'cover' }}
-                  />
+                  {booking.mediaType === 'video' ? (
+                    <video
+                      src={booking.generatedImageUrl || booking.imageUrl}
+                      controls
+                      style={{ width: '100%', height: 250, objectFit: 'cover', display: 'block', backgroundColor: '#000' }}
+                    />
+                  ) : (
+                    <Image
+                      src={booking.generatedImageUrl || booking.imageUrl}
+                      height={250}
+                      alt="Tu imagen"
+                      style={{ objectFit: 'cover' }}
+                    />
+                  )}
                 </Card.Section>
 
                 <Group justify="space-between" mt="md" mb="xs">
                   <Text fw={500}>{booking.name}</Text>
                   {getStatusBadge(booking.status)}
                 </Group>
+
+                {booking.code && (
+                  <Text size="sm" c="dimmed" mb="xs">
+                    <strong>{t('bookingCodeLabel')}:</strong> {booking.code}
+                  </Text>
+                )}
 
                 <Text size="sm" c="dimmed" mb="xs">
                   <strong>{t('date')}</strong> {booking.bookingDate}

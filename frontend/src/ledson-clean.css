@@ -365,16 +365,28 @@ body {
 .ledson-filter-card[data-selected='true'] {
   border-color: var(--ledson-blue) !important;
 }
-.ledson-filter-card .mantine-Text-root {
+.ledson-filter-card-name {
   color: var(--ledson-text) !important;
   font-size: 14px !important;
   font-weight: 700 !important;
   text-align: left !important;
+  line-height: 1.25;
   margin-top: 8px !important;
 }
+.ledson-filter-card-desc {
+  color: var(--ledson-text-muted) !important;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
+  text-align: left !important;
+  line-height: 1.3;
+  margin-top: 2px !important;
+}
 .ledson-filter-card .mantine-Card-section img {
+  display: block;
+  width: 100%;
   border-radius: 8px !important;
-  height: 90px !important;
+  height: 130px !important;
+  object-fit: cover;
 }
 .ledson-badge-selected {
   background: var(--ledson-green) !important;
@@ -464,11 +476,13 @@ body {
   border-radius: 12px;
   overflow: hidden;
 }
-.ledson-preview-wrap img {
+.ledson-preview-wrap img,
+.ledson-preview-wrap video {
   display: block;
   width: 100%;
   height: 220px;
   object-fit: cover;
+  background: #000;
 }
 .ledson-preview-remove-btn {
   margin-top: 10px !important;
@@ -495,6 +509,19 @@ body {
   align-items: center;
   justify-content: center;
   margin: 0 auto 18px;
+}
+
+/* ============ CÓDIGO DE RESERVA ============ */
+.ledson-code-box {
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: 3px;
+  color: var(--ledson-blue);
+  background: var(--ledson-blue-soft);
+  border: 2px dashed var(--ledson-blue);
+  border-radius: 10px;
+  padding: 10px 18px;
 }
 
 /* ============ MODAL WEBCAM ============ */
@@ -540,6 +567,45 @@ body {
   .ledson-body-text {
     font-size: 15px;
   }
+  .ledson-filter-card .mantine-Card-section img {
+    height: 150px !important;
+  }
+}
+
+/* ============================================================
+   WRAPPER DE LA PANTALLA DE INICIO
+   Alto fijo (no minHeight) + overflow hidden: el contenido NUNCA
+   genera scroll, se compacta en su lugar (ver bloques @media
+   max-height más abajo). Usamos dvh con fallback a vh porque en
+   mobile 100vh puede quedar más alto que el área visible real
+   (barra del navegador), lo que rompiría el "sin scroll".
+   ============================================================ */
+.ledson-home-wrap {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h));
+  height: calc(100dvh - var(--ledson-header-h) - var(--ledson-footer-h));
+}
+
+/* Wrapper del flujo de reserva (BookingForm): mismo alto en dvh que Home,
+   pero con overflow-y auto en vez de hidden — a diferencia de Home, acá
+   varios pasos (ej. datos y pago) tienen más campos de los que caben en
+   una pantalla chica, y ahí SÍ debe poder hacer scroll en vez de recortar
+   contenido/botones. El paso 1 (elegir filtro) se compacta con los mismos
+   bloques @media max-height de abajo para no necesitar scroll en la
+   práctica, igual que Home. */
+.ledson-booking-wrap {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h));
+  height: calc(100dvh - var(--ledson-header-h) - var(--ledson-footer-h));
 }
 
 /* ============================================================
@@ -576,8 +642,164 @@ body {
     line-height: 1.4;
     margin-bottom: 7px;
   }
+  .ledson-section-title {
+    font-size: 16px !important;
+  }
+  .ledson-step-subtitle {
+    font-size: 12.5px;
+    margin-bottom: 12px;
+  }
+  .ledson-filter-card .mantine-Card-section img {
+    height: 100px !important;
+  }
+  .ledson-filter-card-name {
+    font-size: 12.5px !important;
+  }
+  .ledson-filter-card-desc {
+    font-size: 10.5px !important;
+  }
   .ledson-qr-box {
     padding: 6px;
     margin-top: 8px;
+  }
+}
+
+/* ============================================================
+   MODO COMPACTO POR ALTURA (evitar scroll vertical sin importar
+   el ancho): celulares en horizontal, tablets/laptops con poca
+   altura (ej. 1366x768). Van DESPUÉS de los bloques de ancho para
+   que ganen siempre que el alto sea limitado — el alto manda.
+   qrSize se calcula en JS (Home.tsx) con los mismos puntos de
+   quiebre (800 / 560) para que el QR acompañe al resto.
+   ============================================================ */
+@media (max-height: 800px) {
+  :root {
+    --ledson-header-h: 52px;
+    --ledson-footer-h: 28px;
+  }
+  .ledson-title {
+    font-size: 20px !important;
+    margin-bottom: 2px !important;
+  }
+  .ledson-subtitle {
+    font-size: 12.5px !important;
+  }
+  .ledson-progress {
+    margin-bottom: 8px;
+  }
+  .ledson-progress-bars {
+    margin-bottom: 4px;
+  }
+  .ledson-card {
+    padding: 14px;
+  }
+  .ledson-card-bleed-top {
+    margin: -14px -14px 10px;
+  }
+  .ledson-card-bleed-top img {
+    height: 90px;
+  }
+  .ledson-welcome-title {
+    font-size: 16px !important;
+    margin-bottom: 6px !important;
+  }
+  .ledson-body-text {
+    font-size: 12px;
+    line-height: 1.35;
+    margin-bottom: 5px;
+  }
+  .ledson-section-title {
+    font-size: 16px !important;
+  }
+  .ledson-step-subtitle {
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .ledson-filter-card .mantine-Card-section img {
+    height: 95px !important;
+  }
+  .ledson-filter-card-name {
+    font-size: 12.5px !important;
+    margin-top: 6px !important;
+  }
+  .ledson-filter-card-desc {
+    font-size: 10.5px !important;
+  }
+  .ledson-qr-box {
+    padding: 6px;
+    margin-top: 6px;
+  }
+  .ledson-qr-caption {
+    font-size: 10.5px;
+    margin-top: 4px;
+  }
+  .ledson-btn-primary,
+  .ledson-btn-outline {
+    min-height: 40px !important;
+    padding: 8px 14px !important;
+  }
+}
+
+/* Alturas muy chicas (celular en horizontal): la imagen decorativa
+   de la tarjeta se quita — es el elemento más caro en alto y es
+   puramente decorativo — para garantizar que todo lo demás quepa. */
+@media (max-height: 560px) {
+  .ledson-card-bleed-top {
+    display: none;
+  }
+  .ledson-title {
+    font-size: 16px !important;
+    margin-bottom: 2px !important;
+  }
+  .ledson-subtitle {
+    font-size: 11px !important;
+  }
+  .ledson-progress {
+    margin-bottom: 4px;
+  }
+  .ledson-progress-bars {
+    margin-bottom: 3px;
+  }
+  .ledson-card {
+    padding: 10px;
+  }
+  .ledson-welcome-title {
+    font-size: 14px !important;
+    margin-bottom: 3px !important;
+  }
+  .ledson-body-text {
+    font-size: 10.5px;
+    line-height: 1.3;
+    margin-bottom: 3px;
+  }
+  .ledson-section-title {
+    font-size: 14px !important;
+  }
+  .ledson-step-subtitle {
+    font-size: 10.5px;
+    margin-bottom: 6px;
+  }
+  .ledson-filter-card .mantine-Card-section img {
+    height: 60px !important;
+  }
+  .ledson-filter-card-name {
+    font-size: 11px !important;
+    margin-top: 4px !important;
+  }
+  .ledson-filter-card-desc {
+    display: none;
+  }
+  .ledson-qr-box {
+    padding: 4px;
+    margin-top: 4px;
+  }
+  .ledson-qr-caption {
+    font-size: 9.5px;
+    margin-top: 3px;
+  }
+  .ledson-btn-primary,
+  .ledson-btn-outline {
+    min-height: 34px !important;
+    padding: 6px 12px !important;
   }
 }

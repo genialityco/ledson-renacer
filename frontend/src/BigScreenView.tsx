@@ -187,11 +187,16 @@ export function BigScreenView() {
     }
   }, [currentItem, settings.currentProjection, settings.contentGrid?.length]);
 
-  // Lógica de expiración de la proyección
+  // Lógica de expiración de la proyección. El video usa su propia duración
+  // configurable (videoProjectionDuration) en vez de la de fotos — si el
+  // video dura menos, se repite (loop) hasta completar el tiempo; si dura
+  // más, se corta.
   useEffect(() => {
     if (settings.currentProjection && settings.currentProjection.timestamp) {
       const timeElapsed = Date.now() - settings.currentProjection.timestamp;
-      const PROJECTION_DURATION = (settings.projectionDuration || 15) * 1000;
+      const isVideoProjection = settings.currentProjection.mediaType === 'video';
+      const PROJECTION_DURATION =
+        ((isVideoProjection ? settings.videoProjectionDuration : settings.projectionDuration) || 15) * 1000;
       const timeRemaining = PROJECTION_DURATION - timeElapsed;
       
       if (timeRemaining > 0) {
@@ -294,10 +299,27 @@ export function BigScreenView() {
         >
           {(styles) => (
             <div style={{ ...styles, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, zIndex: 20 }}>
-              {displayProjection?.transitionEffect === 'spray' || true ? (
-                <SprayEffect 
-                  imageUrl={displayProjection?.imageUrl} 
-                  frameUrl={displayProjection?.frameUrl} 
+              {displayProjection?.mediaType === 'video' ? (
+                // El video se proyecta tal cual, sin el efecto de spray (que es
+                // un canvas pensado solo para revelar una imagen estática).
+                // Muteado porque los navegadores bloquean el autoplay con
+                // sonido sin interacción previa del usuario — igual que los
+                // videos de la parrilla de contenidos en este mismo componente.
+                <Box style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', backgroundColor: '#000' }}>
+                  <video
+                    key={displayProjection?.id}
+                    src={displayProjection?.imageUrl}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
+                  />
+                </Box>
+              ) : displayProjection?.transitionEffect === 'spray' || true ? (
+                <SprayEffect
+                  imageUrl={displayProjection?.imageUrl}
+                  frameUrl={displayProjection?.frameUrl}
                 />
               ) : (
                 <Box style={{ 

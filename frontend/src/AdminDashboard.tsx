@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect } from '@mantine/core';
+import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Textarea, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect } from '@mantine/core';
 import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
@@ -12,13 +12,14 @@ export function AdminDashboard() {
   const [filters, setFilters] = useState<any[]>([]);
   const [opened, { open, close }] = useDisclosure(false);
   const [newFilter, setNewFilter] = useState<any>({
-    label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: ''
+    label: '', description: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: ''
   });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [screenBgUrl, setScreenBgUrl] = useState('');
   const [headerUrl, setHeaderUrl] = useState('');
   const [footerUrl, setFooterUrl] = useState('');
   const [projectionDuration, setProjectionDuration] = useState(15);
+  const [videoProjectionDuration, setVideoProjectionDuration] = useState(15);
   const [globalGridStartTime, setGlobalGridStartTime] = useState('08:00:00');
   const [globalGridEndTime, setGlobalGridEndTime] = useState('17:00:00');
   const [isUploading, setIsUploading] = useState(false);
@@ -82,6 +83,7 @@ export function AdminDashboard() {
         setHeaderUrl(resScreen.data.headerUrl || '');
         setFooterUrl(resScreen.data.footerUrl || '');
         setProjectionDuration(resScreen.data.projectionDuration || 15);
+        setVideoProjectionDuration(resScreen.data.videoProjectionDuration || 15);
         setGlobalGridStartTime(resScreen.data.globalGridStartTime || '08:00:00');
         setGlobalGridEndTime(resScreen.data.globalGridEndTime || '17:00:00');
         setContentGrid(resScreen.data.contentGrid || []);
@@ -157,6 +159,7 @@ export function AdminDashboard() {
       headerUrl,
       footerUrl,
       projectionDuration,
+      videoProjectionDuration,
       globalGridStartTime,
       globalGridEndTime,
       contentGrid: overrideGrid || contentGrid,
@@ -451,6 +454,15 @@ export function AdminDashboard() {
             close();
           }} title={newFilter._id ? "Editar Filtro" : "Añadir Nuevo Filtro"}>
             <TextInput label="Label (Ej: Estilo Acuarela)" value={newFilter.label} onChange={e => setNewFilter({...newFilter, label: e.currentTarget.value})} mb="sm" />
+            <Textarea
+              label="Descripción corta (se muestra al cliente bajo el nombre)"
+              placeholder="Ej: Colores vivos inspirados en los murales de la Comuna 13"
+              autosize
+              minRows={2}
+              value={newFilter.description}
+              onChange={e => setNewFilter({...newFilter, description: e.currentTarget.value})}
+              mb="sm"
+            />
             <TextInput label="Valor API (Para UI)" value={newFilter.value} onChange={e => setNewFilter({...newFilter, value: e.currentTarget.value})} mb="sm" />
             <TextInput label="URL de Imagen (Ejemplo Visual)" value={newFilter.imageUrl} onChange={e => setNewFilter({...newFilter, imageUrl: e.currentTarget.value})} mb="sm" />
             
@@ -797,29 +809,39 @@ export function AdminDashboard() {
             </Grid>
 
             <Grid mb="xl" mt="md">
-              <Grid.Col span={{ base: 12, md: 4 }}>
-                <NumberInput 
-                  label="Duración Proyección IA (seg)" 
-                  value={projectionDuration} 
-                  onChange={(val) => setProjectionDuration(Number(val) || 15)} 
-                  min={5} 
+              <Grid.Col span={{ base: 12, md: 3 }}>
+                <NumberInput
+                  label="Duración Proyección Foto (seg)"
+                  value={projectionDuration}
+                  onChange={(val) => setProjectionDuration(Number(val) || 15)}
+                  min={5}
                   max={300}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 4 }}>
-                <TextInput 
-                  type="time" step={1}
-                  label="Hora Global Inicio Parrilla" 
-                  value={globalGridStartTime} 
-                  onChange={(e) => setGlobalGridStartTime(e.currentTarget.value)} 
+              <Grid.Col span={{ base: 12, md: 3 }}>
+                <NumberInput
+                  label="Duración Proyección Video (seg)"
+                  description="Si el video dura más, se corta a este tiempo"
+                  value={videoProjectionDuration}
+                  onChange={(val) => setVideoProjectionDuration(Number(val) || 15)}
+                  min={5}
+                  max={300}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 4 }}>
-                <TextInput 
+              <Grid.Col span={{ base: 12, md: 3 }}>
+                <TextInput
                   type="time" step={1}
-                  label="Hora Global Fin Parrilla" 
-                  value={globalGridEndTime} 
-                  onChange={(e) => setGlobalGridEndTime(e.currentTarget.value)} 
+                  label="Hora Global Inicio Parrilla"
+                  value={globalGridStartTime}
+                  onChange={(e) => setGlobalGridStartTime(e.currentTarget.value)}
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 3 }}>
+                <TextInput
+                  type="time" step={1}
+                  label="Hora Global Fin Parrilla"
+                  value={globalGridEndTime}
+                  onChange={(e) => setGlobalGridEndTime(e.currentTarget.value)}
                 />
               </Grid.Col>
             </Grid>
@@ -1049,7 +1071,11 @@ export function AdminDashboard() {
                     <Text size="xs" fw={700} c="dimmed">Exacto: {b.exactTime || 'N/A'}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Image src={b.generatedImageUrl || b.imageUrl} w={60} radius="md" />
+                    {b.mediaType === 'video' ? (
+                      <video src={b.generatedImageUrl || b.imageUrl} muted style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, backgroundColor: '#000' }} />
+                    ) : (
+                      <Image src={b.generatedImageUrl || b.imageUrl} w={60} radius="md" />
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Badge color={b.status === 'SHOWN' ? 'blue' : b.status === 'COMPLETED' ? 'grape' : b.status === 'GENERATED' ? 'teal' : 'orange'}>

@@ -19,6 +19,9 @@ export function AssistedBookingForm() {
   const [useWebcam, setUseWebcam] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [fileImageBase64, setFileImageBase64] = useState<string | null>(null);
+  // La webcam solo captura foto; el video únicamente se puede cargar desde
+  // archivo (no se edita ni se le aplica generación de IA, solo se proyecta).
+  const [fileMediaType, setFileMediaType] = useState<'image' | 'video'>('image');
   const [filters, setFilters] = useState<FilterOption[]>([]);
   const webcamRef = useRef<Webcam>(null);
 
@@ -104,12 +107,23 @@ export function AssistedBookingForm() {
     if (imageSrc) setCapturedImage(imageSrc);
   };
 
+  const MAX_VIDEO_MB = 80;
+
   const handleFileChange = (file: File | null) => {
     if (file) {
+      const isVideo = file.type.startsWith('video/');
+      if (isVideo && file.size > MAX_VIDEO_MB * 1024 * 1024) {
+        alert(`El video pesa demasiado (máximo ${MAX_VIDEO_MB}MB). Elige uno más liviano.`);
+        return;
+      }
+      setFileMediaType(isVideo ? 'video' : 'image');
       const reader = new FileReader();
       reader.onloadend = () => setFileImageBase64(reader.result as string);
       reader.readAsDataURL(file);
-    } else setFileImageBase64(null);
+    } else {
+      setFileImageBase64(null);
+      setFileMediaType('image');
+    }
   };
 
   const resizeImage = (base64Str: string): Promise<string> => {
@@ -142,9 +156,12 @@ export function AssistedBookingForm() {
   const submitPhotoAndConfirm = async () => {
     let finalImage = useWebcam ? capturedImage : fileImageBase64;
     if (!finalImage) return alert('Por favor, tómate una foto o sube un archivo.');
+    const isVideo = !useWebcam && fileMediaType === 'video';
     setIsUploadingPhoto(true);
     try {
-      finalImage = await resizeImage(finalImage);
+      // El video no se edita ni se recomprime (no se puede procesar con el
+      // canvas de resizeImage, que es solo para fotos) — se sube tal cual.
+      if (!isVideo) finalImage = await resizeImage(finalImage);
       const res = await axios.post(`${API_BASE_URL}/api/bookings`, {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
         imageBase64: finalImage, paymentMethod, requiresInvoice: requiresInvoice === 'SI'
@@ -243,7 +260,7 @@ export function AssistedBookingForm() {
           <Text fw={500} size="lg" mb="xl">El cliente ya está registrado. Toma la foto ahora.</Text>
           <Group justify="center" mb="md">
             <Button variant={useWebcam ? 'filled' : 'outline'} color="grape" onClick={() => { setUseWebcam(true); setFileImageBase64(null); }} leftSection={<IconCamera size={16}/>}>Usar Cámara</Button>
-            <FileInput key={fileImageBase64 ? 'loaded' : 'empty'} placeholder="Subir Archivo" accept="image/*" onChange={(file) => { setUseWebcam(false); handleFileChange(file); }} leftSection={<IconUpload size={16}/>} style={{ maxWidth: '200px' }} />
+            <FileInput key={fileImageBase64 ? 'loaded' : 'empty'} placeholder="Subir Foto o Video" accept="image/*,video/*" onChange={(file) => { setUseWebcam(false); handleFileChange(file); }} leftSection={<IconUpload size={16}/>} style={{ maxWidth: '200px' }} />
           </Group>
           {useWebcam && !capturedImage && (
             <Box style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto' }}>
@@ -253,9 +270,13 @@ export function AssistedBookingForm() {
           )}
           {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
             <Box ta="center" mt="md" p="sm" style={{ border: '1px dashed #ccc', borderRadius: '8px', maxWidth: '300px', margin: '0 auto' }}>
-              <Text size="xs" c="dimmed" mb="xs">Imagen seleccionada:</Text>
-              <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', objectFit: 'cover' }} />
-              <Button fullWidth variant="light" color="red" mt="sm" leftSection={<IconX size={16} />} onClick={() => { setCapturedImage(null); setFileImageBase64(null); setUseWebcam(useWebcam); }}>Quitar imagen</Button>
+              <Text size="xs" c="dimmed" mb="xs">{!useWebcam && fileMediaType === 'video' ? 'Video seleccionado:' : 'Imagen seleccionada:'}</Text>
+              {!useWebcam && fileMediaType === 'video' ? (
+                <video src={fileImageBase64 as string} controls style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px' }} />
+              ) : (
+                <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', objectFit: 'cover' }} />
+              )}
+              <Button fullWidth variant="light" color="red" mt="sm" leftSection={<IconX size={16} />} onClick={() => { setCapturedImage(null); setFileImageBase64(null); setFileMediaType('image'); setUseWebcam(useWebcam); }}>Quitar {!useWebcam && fileMediaType === 'video' ? 'video' : 'imagen'}</Button>
             </Box>
           )}
           <Group justify="space-between" mt="xl">

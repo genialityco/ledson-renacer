@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton } from '@mantine/core';
-import { IconCamera, IconUpload, IconCreditCard, IconX, IconCheck, IconArrowLeft } from '@tabler/icons-react';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon } from '@mantine/core';
+import { IconCamera, IconCreditCard, IconX, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -14,30 +14,52 @@ interface FilterOption {
   id: string;
   name: string;
   url: string;
+  description?: string;
 }
 
-const STEP_CAPTIONS = [
-  'PASO 1 DE 4 : ELEGIR ESTILO',
-  'PASO 2 DE 4 : DATOS Y PAGO',
-  'PASO 3 DE 4 : TU FOTO',
-  'RESERVA CONFIRMADA',
-];
+// El paso "elegir filtro" solo existe cuando la política de filtros (plan
+// settings > filtersEnabled) está activa. activeStep crudo sigue siendo
+// siempre 0=filtro, 1=datos, 2=foto, 3=confirmada — cuando el paso de filtro
+// está desactivado simplemente nunca se pasa por el 0 (ver useEffect en
+// BookingForm) y la barra/caption se corren un paso hacia atrás.
+const FILTER_STEP_LABELS = ['ELIGE TU FILTRO', 'DATOS Y PAGO', 'TU FOTO'];
+const NO_FILTER_STEP_LABELS = ['DATOS Y PAGO', 'TU FOTO'];
 
-function StepProgress({ active, onStepClick }: { active: number; onStepClick: (index: number) => void }) {
+function StepProgress({
+  activeStep,
+  filtersEnabled,
+  onStepClick,
+  onHomeClick,
+}: {
+  activeStep: number;
+  filtersEnabled: boolean;
+  onStepClick: (index: number) => void;
+  onHomeClick: () => void;
+}) {
+  const stepOffset = filtersEnabled ? 0 : 1;
+  const totalSteps = filtersEnabled ? 3 : 2;
+  const displayStep = Math.max(0, activeStep - stepOffset);
+  const labels = filtersEnabled ? FILTER_STEP_LABELS : NO_FILTER_STEP_LABELS;
+  const caption =
+    displayStep < totalSteps
+      ? `PASO ${displayStep + 1} DE ${totalSteps} : ${labels[displayStep]}`
+      : 'RESERVA CONFIRMADA';
+
   return (
     <Box className="ledson-progress">
       <Box className="ledson-progress-bars">
-        {STEP_CAPTIONS.map((_, index) => (
+        <span className="ledson-progress-seg" data-state="done" onClick={onHomeClick} />
+        {Array.from({ length: totalSteps }).map((_, index) => (
           <span
             key={index}
             className="ledson-progress-seg"
-            data-state={index < active ? 'done' : index === active ? 'active' : undefined}
-            onClick={() => { if (index < active) onStepClick(index); }}
+            data-state={index < displayStep ? 'done' : index === displayStep ? 'active' : undefined}
+            onClick={() => { if (index < displayStep) onStepClick(index + stepOffset); }}
           />
         ))}
       </Box>
       <Text component="span" className="ledson-progress-caption">
-        {STEP_CAPTIONS[active]}
+        {caption}
       </Text>
     </Box>
   );
@@ -51,9 +73,20 @@ export function BookingForm() {
   const [isFetchingCities, setIsFetchingCities] = useState(false);
   const [cameraModalOpened, { open: openCameraModal, close: closeCameraModal }] = useDisclosure(false);
   const isMobile = useMediaQuery('(max-width: 50em)');
+  // Mismo esquema responsivo que Home.tsx: el alto manda tanto como el
+  // ancho, para que el paso 1 (elegir filtro) quepa sin scroll en la
+  // mayoría de tamaños reales, igual que la home.
+  const isDesktop = useMediaQuery('(min-width: 700px)');
+  const isShort = useMediaQuery('(max-height: 800px)');
+  const isVeryShort = useMediaQuery('(max-height: 560px)');
+  const roomy = isDesktop && !isShort;
+  const containerPy = isVeryShort ? 4 : roomy ? 40 : 10;
   const [useWebcam, setUseWebcam] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [fileImageBase64, setFileImageBase64] = useState<string | null>(null);
+  // La webcam solo captura foto; el video únicamente se puede cargar desde
+  // archivo (no se edita ni se le aplica generación de IA, solo se proyecta).
+  const [fileMediaType, setFileMediaType] = useState<'image' | 'video'>('image');
   const [filters, setFilters] = useState<FilterOption[]>([]);
   const webcamRef = useRef<Webcam>(null);
 
@@ -86,6 +119,7 @@ export function BookingForm() {
   const [isAssigningFranja, setIsAssigningFranja] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -129,7 +163,7 @@ export function BookingForm() {
 
     axios.get(`${API_BASE_URL}/api/images`)
       .then((res) => {
-        setFilters(res.data.map((img: any) => ({ id: img._id, name: img.label || img.altText, url: img.imageUrl })));
+        setFilters(res.data.map((img: any) => ({ id: img._id, name: img.label || img.altText, url: img.imageUrl, description: img.description || '' })));
       });
 
     axios.get(`${API_BASE_URL}/api/schedules/settings`)
@@ -146,6 +180,13 @@ export function BookingForm() {
       })
       .catch((err) => console.error("Error fetching plan settings", err));
   }, []);
+
+  // Política de filtros desactivada: el paso "elegir filtro" no existe en el
+  // flujo, así que si por cualquier motivo el usuario cae en activeStep 0
+  // (valor inicial, o "Reserva un nuevo espacio") lo saltamos directo a datos.
+  useEffect(() => {
+    if (!filtersEnabled && activeStep === 0) setActiveStep(1);
+  }, [filtersEnabled, activeStep]);
 
   useEffect(() => {
     if (bookingDate) {
@@ -178,10 +219,12 @@ export function BookingForm() {
     }
   }, [bookingDate]);
 
-  // En modo "franjas", antes de pagar se le muestra al usuario la franja actual
-  // (aproximada) y se refresca periódicamente mientras no elija otra manualmente.
+  // En modo "franjas", se le muestra al usuario la franja actual (aproximada)
+  // y se refresca periódicamente mientras no elija otra manualmente. La UI vive
+  // en el paso de la foto (activeStep 2), así que el polling sigue activo ahí
+  // y solo se detiene al llegar al resultado final.
   useEffect(() => {
-    if (bookingSystemType !== 'franjas' || activeStep >= 2) return;
+    if (bookingSystemType !== 'franjas' || activeStep >= 3) return;
 
     const fetchFranjas = () => {
       axios.get(`${API_BASE_URL}/api/bookings/franjas`)
@@ -225,13 +268,22 @@ export function BookingForm() {
     }
   };
 
+  const MAX_VIDEO_MB = 80;
+
   const handleFileChange = (file: File | null) => {
     if (file) {
+      const isVideo = file.type.startsWith('video/');
+      if (isVideo && file.size > MAX_VIDEO_MB * 1024 * 1024) {
+        alert(t('videoTooLargeAlert').replace('{max}', String(MAX_VIDEO_MB)));
+        return;
+      }
+      setFileMediaType(isVideo ? 'video' : 'image');
       const reader = new FileReader();
       reader.onloadend = () => setFileImageBase64(reader.result as string);
       reader.readAsDataURL(file);
     } else {
       setFileImageBase64(null);
+      setFileMediaType('image');
     }
   };
 
@@ -331,7 +383,7 @@ export function BookingForm() {
         setSelectedFranja(null);
         setFinalResult((prev: any) => ({ ...prev, availableFranjas: res.data.availableFranjas }));
       } else {
-        setFinalResult({ ...res.data, franjaFull: false });
+        setFinalResult((prev: any) => ({ ...prev, ...res.data, franjaFull: false }));
       }
     } catch (err) {
       console.error('Error asignando franja:', err);
@@ -344,11 +396,15 @@ export function BookingForm() {
   const submitPhotoAndConfirm = async () => {
     let finalImage = useWebcam ? capturedImage : fileImageBase64;
     if (!finalImage || !bookingId) { alert(t('takeOrUploadAlert')); return; }
+    const isVideo = !useWebcam && fileMediaType === 'video';
     setIsUploadingPhoto(true);
     try {
-      finalImage = await resizeImage(finalImage);
+      // El video no se edita ni se recomprime (no se puede procesar con el
+      // canvas de resizeImage, que es solo para fotos) — se sube tal cual.
+      if (!isVideo) finalImage = await resizeImage(finalImage);
       const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, {
-        imageBase64: finalImage
+        imageBase64: finalImage,
+        ...(bookingSystemType === 'franjas' && timeSlot ? { timeSlot } : {}),
       });
       setFinalResult(confirmRes.data);
       setActiveStep(3);
@@ -360,8 +416,43 @@ export function BookingForm() {
     }
   };
 
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    });
+  };
+
+  // "Reserva un nuevo espacio": vuelve al paso 1 con todo el estado limpio.
+  const resetBookingFlow = () => {
+    setActiveStep(0);
+    setSelectedFilter(null);
+    setName('');
+    setDocId('');
+    setEmail('');
+    setWhatsapp('');
+    setCountry(null);
+    setCity('');
+    setBookingDate(new Date().toISOString().split('T')[0]);
+    setTimeSlot(null);
+    setUserPickedFranja(false);
+    setHabeasData(false);
+    setUseWebcam(false);
+    setCapturedImage(null);
+    setFileImageBase64(null);
+    setFileMediaType('image');
+    setBookingId(null);
+    setPaymentStatus(null);
+    setFinalResult(null);
+    setSelectedFranja(null);
+    setDlocalgoLink('');
+  };
+
+  // La webcam siempre captura foto; el video solo puede venir de un archivo.
+  const isVideoSelected = !useWebcam && fileMediaType === 'video';
+
   return (
-    <Box className="graffiti-wall" style={{ position: 'relative', minHeight: 'calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h))', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+    <Box className="graffiti-wall ledson-booking-wrap">
 
  <div className="paint-particles">
         <span className="particle" />
@@ -385,17 +476,20 @@ export function BookingForm() {
       <div className="drip drip--2" />
       <div className="drip drip--3" />
 
-      <Container size="md" py={{ base: 'md', sm: 'xl' }} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
+      <Container size="md" py={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
         <Title order={2} ta="center" className="ledson-title">
-          {t('bookPhotobooth')}
+          {t('homeTitle')}
         </Title>
+        <Text ta="center" className="ledson-subtitle">
+          {t('homeSubtitle')}
+        </Text>
 
-        <StepProgress active={activeStep} onStepClick={setActiveStep} />
+        <StepProgress activeStep={activeStep} filtersEnabled={filtersEnabled} onStepClick={setActiveStep} onHomeClick={() => navigate('/')} />
 
-        {/* STEP 1: FILTERS */}
-        {activeStep === 0 && (
+        {/* STEP 1: FILTERS (solo si la política de filtros está activa) */}
+        {filtersEnabled && activeStep === 0 && (
           <Box className="ledson-card">
-            <Text className="ledson-section-title">{t('step1Title')}</Text>
+            <Text className="ledson-section-title">1. {t('step1Title')}</Text>
             <Text className="ledson-step-subtitle">{t('step1Subtitle')}</Text>
             {filters.length === 0 ? (
               <Text c="dimmed" ta="center" mb="md">{t('noFilters')}</Text>
@@ -409,9 +503,12 @@ export function BookingForm() {
                       onClick={() => setSelectedFilter(f.id)}
                     >
                       <Card.Section>
-                        <Image src={f.url} height={90} alt={f.name} />
+                        <Image src={f.url} alt={f.name} />
                       </Card.Section>
-                      <Text>{f.name}</Text>
+                      <Text className="ledson-filter-card-name">{f.name}</Text>
+                      {f.description && (
+                        <Text className="ledson-filter-card-desc">{f.description}</Text>
+                      )}
                       {selectedFilter === f.id && (
                         <Badge className="ledson-badge-selected" variant="filled" style={{ position: 'absolute', top: 14, right: 14 }}>
                           <IconCheck size={13} />
@@ -425,10 +522,9 @@ export function BookingForm() {
             <Button
               fullWidth
               className="ledson-btn-primary"
-              onClick={() => {
-                if (filtersEnabled && filters.length > 0 && !selectedFilter) return alert(t('selectFilterAlert'));
-                setActiveStep(1);
-              }}
+              rightSection={<IconArrowRight size={20} />}
+              disabled={filtersEnabled && filters.length > 0 && !selectedFilter}
+              onClick={() => setActiveStep(1)}
             >
               {t('nextStep')}
             </Button>
@@ -438,7 +534,7 @@ export function BookingForm() {
         {/* STEP 2: DATA & PAYMENT */}
         {activeStep === 1 && (
           <Box component="form" onSubmit={handleDataSubmitAndPay} className="ledson-card">
-            <Text className="ledson-section-title">{t('step2Title')}</Text>
+            <Text className="ledson-section-title">{filtersEnabled ? 2 : 1}. {t('step2Title')}</Text>
             <Text className="ledson-step-subtitle">{t('step2Subtitle')}</Text>
             <Grid>
               <Grid.Col span={12}>
@@ -471,30 +567,6 @@ export function BookingForm() {
                 </>
               )}
 
-              {bookingSystemType === 'franjas' && (
-                <Grid.Col span={12}>
-                  <Text size="sm" mb={4}>
-                    {t('approxFranjaLabel')}{' '}
-                    <Text span fw={700} style={{ color: '#1c5cab' }}>
-                      {timeSlot ? timeSlot.replace('-', ' - ') : '...'}
-                    </Text>
-                  </Text>
-                  <Select
-                    label={t('changeFranjaLabel')}
-                    placeholder={t('selectFranja')}
-                    data={(franjasAvailability?.franjas || [])
-                      .filter((f: any) => f.available)
-                      .map((f: any) => ({
-                        value: f.timeSlot,
-                        label: `${f.timeSlot.replace('-', ' - ')}${f.isCurrent ? ` (${t('currentFranjaTag')})` : ''} — ${f.spotsLeft} ${t('spotsLabel')}`,
-                      }))}
-                    value={timeSlot}
-                    onChange={(val) => { setTimeSlot(val); setUserPickedFranja(true); }}
-                    disabled={!franjasAvailability}
-                  />
-                </Grid.Col>
-              )}
-
               <Grid.Col span={12} mt="sm">
                 <Checkbox
                   label={<Text size="sm">{t('habeasDataText1')}<a href="#" target="_blank">{t('habeasDataText2')}</a>.</Text>}
@@ -506,7 +578,11 @@ export function BookingForm() {
 
               <Grid.Col span={12}>
                 <Group justify="space-between" mt="md">
-                  <Button className="ledson-btn-outline ledson-btn-back" onClick={() => setActiveStep(0)} aria-label={t('back')}>
+                  <Button
+                    className="ledson-btn-outline ledson-btn-back"
+                    onClick={() => (filtersEnabled ? setActiveStep(0) : navigate('/'))}
+                    aria-label={t('back')}
+                  >
                     <IconArrowLeft size={18} />
                   </Button>
                   {paymentGateway === 'dlocalgo' && dlocalgoLink && paymentStatus?.startsWith('PENDING_') ? (
@@ -557,7 +633,7 @@ export function BookingForm() {
 
             {!((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
               <Grid mb={20} gutter={12}>
-                <Grid.Col span={6}>
+                <Grid.Col span={4}>
                   <UnstyledButton
                     className="ledson-upload-card"
                     onClick={() => { setUseWebcam(true); openCameraModal(); }}
@@ -567,16 +643,32 @@ export function BookingForm() {
                     <Text size="sm" fw={500} style={{ color: '#33363b' }}>{t('takeSelfie')}</Text>
                   </UnstyledButton>
                 </Grid.Col>
-                <Grid.Col span={6}>
+                <Grid.Col span={4}>
                   <Box
                     className="ledson-upload-card"
                     style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                   >
-                    <Box className="ledson-upload-icon"><IconUpload size={18} /></Box>
-                    <Text size="sm" fw={500} style={{ color: '#33363b' }}>{t('gallery')}</Text>
+                    <Box className="ledson-upload-icon"><IconPhoto size={18} /></Box>
+                    <Text size="sm" fw={500} style={{ color: '#33363b' }}>{t('uploadPhoto')}</Text>
                     <FileInput
                       key={fileImageBase64 ? 'loaded' : 'empty'}
                       accept="image/*"
+                      onChange={(file) => { setUseWebcam(false); handleFileChange(file); }}
+                      variant="unstyled"
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                    />
+                  </Box>
+                </Grid.Col>
+                <Grid.Col span={4}>
+                  <Box
+                    className="ledson-upload-card"
+                    style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                  >
+                    <Box className="ledson-upload-icon"><IconVideo size={18} /></Box>
+                    <Text size="sm" fw={500} style={{ color: '#33363b' }}>{t('uploadVideo')}</Text>
+                    <FileInput
+                      key={fileImageBase64 ? 'loaded' : 'empty'}
+                      accept="video/*"
                       onChange={(file) => { setUseWebcam(false); handleFileChange(file); }}
                       variant="unstyled"
                       style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
@@ -589,20 +681,48 @@ export function BookingForm() {
             {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
               <Box mb={18}>
                 <Box className="ledson-preview-wrap">
-                  <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" />
+                  {isVideoSelected ? (
+                    <video src={fileImageBase64 as string} controls />
+                  ) : (
+                    <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" />
+                  )}
                 </Box>
                 <Button
                   className="ledson-preview-remove-btn"
                   leftSection={<IconX size={14} />}
-                  onClick={() => { setCapturedImage(null); setFileImageBase64(null); setUseWebcam(false); }}
+                  onClick={() => { setCapturedImage(null); setFileImageBase64(null); setFileMediaType('image'); setUseWebcam(false); }}
                 >
                   {t('removeImage')}
                 </Button>
               </Box>
             )}
 
+            {bookingSystemType === 'franjas' && (
+              <Box mb="md">
+                <Text size="sm" mb={4}>
+                  {t('approxFranjaLabel')}{' '}
+                  <Text span fw={700} style={{ color: '#1c5cab' }}>
+                    {timeSlot ? timeSlot.replace('-', ' - ') : '...'}
+                  </Text>
+                </Text>
+                <Select
+                  label={t('changeFranjaLabel')}
+                  placeholder={t('selectFranja')}
+                  data={(franjasAvailability?.franjas || [])
+                    .filter((f: any) => f.available)
+                    .map((f: any) => ({
+                      value: f.timeSlot,
+                      label: `${f.timeSlot.replace('-', ' - ')}${f.isCurrent ? ` (${t('currentFranjaTag')})` : ''} — ${f.spotsLeft} ${t('spotsLabel')}`,
+                    }))}
+                  value={timeSlot}
+                  onChange={(val) => { setTimeSlot(val); setUserPickedFranja(true); }}
+                  disabled={!franjasAvailability}
+                />
+              </Box>
+            )}
+
             <Text size="sm" fw={500} mb="md" style={{ color: '#1c5cab' }}>
-              {t('magicReady')}
+              {isVideoSelected ? t('videoReady') : t('magicReady')}
             </Text>
             <Group gap={10}>
               <Button className="ledson-btn-outline ledson-btn-back" onClick={() => setActiveStep(1)} aria-label={t('back')}>
@@ -669,20 +789,49 @@ export function BookingForm() {
                     {t('franjaAssigned')} <Text span fw={700} style={{ color: '#1c5cab' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
                   </Text>
                 )}
-                <Text size="sm" mb="xl" style={{ color: '#33363b' }}>
-                  {t('assignedTime')} <Text span fw={700} style={{ color: '#1c5cab' }}>{finalResult?.exactTime || t('unassigned')}</Text>.
-                </Text>
-                <Box mb="xl">
-                  <Text size="sm" c="dimmed" mb="xs">{t('yourPhotoReady')}</Text>
-                  <Box className="ledson-preview-wrap">
-                    <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Tu Foto" />
+                {finalResult?.exactTime && finalResult.exactTime !== 'Sin asignar' && finalResult.exactTime !== 'Agotado/Lleno' ? (
+                  <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
+                    {t('assignedTime')} <Text span fw={700} style={{ color: '#1c5cab' }}>~{finalResult.exactTime}</Text>
+                  </Text>
+                ) : (
+                  <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
+                    {t('assignedTime')} <Text span fw={700} style={{ color: '#1c5cab' }}>{t('unassigned')}</Text>
+                  </Text>
+                )}
+
+                {finalResult?.code && (
+                  <Box mb="lg">
+                    <Text size="xs" c="dimmed" mb={6}>{t('bookingCodeLabel')}</Text>
+                    <Group justify="center" gap={8} wrap="nowrap">
+                      <Box className="ledson-code-box">{finalResult.code}</Box>
+                      <ActionIcon
+                        variant="light"
+                        color="blue"
+                        size={38}
+                        radius="md"
+                        onClick={() => handleCopyCode(finalResult.code)}
+                        aria-label={t('copyCode')}
+                      >
+                        {codeCopied ? <IconCheck size={18} /> : <IconCopy size={18} />}
+                      </ActionIcon>
+                    </Group>
                   </Box>
-                </Box>
-                <Text size="sm" c="dimmed" mb="md">
-                  {t('searchBookingText')}
+                )}
+
+                <Text size="sm" c="dimmed" mb="xl">
+                  {t('photoWillBeProjected')}
                 </Text>
-                <Button fullWidth className="ledson-btn-primary" onClick={() => navigate('/my-bookings')}>
-                  {t('goToMyBookings')}
+
+                <Text size="sm" fw={500} mb="xs" style={{ color: '#33363b' }}>
+                  {t('newExperienceQuestion')}
+                </Text>
+                <Button
+                  fullWidth
+                  className="ledson-btn-primary"
+                  leftSection={<IconArrowLeft size={18} />}
+                  onClick={resetBookingFlow}
+                >
+                  {t('newReservationBtn')}
                 </Button>
               </>
             ) : (

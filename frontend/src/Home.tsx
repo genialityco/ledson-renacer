@@ -20,11 +20,21 @@ export function Home() {
   const [images, setImages] = useState<PhotoboothImage[]>([]);
   const navigate = useNavigate();
   const { t } = useLanguage();
-  // Mismos puntos de quiebre que ledson-clean.css (400 / 700) para que el
-  // QR quede proporcional a la tarjeta en cada tamaño.
+  // Mismos puntos de quiebre que ledson-clean.css (400 / 700 de ancho,
+  // 800 / 560 de alto) para que el QR y los espaciados queden proporcionales
+  // en cada tamaño. El alto manda sobre el ancho: una pantalla ancha pero
+  // baja (tablet/laptop en horizontal) debe compactarse igual que un
+  // celular bajito, para nunca generar scroll vertical.
   const isTinyMobile = useMediaQuery('(max-width: 400px)');
   const isDesktop = useMediaQuery('(min-width: 700px)');
-  const qrSize = isTinyMobile ? 90 : isDesktop ? 170 : 140;
+  const isShort = useMediaQuery('(max-height: 800px)');
+  const isVeryShort = useMediaQuery('(max-height: 560px)');
+  // Modo "amplio": solo cuando hay ancho Y alto de sobra (desktop/demo real).
+  const roomy = isDesktop && !isShort;
+
+  const qrSize = isVeryShort ? 64 : isShort ? (isTinyMobile ? 76 : isDesktop ? 110 : 100) : isTinyMobile ? 90 : isDesktop ? 170 : 140;
+  const containerPy = isVeryShort ? 2 : roomy ? 40 : 6;
+  const groupMt = isVeryShort ? 6 : roomy ? 20 : 10;
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/images/seed`, { method: 'POST' })
@@ -35,7 +45,7 @@ export function Home() {
   }, []);
 
   return (
-    <Box className="graffiti-wall" style={{ position: 'relative', minHeight: 'calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h))', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+    <Box className="graffiti-wall ledson-home-wrap">
  <div className="paint-particles">
         <span className="particle" />
         <span className="particle" />
@@ -94,7 +104,7 @@ export function Home() {
       </div>
 
       {/* Contenido principal */}
-      <Container size="md" py={{ base: 6, sm: 'xl' }} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
+      <Container size="md" py={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
         <Title order={1} ta="center" className="ledson-title">
           {t('homeTitle')}
         </Title>
@@ -129,7 +139,7 @@ export function Home() {
           </Box>
           <Text className="ledson-qr-caption">{t('qrCaption')}</Text>
 
-          <Group justify="center" align="center" gap="md" mt={{ base: 'xs', sm: 'lg' }}>
+          <Group justify="center" align="center" gap="md" mt={groupMt}>
             <Button
               fullWidth
               size="lg"
