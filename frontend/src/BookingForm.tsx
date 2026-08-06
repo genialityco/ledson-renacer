@@ -494,7 +494,7 @@ export function BookingForm() {
             {filters.length === 0 ? (
               <Text c="dimmed" ta="center" mb="md">{t('noFilters')}</Text>
             ) : (
-              <Grid gutter={12} mb={22}>
+              <Grid gap={12} mb={22}>
                 {filters.map(f => (
                   <Grid.Col span={6} key={f.id}>
                     <Card
@@ -632,7 +632,7 @@ export function BookingForm() {
             <Text className="ledson-step-subtitle">{t('nowUploadPhoto')}</Text>
 
             {!((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
-              <Grid mb={20} gutter={12}>
+              <Grid mb={20} gap={12}>
                 <Grid.Col span={4}>
                   <UnstyledButton
                     className="ledson-upload-card"
