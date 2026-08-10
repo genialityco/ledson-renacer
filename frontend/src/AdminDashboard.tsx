@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Textarea, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect } from '@mantine/core';
-import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin } from '@tabler/icons-react';
+import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,9 @@ export function AdminDashboard() {
   const [newFilter, setNewFilter] = useState<any>({
     label: '', description: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: ''
   });
+  const [sellers, setSellers] = useState<any[]>([]);
+  const [sellerModalOpened, { open: openSellerModal, close: closeSellerModal }] = useDisclosure(false);
+  const [newSeller, setNewSeller] = useState<any>({ name: '' });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [screenBgUrl, setScreenBgUrl] = useState('');
   const [headerUrl, setHeaderUrl] = useState('');
@@ -60,16 +63,18 @@ export function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const [resBookings, resFilters, resScreen, resTemplates, resScheduleSettings, resPlanSettings] = await Promise.all([
+      const [resBookings, resFilters, resScreen, resTemplates, resScheduleSettings, resPlanSettings, resSellers] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/bookings`),
         axios.get(`${API_BASE_URL}/api/images/admin`),
         axios.get(`${API_BASE_URL}/api/bookings/screen-settings`),
         axios.get(`${API_BASE_URL}/api/schedules/templates`),
         axios.get(`${API_BASE_URL}/api/schedules/settings`),
-        axios.get(`${API_BASE_URL}/api/plans/settings`)
+        axios.get(`${API_BASE_URL}/api/plans/settings`),
+        axios.get(`${API_BASE_URL}/api/sellers/admin`)
       ]);
       setBookings(resBookings.data);
       setFilters(resFilters.data);
+      setSellers(resSellers.data);
       setTemplates(resTemplates.data || []);
       setSlotDuration(resScheduleSettings.data?.slotDuration || 1);
       setFranjaDuration(resScheduleSettings.data?.franjaDuration || 15);
@@ -137,6 +142,29 @@ export function AdminDashboard() {
 
   const handleToggleFilterStatus = async (id: string, active: boolean) => {
     await axios.put(`${API_BASE_URL}/api/images/${id}`, { active });
+    fetchData();
+  };
+
+  const handleAddSeller = async () => {
+    if (newSeller._id) {
+      const { _id, ...updateData } = newSeller;
+      await axios.put(`${API_BASE_URL}/api/sellers/${_id}`, updateData);
+    } else {
+      await axios.post(`${API_BASE_URL}/api/sellers`, newSeller);
+    }
+
+    setNewSeller({ name: '' });
+    closeSellerModal();
+    fetchData();
+  };
+
+  const handleEditSeller = (s: any) => {
+    setNewSeller(s);
+    openSellerModal();
+  };
+
+  const handleToggleSellerStatus = async (id: string, active: boolean) => {
+    await axios.put(`${API_BASE_URL}/api/sellers/${id}`, { active });
     fetchData();
   };
 
@@ -343,6 +371,7 @@ export function AdminDashboard() {
       <Tabs defaultValue="bookings">
         <Tabs.List mb="md">
           <Tabs.Tab value="bookings" leftSection={<IconUsers size={16} />}>Reservas y Pagos</Tabs.Tab>
+          <Tabs.Tab value="sellers" leftSection={<IconUserPlus size={16} />}>Vendedores</Tabs.Tab>
           <Tabs.Tab value="filters" leftSection={<IconFilter size={16} />}>Gestión de Filtros</Tabs.Tab>
           <Tabs.Tab value="plans" leftSection={<IconCoin size={16} />}>Planes de Uso</Tabs.Tab>
           <Tabs.Tab value="schedules" leftSection={<IconCalendar size={16} />}>Gestión de Horarios</Tabs.Tab>
@@ -367,6 +396,7 @@ export function AdminDashboard() {
                   <Table.Th>Horario Asignado</Table.Th>
                   <Table.Th>Método Pago</Table.Th>
                   <Table.Th>Factura Electrónica</Table.Th>
+                  <Table.Th>Vendedor</Table.Th>
                   <Table.Th>Estado</Table.Th>
                   <Table.Th>Foto</Table.Th>
                 </Table.Tr>
@@ -388,6 +418,7 @@ export function AdminDashboard() {
                     <Table.Td>
                       <Badge color={b.requiresInvoice ? 'yellow' : 'gray'} variant="light">{b.requiresInvoice ? 'Sí' : 'No'}</Badge>
                     </Table.Td>
+                    <Table.Td>{sellers.find(s => s._id === b.sellerId)?.name || '—'}</Table.Td>
                     <Table.Td>
                       <Badge color={b.status === 'SHOWN' ? 'blue' : b.status === 'COMPLETED' ? 'grape' : b.status === 'GENERATED' ? 'teal' : 'orange'}>
                         {b.status === 'SHOWN' ? 'PROYECTADA' : b.status === 'COMPLETED' ? 'FINALIZADA' : b.status === 'GENERATED' ? 'GENERADA' : 'EN COLA'}
@@ -405,6 +436,53 @@ export function AdminDashboard() {
               </Table.Tbody>
             </Table>
           </Box>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="sellers">
+          <Group justify="space-between" mb="sm">
+            <Text fw={500}>Vendedores</Text>
+            <Button onClick={openSellerModal}>+ Añadir Vendedor</Button>
+          </Group>
+          <Table striped>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Nombre</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th>Acciones</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {sellers.map((s) => (
+                <Table.Tr key={s._id}>
+                  <Table.Td>{s.name}</Table.Td>
+                  <Table.Td>
+                    <Badge color={s.active ? 'green' : 'red'}>{s.active ? 'Activo' : 'Inactivo'}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Button size="xs" color="blue" variant="subtle" onClick={() => handleEditSeller(s)}>Editar</Button>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color={s.active ? 'red' : 'green'}
+                        onClick={() => handleToggleSellerStatus(s._id, !s.active)}
+                      >
+                        {s.active ? 'Desactivar' : 'Activar'}
+                      </Button>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+
+          <Modal opened={sellerModalOpened} onClose={() => {
+            setNewSeller({ name: '' });
+            closeSellerModal();
+          }} title={newSeller._id ? 'Editar Vendedor' : 'Añadir Nuevo Vendedor'}>
+            <TextInput label="Nombre del vendedor" value={newSeller.name} onChange={e => setNewSeller({ ...newSeller, name: e.currentTarget.value })} mb="md" />
+            <Button fullWidth onClick={handleAddSeller}>Guardar Vendedor</Button>
+          </Modal>
         </Tabs.Panel>
 
         <Tabs.Panel value="filters">

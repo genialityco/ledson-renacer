@@ -6,6 +6,7 @@ import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useLanguage } from './i18n';
+import { StepProgress } from './StepProgress';
 import './graffiti.css';
 import './ledson-clean.css';
 import { API_BASE_URL } from './config';
@@ -17,53 +18,8 @@ interface FilterOption {
   description?: string;
 }
 
-// El paso "elegir filtro" solo existe cuando la política de filtros (plan
-// settings > filtersEnabled) está activa. activeStep crudo sigue siendo
-// siempre 0=filtro, 1=datos, 2=foto, 3=confirmada — cuando el paso de filtro
-// está desactivado simplemente nunca se pasa por el 0 (ver useEffect en
-// BookingForm) y la barra/caption se corren un paso hacia atrás.
 const FILTER_STEP_LABELS = ['ELIGE TU FILTRO', 'DATOS Y PAGO', 'TU FOTO'];
 const NO_FILTER_STEP_LABELS = ['DATOS Y PAGO', 'TU FOTO'];
-
-function StepProgress({
-  activeStep,
-  filtersEnabled,
-  onStepClick,
-  onHomeClick,
-}: {
-  activeStep: number;
-  filtersEnabled: boolean;
-  onStepClick: (index: number) => void;
-  onHomeClick: () => void;
-}) {
-  const stepOffset = filtersEnabled ? 0 : 1;
-  const totalSteps = filtersEnabled ? 3 : 2;
-  const displayStep = Math.max(0, activeStep - stepOffset);
-  const labels = filtersEnabled ? FILTER_STEP_LABELS : NO_FILTER_STEP_LABELS;
-  const caption =
-    displayStep < totalSteps
-      ? `PASO ${displayStep + 1} DE ${totalSteps} : ${labels[displayStep]}`
-      : 'RESERVA CONFIRMADA';
-
-  return (
-    <Box className="ledson-progress">
-      <Box className="ledson-progress-bars">
-        <span className="ledson-progress-seg" data-state="done" onClick={onHomeClick} />
-        {Array.from({ length: totalSteps }).map((_, index) => (
-          <span
-            key={index}
-            className="ledson-progress-seg"
-            data-state={index < displayStep ? 'done' : index === displayStep ? 'active' : undefined}
-            onClick={() => { if (index < displayStep) onStepClick(index + stepOffset); }}
-          />
-        ))}
-      </Box>
-      <Text component="span" className="ledson-progress-caption">
-        {caption}
-      </Text>
-    </Box>
-  );
-}
 
 export function BookingForm() {
   const navigate = useNavigate();
@@ -484,7 +440,14 @@ export function BookingForm() {
           {t('homeSubtitle')}
         </Text>
 
-        <StepProgress activeStep={activeStep} filtersEnabled={filtersEnabled} onStepClick={setActiveStep} onHomeClick={() => navigate('/')} />
+        <StepProgress
+          activeStep={activeStep}
+          filtersEnabled={filtersEnabled}
+          labelsWithFilter={FILTER_STEP_LABELS}
+          labelsWithoutFilter={NO_FILTER_STEP_LABELS}
+          onStepClick={setActiveStep}
+          onHomeClick={() => navigate('/')}
+        />
 
         {/* STEP 1: FILTERS (solo si la política de filtros está activa) */}
         {filtersEnabled && activeStep === 0 && (

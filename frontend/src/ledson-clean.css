@@ -3,9 +3,10 @@
    Fuente de verdad: frontend/design_handoff_ledson_booking/
    (README.md + "LedsOn Booking.dc.html"). Alta fidelidad: colores,
    tipografía, radios y espaciados tomados con precisión de ahí.
-   Se usa SOLO dentro de App.tsx (header/footer/switch), Home.tsx y
-   BookingForm.tsx, como capa de contenido flotando sobre el fondo
-   animado de graffiti.css (que se mantiene intacto).
+   Se usa SOLO dentro de App.tsx (header/footer/switch), Home.tsx,
+   BookingForm.tsx y AssistedBookingForm.tsx, como capa de contenido
+   flotando sobre el fondo animado de graffiti.css (que se mantiene
+   intacto).
 
    Nota de arquitectura: el handoff envuelve header+contenido+footer
    en UN solo panel flotante de 576px. Aquí mantenemos el header y el
@@ -590,20 +591,32 @@ body {
   height: calc(100dvh - var(--ledson-header-h) - var(--ledson-footer-h));
 }
 
-/* Wrapper del flujo de reserva (BookingForm): mismo alto en dvh que Home,
-   pero con overflow-y auto en vez de hidden — a diferencia de Home, acá
-   varios pasos (ej. datos y pago) tienen más campos de los que caben en
-   una pantalla chica, y ahí SÍ debe poder hacer scroll en vez de recortar
-   contenido/botones. El paso 1 (elegir filtro) se compacta con los mismos
-   bloques @media max-height de abajo para no necesitar scroll en la
-   práctica, igual que Home. */
+/* Wrapper del flujo de reserva (BookingForm/AssistedBookingForm): mismo
+   alto en dvh que Home, pero con overflow-y auto en vez de hidden — a
+   diferencia de Home, acá varios pasos (ej. datos y pago/cobro) tienen
+   más campos de los que caben en una pantalla chica, y ahí SÍ debe poder
+   hacer scroll en vez de recortar contenido/botones. El paso 1 (elegir
+   filtro) se compacta con los mismos bloques @media max-height de abajo
+   para no necesitar scroll en la práctica, igual que Home.
+
+   "safe center" (en vez de center a secas) evita un bug conocido de
+   flexbox: con overflow-y:auto + justify-content:center, cuando el
+   contenido es más alto que el wrapper, el navegador reparte el
+   desborde arriba y abajo del centro, pero la porción de arriba queda
+   fuera del área con scroll alcanzable (no se puede llegar a scrollTop
+   negativo) — se pierden el título/barra de progreso de arriba y los
+   botones de abajo sin forma de verlos. "safe" hace que el navegador
+   caiga a alineación por el inicio (arriba) apenas el contenido no
+   entra, así todo queda alcanzable con scroll normal. Se notó con
+   AssistedBookingForm (paso "Datos y cobro" más alto que su
+   equivalente en BookingForm por los campos extra de cobro físico). */
 .ledson-booking-wrap {
   position: relative;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: safe center;
   height: calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h));
   height: calc(100dvh - var(--ledson-header-h) - var(--ledson-footer-h));
 }
