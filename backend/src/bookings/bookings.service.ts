@@ -652,6 +652,7 @@ export class BookingsService {
       timeSlot,
       bookingDate,
       imageBase64,
+      sellerId,
     } = data;
 
     let imageUrl = '';
@@ -835,6 +836,7 @@ export class BookingsService {
       status: 'APPROVED', // Lo marcamos como APPROVED
       paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
       requiresInvoice: data.requiresInvoice || false, // boolean
+      sellerId: sellerId || null,
       createdAt: new Date(),
       ...(bookingSystemType === 'queue' ? { queuePosition } : {}),
     };
@@ -843,6 +845,11 @@ export class BookingsService {
 
     // Generar la imagen automáticamente en segundo plano
     this.generateImage(bookingRef.id).catch(err => console.error(`Error auto-generando imagen para ${bookingRef.id}:`, err));
+    this.sendBookingCodeEmail(booking, {
+      code: booking.code,
+      timeSlot: booking.timeSlot,
+      exactTime,
+    }).catch((err) => console.error(`Error enviando correo de código para ${bookingRef.id}:`, err));
 
     return { id: bookingRef.id, ...booking };
   }

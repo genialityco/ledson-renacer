@@ -11,6 +11,7 @@ import { EmailModule } from './email/email.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { DlocalgoModule } from './dlocalgo/dlocalgo.module';
 import { PlansModule } from './plans/plans.module';
+import { SellersModule } from './sellers/sellers.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PlansModule } from './plans/plans.module';
     SchedulesModule,
     DlocalgoModule,
     PlansModule,
+    SellersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
