@@ -2,12 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Bangers&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Led's on Renacer Photobooth</title>
-    <script type="text/javascript" src="https://checkout.wompi.co/widget.js"></script>
+    <!-- defer: solo se necesita en el paso de pago de /booking, pero antes
+         bloqueaba el primer render de TODAS las rutas (incluida /admin y
+         /screen) al no tener defer/async. -->
+    <script type="text/javascript" src="https://checkout.wompi.co/widget.js" defer></script>
   </head>
   <body>
     <div id="root"></div>

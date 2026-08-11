@@ -1,16 +1,22 @@
-import { AppShell, Title, Group, Text } from '@mantine/core';
+import { lazy, Suspense } from 'react';
+import { AppShell, Title, Group, Text, Center, Loader } from '@mantine/core';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Home } from './Home';
-import { BookingForm } from './BookingForm';
-import { AssistedBookingForm } from './AssistedBookingForm';
-import { AdminDashboard } from './AdminDashboard';
-import { GridCalendarView } from './GridCalendarView';
-import { BookingsCalendarView } from './BookingsCalendarView';
-import { BigScreenView } from './BigScreenView';
-import { UserBookingsView } from './UserBookingsView';
 import { LanguageProvider, useLanguage } from './i18n';
 import './graffiti.css';
 import './ledson-clean.css';
+
+// Cada vista carga en su propio chunk (en vez de ir todas en un solo bundle
+// de ~2MB) — así quien visita /booking no descarga three.js/@react-three
+// (solo lo usa /screen) ni react-big-calendar (solo lo usan las vistas de
+// /admin/grid y /admin/bookings-calendar).
+const Home = lazy(() => import('./Home').then((m) => ({ default: m.Home })));
+const BookingForm = lazy(() => import('./BookingForm').then((m) => ({ default: m.BookingForm })));
+const AssistedBookingForm = lazy(() => import('./AssistedBookingForm').then((m) => ({ default: m.AssistedBookingForm })));
+const AdminDashboard = lazy(() => import('./AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const GridCalendarView = lazy(() => import('./GridCalendarView').then((m) => ({ default: m.GridCalendarView })));
+const BookingsCalendarView = lazy(() => import('./BookingsCalendarView').then((m) => ({ default: m.BookingsCalendarView })));
+const BigScreenView = lazy(() => import('./BigScreenView').then((m) => ({ default: m.BigScreenView })));
+const UserBookingsView = lazy(() => import('./UserBookingsView').then((m) => ({ default: m.UserBookingsView })));
 
 function AppContent() {
   const navigate = useNavigate();
@@ -22,9 +28,11 @@ function AppContent() {
 
   if (isBigScreen) {
     return (
-      <Routes>
-        <Route path="/screen" element={<BigScreenView />} />
-      </Routes>
+      <Suspense fallback={<div style={{ width: '100vw', height: '100vh', backgroundColor: '#000' }} />}>
+        <Routes>
+          <Route path="/screen" element={<BigScreenView />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -54,15 +62,17 @@ function AppContent() {
   </AppShell.Header>
 
       <AppShell.Main style={{ backgroundColor: '#f8f9fa', minHeight: 'calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h))' }}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/booking" element={<BookingForm />} />
-          <Route path="/assisted-booking" element={<AssistedBookingForm />} />
-          <Route path="/my-bookings" element={<UserBookingsView />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/grid" element={<GridCalendarView />} />
-          <Route path="/admin/bookings-calendar" element={<BookingsCalendarView />} />
-        </Routes>
+        <Suspense fallback={<Center style={{ minHeight: '60vh' }}><Loader color="blue" /></Center>}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/booking" element={<BookingForm />} />
+            <Route path="/assisted-booking" element={<AssistedBookingForm />} />
+            <Route path="/my-bookings" element={<UserBookingsView />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/grid" element={<GridCalendarView />} />
+            <Route path="/admin/bookings-calendar" element={<BookingsCalendarView />} />
+          </Routes>
+        </Suspense>
       </AppShell.Main>
 
       <AppShell.Footer className="ledson-footer">

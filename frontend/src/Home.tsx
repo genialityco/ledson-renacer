@@ -34,8 +34,11 @@ export function Home() {
   const groupMt = isVeryShort ? 6 : roomy ? 20 : 10;
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/images/seed`, { method: 'POST' })
-      .then(() => fetch(`${API_BASE_URL}/api/images`))
+    // El backend ya siembra los filtros de ejemplo una sola vez al arrancar
+    // (ver ImagesService.onModuleInit) — llamar a /seed acá en cada carga era
+    // un viaje redundante a Firestore, y además bloqueaba secuencialmente la
+    // carga real de los filtros.
+    fetch(`${API_BASE_URL}/api/images`)
       .then((res) => res.json())
       .then((data) => setImages(data))
       .catch((err) => console.error('Error fetching images:', err));

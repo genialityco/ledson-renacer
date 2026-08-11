@@ -9,6 +9,7 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { StepProgress } from './StepProgress';
 import { ImageCropModal } from './ImageCropModal';
 import { VideoTrimModal } from './VideoTrimModal';
+import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
 import { API_BASE_URL } from './config';
@@ -85,11 +86,7 @@ export function AssistedBookingForm() {
   const [codeCopied, setCodeCopied] = useState(false);
 
   useEffect(() => {
-    axios.get('https://countriesnow.space/api/v0.1/countries').then((res) => {
-      if (!res.data.error) {
-        setCountries(res.data.data.map((item: any) => ({ value: item.country, label: item.country })));
-      }
-    });
+    fetchCountries().then(setCountries).catch((err) => console.error('Error fetching countries', err));
     axios.get(`${API_BASE_URL}/api/images`).then((res) => {
       setFilters(res.data.map((img: any) => ({ id: img._id, name: img.label || img.altText, url: img.imageUrl, description: img.description || '' })));
     });
