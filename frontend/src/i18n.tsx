@@ -4,9 +4,6 @@ type Language = 'es' | 'en';
 
 const translations = {
   es: {
-    // App
-    appTitle: "Led's on Renacer Photobooth",
-
     // Home
     homeTitle: "Reserva tu espacio",
     homeSubtitle: "en la pantalla más grande de la Comuna 13, Medellín",
@@ -14,7 +11,6 @@ const translations = {
     welcomeText1: "Sube tu foto o video, reserva tu espacio en pantalla y conviértete en arte vivo de la Comuna 13 de Medellín.",
     welcomeText2: "Cada experiencia incluye un recuerdo digital para que puedas verlo de nuevo y compartir tu momento estelar.",
     scanQR: "Escanea el código QR con tu teléfono para reservar, tomarte tu foto y aparecer en la pantalla gigante.",
-    qrCaption: "Escanea este código con tu teléfono para reservar desde tu celular.",
     startBtn: "Comenzar",
 
     // BookingForm
@@ -95,6 +91,18 @@ const translations = {
     uploadErrorAlert: "Hubo un error subiendo tu foto.",
     paymentErrorAlert: "Error al iniciar el pago.",
 
+    // ImageCropModal / VideoTrimModal
+    cropModalTitle: "Ajusta el encuadre de tu foto",
+    cropZoomLabel: "Zoom",
+    cropCancel: "Cancelar",
+    cropConfirm: "Confirmar recorte",
+    trimModalTitle: "Elige el tramo de tu video",
+    trimSelectedLabel: "Tramo seleccionado: {sec}s (máx. {max}s)",
+    trimPreview: "Previsualizar tramo",
+    trimPause: "Pausar",
+    trimCancel: "Cancelar",
+    trimConfirm: "Confirmar tramo",
+
     // UserBookingsView
     backHome: "Volver al inicio",
     myProjections: "Mis Proyecciones",
@@ -117,9 +125,6 @@ const translations = {
     searchError: "Hubo un error al buscar tus proyecciones.",
   },
   en: {
-    // App
-    appTitle: "Led's on Renacer Photobooth",
-
     // Home
     homeTitle: "Book your spot",
     homeSubtitle: "on the biggest screen in Comuna 13, Medellín",
@@ -127,7 +132,6 @@ const translations = {
     welcomeText1: "Upload your photo or video, book your spot on screen, and become living art of Comuna 13, Medellín.",
     welcomeText2: "Each experience includes a digital keepsake so you can watch it again and share your standout moment.",
     scanQR: "Scan the QR code with your phone to book, take your photo, and appear on the big screen.",
-    qrCaption: "Scan this code with your phone to book from your mobile.",
     startBtn: "Start",
 
     // BookingForm
@@ -207,6 +211,18 @@ const translations = {
     takeOrUploadAlert: "Please take a photo or upload a file.",
     uploadErrorAlert: "There was an error uploading your photo.",
     paymentErrorAlert: "Error initiating payment.",
+
+    // ImageCropModal / VideoTrimModal
+    cropModalTitle: "Adjust your photo framing",
+    cropZoomLabel: "Zoom",
+    cropCancel: "Cancel",
+    cropConfirm: "Confirm crop",
+    trimModalTitle: "Choose the clip to project",
+    trimSelectedLabel: "Selected clip: {sec}s (max {max}s)",
+    trimPreview: "Preview clip",
+    trimPause: "Pause",
+    trimCancel: "Cancel",
+    trimConfirm: "Confirm clip",
 
     // UserBookingsView
     backHome: "Back to home",

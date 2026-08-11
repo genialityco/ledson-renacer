@@ -5,6 +5,28 @@ import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './config';
+import { ImageCropModal } from './ImageCropModal';
+import { VideoTrimModal } from './VideoTrimModal';
+
+// Proporción real de la pantalla de proyección (576x1152, vertical).
+const SCREEN_ASSET_ASPECT = 576 / 1152;
+
+interface ScreenUploadTarget {
+  setUrlCallback: (url: string) => void;
+  setTypeCallback?: (type: string) => void;
+  setDurationCallback?: (duration: number) => void;
+  setTrimCallback?: (trimStart: number, trimEnd: number) => void;
+}
+
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const [header, base64] = dataUrl.split(',');
+  const mimeMatch = header.match(/data:(.*?);base64/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -26,6 +48,11 @@ export function AdminDashboard() {
   const [globalGridStartTime, setGlobalGridStartTime] = useState('08:00:00');
   const [globalGridEndTime, setGlobalGridEndTime] = useState('17:00:00');
   const [isUploading, setIsUploading] = useState(false);
+  const [pendingUploadTarget, setPendingUploadTarget] = useState<ScreenUploadTarget | null>(null);
+  const [rawImageForCrop, setRawImageForCrop] = useState<string | null>(null);
+  const [imageCropModalOpened, setImageCropModalOpened] = useState(false);
+  const [rawVideoFile, setRawVideoFile] = useState<File | null>(null);
+  const [videoTrimModalOpened, setVideoTrimModalOpened] = useState(false);
   const [contentGrid, setContentGrid] = useState<any[]>([]);
   const [deadTimes, setDeadTimes] = useState<any[]>([]);
   const [gridModalOpened, { open: openGridModal, close: closeGridModal }] = useDisclosure(false);
@@ -236,6 +263,68 @@ export function AdminDashboard() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  // Reemplaza la llamada directa a handleUploadFile para las 4 imágenes/videos
+  // de la pantalla gigante (fondo, header, footer, ítems de la parrilla): si
+  // es una imagen, abre el recorte interactivo a la proporción real de la
+  // pantalla (576:1152) antes de subirla; si es un video CON callback de
+  // tramo (solo los ítems de la parrilla, que sí se proyectan como video),
+  // abre el selector de tramo (máx. 15s). El fondo en video no tiene dónde
+  // guardar el tramo (no se renderiza como video en la pantalla hoy) y se
+  // sube tal cual, igual que antes.
+  const handleScreenAssetSelect = (file: File | null, target: ScreenUploadTarget) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    if (isVideo) {
+      if (!target.setTrimCallback) {
+        handleUploadFile(file, target.setUrlCallback, target.setTypeCallback, target.setDurationCallback);
+        return;
+      }
+      setPendingUploadTarget(target);
+      setRawVideoFile(file);
+      setVideoTrimModalOpened(true);
+    } else {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPendingUploadTarget(target);
+        setRawImageForCrop(reader.result as string);
+        setImageCropModalOpened(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleScreenImageCropConfirm = (croppedBase64: string) => {
+    if (pendingUploadTarget) {
+      const file = dataUrlToFile(croppedBase64, 'screen-asset.jpg');
+      handleUploadFile(file, pendingUploadTarget.setUrlCallback, pendingUploadTarget.setTypeCallback, pendingUploadTarget.setDurationCallback);
+    }
+    setImageCropModalOpened(false);
+    setRawImageForCrop(null);
+    setPendingUploadTarget(null);
+  };
+
+  const handleScreenImageCropCancel = () => {
+    setImageCropModalOpened(false);
+    setRawImageForCrop(null);
+    setPendingUploadTarget(null);
+  };
+
+  const handleScreenVideoTrimConfirm = (trim: { trimStart: number; trimEnd: number }) => {
+    if (pendingUploadTarget && rawVideoFile) {
+      handleUploadFile(rawVideoFile, pendingUploadTarget.setUrlCallback, pendingUploadTarget.setTypeCallback, pendingUploadTarget.setDurationCallback);
+      pendingUploadTarget.setTrimCallback?.(trim.trimStart, trim.trimEnd);
+    }
+    setVideoTrimModalOpened(false);
+    setRawVideoFile(null);
+    setPendingUploadTarget(null);
+  };
+
+  const handleScreenVideoTrimCancel = () => {
+    setVideoTrimModalOpened(false);
+    setRawVideoFile(null);
+    setPendingUploadTarget(null);
   };
 
   const handleClearScreen = async () => {
@@ -852,33 +941,33 @@ export function AdminDashboard() {
                   value={screenBgUrl} 
                   onChange={e => setScreenBgUrl(e.currentTarget.value)}
                   rightSection={
-                    <FileButton onChange={(f) => handleUploadFile(f, setScreenBgUrl)} accept="image/*,video/*">
+                    <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setScreenBgUrl })} accept="image/*,video/*">
                       {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
                     </FileButton>
                   }
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 4 }}>
-                <TextInput 
-                  label="Imagen Header (Arriba)" 
-                  placeholder="URL o subir archivo..." 
-                  value={headerUrl} 
+                <TextInput
+                  label="Imagen Header (Arriba)"
+                  placeholder="URL o subir archivo..."
+                  value={headerUrl}
                   onChange={e => setHeaderUrl(e.currentTarget.value)}
                   rightSection={
-                    <FileButton onChange={(f) => handleUploadFile(f, setHeaderUrl)} accept="image/*">
+                    <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setHeaderUrl })} accept="image/*">
                       {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
                     </FileButton>
                   }
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 4 }}>
-                <TextInput 
-                  label="Imagen Footer (Abajo)" 
-                  placeholder="URL o subir archivo..." 
-                  value={footerUrl} 
+                <TextInput
+                  label="Imagen Footer (Abajo)"
+                  placeholder="URL o subir archivo..."
+                  value={footerUrl}
                   onChange={e => setFooterUrl(e.currentTarget.value)}
                   rightSection={
-                    <FileButton onChange={(f) => handleUploadFile(f, setFooterUrl)} accept="image/*">
+                    <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setFooterUrl })} accept="image/*">
                       {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
                     </FileButton>
                   }
@@ -1025,13 +1114,12 @@ export function AdminDashboard() {
                 mb="sm"
                 required
                 rightSection={
-                  <FileButton onChange={(f) => handleUploadFile(f, 
-                    (url) => setNewGridItem((prev: any) => ({...prev, url})),
-                    (type) => setNewGridItem((prev: any) => ({...prev, type})),
-                    (duration) => setNewGridItem((prev: any) => {
-                      return {...prev, duration};
-                    })
-                  )} accept="image/*,video/*">
+                  <FileButton onChange={(f) => handleScreenAssetSelect(f, {
+                    setUrlCallback: (url) => setNewGridItem((prev: any) => ({...prev, url})),
+                    setTypeCallback: (type) => setNewGridItem((prev: any) => ({...prev, type})),
+                    setDurationCallback: (duration) => setNewGridItem((prev: any) => ({...prev, duration})),
+                    setTrimCallback: (trimStart, trimEnd) => setNewGridItem((prev: any) => ({...prev, trimStart, trimEnd})),
+                  })} accept="image/*,video/*">
                     {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
                   </FileButton>
                 }
@@ -1125,6 +1213,24 @@ export function AdminDashboard() {
                 {(newGridItem as any).id ? 'Guardar Cambios' : 'Añadir a Parrilla'}
               </Button>
             </Modal>
+
+            <ImageCropModal
+              opened={imageCropModalOpened}
+              imageSrc={rawImageForCrop}
+              aspect={SCREEN_ASSET_ASPECT}
+              outputWidth={576}
+              outputHeight={1152}
+              title="Ajusta el encuadre (proporción de la pantalla: 576×1152)"
+              onCancel={handleScreenImageCropCancel}
+              onConfirm={handleScreenImageCropConfirm}
+            />
+            <VideoTrimModal
+              opened={videoTrimModalOpened}
+              file={rawVideoFile}
+              maxSeconds={15}
+              onCancel={handleScreenVideoTrimCancel}
+              onConfirm={handleScreenVideoTrimConfirm}
+            />
 
           </Box>
 

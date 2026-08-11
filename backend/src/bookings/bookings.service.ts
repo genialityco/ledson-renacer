@@ -388,7 +388,15 @@ export class BookingsService {
     return { id: bookingRef.id, ...booking };
   }
 
-  async confirmPayment(id: string, data?: { imageBase64?: string; timeSlot?: string }) {
+  async confirmPayment(
+    id: string,
+    data?: {
+      imageBase64?: string;
+      timeSlot?: string;
+      trimStart?: number;
+      trimEnd?: number;
+    },
+  ) {
     const db = this.firebase.getFirestore();
     const bookingRef = db.collection('lr_bookings').doc(id);
     const bookingDoc = await bookingRef.get();
@@ -404,12 +412,19 @@ export class BookingsService {
 
     let imageUrl = booking.imageUrl;
     let mediaType: 'image' | 'video' = booking.mediaType || 'image';
+    // Tramo elegido por el usuario para el video (selector estilo Stories en
+    // el frontend) — no se recorta el archivo, solo se guarda dónde arrancar
+    // y dónde cortar la reproducción.
+    let trimStart: number | null = booking.trimStart ?? null;
+    let trimEnd: number | null = booking.trimEnd ?? null;
 
     // Si se envía la foto o video después del pago, se sube ahora
     if (data?.imageBase64) {
       const uploaded = await this.uploadMediaBase64(data.imageBase64, 'bookings');
       imageUrl = uploaded.url;
       mediaType = uploaded.mediaType;
+      trimStart = data.trimStart ?? null;
+      trimEnd = data.trimEnd ?? null;
     }
 
     // Calcular slot exacto de proyección
@@ -462,6 +477,8 @@ export class BookingsService {
           timeSlot: chosenSlot,
           imageUrl,
           mediaType,
+          trimStart,
+          trimEnd,
         });
 
         // Generar la imagen automáticamente en segundo plano
@@ -494,6 +511,8 @@ export class BookingsService {
         timeSlot: '',
         imageUrl,
         mediaType,
+        trimStart,
+        trimEnd,
       });
 
       this.generateImage(id).catch((err) =>
@@ -626,6 +645,8 @@ export class BookingsService {
       exactTime,
       imageUrl,
       mediaType,
+      trimStart,
+      trimEnd,
       ...(bookingSystemType === 'queue' ? { queuePosition } : {}),
     });
 
@@ -653,6 +674,8 @@ export class BookingsService {
       bookingDate,
       imageBase64,
       sellerId,
+      trimStart,
+      trimEnd,
     } = data;
 
     let imageUrl = '';
@@ -833,6 +856,8 @@ export class BookingsService {
       bookingDate: finalBookingDate,
       imageUrl,
       mediaType,
+      trimStart: trimStart ?? null,
+      trimEnd: trimEnd ?? null,
       status: 'APPROVED', // Lo marcamos como APPROVED
       paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
       requiresInvoice: data.requiresInvoice || false, // boolean
@@ -1228,6 +1253,8 @@ export class BookingsService {
       timestamp: Date.now(),
       transitionEffect,
       frameUrl,
+      trimStart: b.trimStart ?? null,
+      trimEnd: b.trimEnd ?? null,
     };
 
     await db

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Container, Title, Text, Button, Box, Group } from '@mantine/core';
 import { IconArrowRight } from '@tabler/icons-react';
-import QRCode from 'react-qr-code';
 import { useNavigate } from 'react-router-dom';
 import { useMediaQuery } from '@mantine/hooks';
 import { useLanguage } from './i18n';
@@ -20,19 +19,17 @@ export function Home() {
   const [images, setImages] = useState<PhotoboothImage[]>([]);
   const navigate = useNavigate();
   const { t } = useLanguage();
-  // Mismos puntos de quiebre que ledson-clean.css (400 / 700 de ancho,
-  // 800 / 560 de alto) para que el QR y los espaciados queden proporcionales
+  // Mismos puntos de quiebre que ledson-clean.css (700 de ancho,
+  // 800 / 560 de alto) para que los espaciados queden proporcionales
   // en cada tamaño. El alto manda sobre el ancho: una pantalla ancha pero
   // baja (tablet/laptop en horizontal) debe compactarse igual que un
   // celular bajito, para nunca generar scroll vertical.
-  const isTinyMobile = useMediaQuery('(max-width: 400px)');
   const isDesktop = useMediaQuery('(min-width: 700px)');
   const isShort = useMediaQuery('(max-height: 800px)');
   const isVeryShort = useMediaQuery('(max-height: 560px)');
   // Modo "amplio": solo cuando hay ancho Y alto de sobra (desktop/demo real).
   const roomy = isDesktop && !isShort;
 
-  const qrSize = isVeryShort ? 64 : isShort ? (isTinyMobile ? 76 : isDesktop ? 110 : 100) : isTinyMobile ? 90 : isDesktop ? 170 : 140;
   const containerPy = isVeryShort ? 2 : roomy ? 40 : 6;
   const groupMt = isVeryShort ? 6 : roomy ? 20 : 10;
 
@@ -133,11 +130,6 @@ export function Home() {
           </Title>
           <Text className="ledson-body-text">{t('welcomeText1')}</Text>
           <Text className="ledson-body-text">{t('welcomeText2')}</Text>
-
-          <Box className="ledson-qr-box">
-            <QRCode value={`${window.location.origin}/booking`} size={qrSize} />
-          </Box>
-          <Text className="ledson-qr-caption">{t('qrCaption')}</Text>
 
           <Group justify="center" align="center" gap="md" mt={groupMt}>
             <Button

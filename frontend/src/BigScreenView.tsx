@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Container, Title, Box, Text, Transition as MantineTransition } from '@mantine/core';
+import { Title, Box, Text, Transition as MantineTransition } from '@mantine/core';
 import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import axios from 'axios';
 import './falling.css';
+import './graffiti.css';
+import './ledson-clean.css';
 import { SprayEffect } from './SprayEffect';
 import QRCode from 'react-qr-code';
 import { useLanguage } from './i18n';
@@ -10,17 +12,37 @@ import { API_BASE_URL } from './config';
 
 const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: any) => {
   const nodeRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   if (!item) return null;
+
+  // Tramo elegido por el admin (selector estilo Stories, máx. 15s) para este
+  // ítem de la parrilla: no se recorta el archivo, solo se arranca y se
+  // corta la reproducción en esos segundos.
+  const trimStart = item.trimStart || 0;
+  const trimEnd = item.trimEnd;
+
+  const seekToTrimStart = () => {
+    if (videoRef.current && trimStart > 0) videoRef.current.currentTime = trimStart;
+  };
+
+  const handleTimeUpdate = () => {
+    if (trimEnd && videoRef.current && videoRef.current.currentTime >= trimEnd && props.in) {
+      onEnded();
+    }
+  };
 
   return (
     <CSSTransition {...props} appear={true} nodeRef={nodeRef} timeout={1000} classNames={classNames || transitionClass}>
       <Box ref={nodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: item.type === 'video' ? '#000' : 'transparent', zIndex: item.type === 'video' ? 1000 : 1 }}>
         {item.type === 'video' ? (
-          <video 
-            src={item.url} 
+          <video
+            ref={videoRef}
+            src={item.url}
             autoPlay={props.in}
-            muted 
+            muted
             playsInline
+            onLoadedMetadata={seekToTrimStart}
+            onTimeUpdate={handleTimeUpdate}
             onEnded={() => {
               if(props.in) onEnded();
             }}
@@ -55,6 +77,7 @@ export function BigScreenView() {
 
   const settingsRef = useRef<any>(settings);
   const fallbackNodeRef = useRef(null);
+  const projectionVideoRef = useRef<HTMLVideoElement>(null);
   const { t } = useLanguage();
   
   useEffect(() => {
@@ -238,32 +261,66 @@ export function BigScreenView() {
     transitionProperty: 'opacity, -webkit-mask-size, transform, filter',
   };
 
-  const currentTransition = displayProjection?.transitionEffect === 'particles' 
-    ? particleTransition 
+  const currentTransition = displayProjection?.transitionEffect === 'particles'
+    ? particleTransition
     : (displayProjection?.transitionEffect || 'fade');
 
+  // Si el admin no configuró una imagen de fondo desde /admin, usamos el
+  // muro animado de grafiti (mismo lenguaje visual que Home/Booking) en vez
+  // de negro liso. Si SÍ configuró una imagen, esa sigue mandando igual que
+  // antes — no perdemos esa funcionalidad.
+  const hasCustomBackground = !!settings.backgroundUrl;
+
   return (
-    <Box style={{ 
-      width: '100vw', 
-      height: '100vh', 
-      backgroundColor: '#000', 
-      backgroundImage: settings.backgroundUrl ? `url(${settings.backgroundUrl})` : 'none',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      display: 'flex', 
-      flexDirection: 'column', 
-      overflow: 'hidden',
-      position: 'relative'
-    }}>
+    <Box
+      className={hasCustomBackground ? undefined : 'graffiti-wall'}
+      style={{
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: hasCustomBackground ? '#000' : undefined,
+        backgroundImage: hasCustomBackground ? `url(${settings.backgroundUrl})` : undefined,
+        backgroundSize: hasCustomBackground ? 'cover' : undefined,
+        backgroundPosition: hasCustomBackground ? 'center' : undefined,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        position: 'relative'
+      }}
+    >
+      {!hasCustomBackground && (
+        <>
+          <div className="paint-particles">
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+            <span className="particle" />
+          </div>
+          <div className="spray-cloud spray-cloud--pink" />
+          <div className="spray-cloud spray-cloud--cyan" />
+          <div className="spray-cloud spray-cloud--yellow" />
+          <div className="drip drip--1" />
+          <div className="drip drip--2" />
+          <div className="drip drip--3" />
+        </>
+      )}
+
       {/* HEADER */}
       {settings.headerUrl && (
-        <Box style={{ width: '100%', height: '15vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+        <Box style={{ width: '100%', height: '15vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.4)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)', position: 'relative', zIndex: 2 }}>
           <img src={settings.headerUrl} alt="Header" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
         </Box>
       )}
 
       {/* CONTENIDO CENTRAL */}
-      <Box style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
+      <Box style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden', zIndex: 2 }}>
         
         {/* El carrusel siempre está renderizado debajo */}
         <Box style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', overflow: 'hidden', zIndex: 10 }}>
@@ -278,13 +335,15 @@ export function BigScreenView() {
             ) : (
               <CSSTransition key="fallback-empty" appear={true} nodeRef={fallbackNodeRef} timeout={1000} classNames="carousel-fade">
                 <Box ref={fallbackNodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1 }}>
-                  <Container style={{ textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: '2rem', borderRadius: '16px' }}>
-                    <Title order={1} size="4rem" c="white">{t('appTitle')}</Title>
-                    <Text size="xl" c="gray.3" mt="md">{t('scanQR')}</Text>
-                      <Box style={{ background: 'white', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '2rem' }}>
-                                <QRCode value={`${window.location.origin}/booking`} size={200} />
-                              </Box>
-                  </Container>
+                  <Box className="ledson-screen-card">
+                    <Title order={1} className="ledson-screen-title">{t('welcomeTitle')}</Title>
+                    <Text className="ledson-screen-subtitle">{t('welcomeText1')}</Text>
+                    <Text className="ledson-screen-subtitle">{t('welcomeText2')}</Text>
+                    <Box className="ledson-screen-qr-box">
+                      <QRCode value={`${window.location.origin}/booking`} size={220} />
+                    </Box>
+                    <Text className="ledson-screen-qr-caption">{t('scanQR')}</Text>
+                  </Box>
                 </Box>
               </CSSTransition>
             )}
@@ -308,11 +367,28 @@ export function BigScreenView() {
                 <Box style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', backgroundColor: '#000' }}>
                   <video
                     key={displayProjection?.id}
+                    ref={projectionVideoRef}
                     src={displayProjection?.imageUrl}
                     autoPlay
                     muted
-                    loop
+                    // Si el usuario eligió un tramo (trimStart/trimEnd), el loop
+                    // nativo no sirve porque reiniciaría en el segundo 0 del
+                    // archivo completo — se loopea a mano dentro del tramo vía
+                    // onTimeUpdate. Sin tramo (videos antiguos), se mantiene el
+                    // loop nativo de siempre.
+                    loop={!displayProjection?.trimEnd}
                     playsInline
+                    onLoadedMetadata={() => {
+                      if (projectionVideoRef.current && displayProjection?.trimStart) {
+                        projectionVideoRef.current.currentTime = displayProjection.trimStart;
+                      }
+                    }}
+                    onTimeUpdate={() => {
+                      const v = projectionVideoRef.current;
+                      if (v && displayProjection?.trimEnd && v.currentTime >= displayProjection.trimEnd) {
+                        v.currentTime = displayProjection.trimStart || 0;
+                      }
+                    }}
                     style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
                   />
                 </Box>
@@ -357,7 +433,7 @@ export function BigScreenView() {
 
       {/* FOOTER */}
       {settings.footerUrl && (
-        <Box style={{ width: '100%', height: '15vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 30 }}>
+        <Box style={{ width: '100%', height: '15vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.4)', boxShadow: '0 -4px 14px rgba(0,0,0,0.35)', position: 'relative', zIndex: 2 }}>
           <img src={settings.footerUrl} alt="Footer" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
         </Box>
       )}

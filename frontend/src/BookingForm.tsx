@@ -7,6 +7,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useLanguage } from './i18n';
 import { StepProgress } from './StepProgress';
+import { ImageCropModal } from './ImageCropModal';
+import { VideoTrimModal } from './VideoTrimModal';
 import './graffiti.css';
 import './ledson-clean.css';
 import { API_BASE_URL } from './config';
@@ -45,6 +47,15 @@ export function BookingForm() {
   const [fileMediaType, setFileMediaType] = useState<'image' | 'video'>('image');
   const [filters, setFilters] = useState<FilterOption[]>([]);
   const webcamRef = useRef<Webcam>(null);
+
+  // Recorte interactivo de la foto (webcam o archivo) y selección de tramo
+  // del video (máx. 15s), en vez de recortar/limitar automáticamente sin que
+  // el usuario vea nada.
+  const [imageCropModalOpened, setImageCropModalOpened] = useState(false);
+  const [rawImageForCrop, setRawImageForCrop] = useState<string | null>(null);
+  const [videoTrimModalOpened, setVideoTrimModalOpened] = useState(false);
+  const [rawVideoFile, setRawVideoFile] = useState<File | null>(null);
+  const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number } | null>(null);
 
   const [name, setName] = useState('');
   const [docId, setDocId] = useState('');
@@ -219,8 +230,9 @@ export function BookingForm() {
   const capture = () => {
     const imageSrc = webcamRef.current?.getScreenshot();
     if (imageSrc) {
-      setCapturedImage(imageSrc);
       closeCameraModal();
+      setRawImageForCrop(imageSrc);
+      setImageCropModalOpened(true);
     }
   };
 
@@ -234,34 +246,58 @@ export function BookingForm() {
         return;
       }
       setFileMediaType(isVideo ? 'video' : 'image');
-      const reader = new FileReader();
-      reader.onloadend = () => setFileImageBase64(reader.result as string);
-      reader.readAsDataURL(file);
+      if (isVideo) {
+        setRawVideoFile(file);
+        setVideoTrimModalOpened(true);
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setRawImageForCrop(reader.result as string);
+          setImageCropModalOpened(true);
+        };
+        reader.readAsDataURL(file);
+      }
     } else {
       setFileImageBase64(null);
       setFileMediaType('image');
+      setVideoTrim(null);
     }
   };
 
-  const resizeImage = (base64Str: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new window.Image();
-      img.src = base64Str;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const size = Math.min(img.width, img.height);
-          const x = (img.width - size) / 2;
-          const y = 0;
-          ctx.drawImage(img, x, y, size, size, 0, 0, 512, 512);
-        }
-        resolve(canvas.toDataURL('image/jpeg', 0.9));
-      };
-      img.onerror = () => resolve(base64Str);
-    });
+  // La foto queda recortada exactamente por lo que el usuario eligió en
+  // ImageCropModal (siempre cuadrada, 512x512 — la misma proporción que ya
+  // recibía la IA externa, sin arriesgar su compatibilidad).
+  const handleImageCropConfirm = (croppedBase64: string) => {
+    if (useWebcam) setCapturedImage(croppedBase64);
+    else setFileImageBase64(croppedBase64);
+    setImageCropModalOpened(false);
+    setRawImageForCrop(null);
+  };
+
+  const handleImageCropCancel = () => {
+    setImageCropModalOpened(false);
+    setRawImageForCrop(null);
+    if (useWebcam) setUseWebcam(false);
+  };
+
+  // El tramo elegido (trimStart/trimEnd) se guarda como metadato junto al
+  // video completo — no se recorta/recodifica el archivo en el navegador.
+  const handleVideoTrimConfirm = (trim: { trimStart: number; trimEnd: number }) => {
+    if (!rawVideoFile) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFileImageBase64(reader.result as string);
+      setVideoTrim(trim);
+    };
+    reader.readAsDataURL(rawVideoFile);
+    setVideoTrimModalOpened(false);
+    setRawVideoFile(null);
+  };
+
+  const handleVideoTrimCancel = () => {
+    setVideoTrimModalOpened(false);
+    setRawVideoFile(null);
+    setFileMediaType('image');
   };
 
   const handleDataSubmitAndPay = async (e: React.FormEvent) => {
@@ -350,16 +386,16 @@ export function BookingForm() {
   };
 
   const submitPhotoAndConfirm = async () => {
-    let finalImage = useWebcam ? capturedImage : fileImageBase64;
+    const finalImage = useWebcam ? capturedImage : fileImageBase64;
     if (!finalImage || !bookingId) { alert(t('takeOrUploadAlert')); return; }
     const isVideo = !useWebcam && fileMediaType === 'video';
     setIsUploadingPhoto(true);
     try {
-      // El video no se edita ni se recomprime (no se puede procesar con el
-      // canvas de resizeImage, que es solo para fotos) — se sube tal cual.
-      if (!isVideo) finalImage = await resizeImage(finalImage);
+      // La foto ya llega recortada por ImageCropModal; el video no se edita
+      // ni se recomprime, solo se envía junto con el tramo elegido.
       const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, {
         imageBase64: finalImage,
+        ...(isVideo && videoTrim ? { trimStart: videoTrim.trimStart, trimEnd: videoTrim.trimEnd } : {}),
         ...(bookingSystemType === 'franjas' && timeSlot ? { timeSlot } : {}),
       });
       setFinalResult(confirmRes.data);
@@ -397,6 +433,11 @@ export function BookingForm() {
     setCapturedImage(null);
     setFileImageBase64(null);
     setFileMediaType('image');
+    setRawImageForCrop(null);
+    setImageCropModalOpened(false);
+    setRawVideoFile(null);
+    setVideoTrimModalOpened(false);
+    setVideoTrim(null);
     setBookingId(null);
     setPaymentStatus(null);
     setFinalResult(null);
@@ -829,6 +870,23 @@ export function BookingForm() {
             </Button>
           </Box>
         </Modal>
+
+        <ImageCropModal
+          opened={imageCropModalOpened}
+          imageSrc={rawImageForCrop}
+          aspect={1}
+          outputWidth={512}
+          outputHeight={512}
+          onCancel={handleImageCropCancel}
+          onConfirm={handleImageCropConfirm}
+        />
+        <VideoTrimModal
+          opened={videoTrimModalOpened}
+          file={rawVideoFile}
+          maxSeconds={15}
+          onCancel={handleVideoTrimCancel}
+          onConfirm={handleVideoTrimConfirm}
+        />
       </Container>
     </Box>
   );

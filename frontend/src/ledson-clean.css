@@ -3,10 +3,10 @@
    Fuente de verdad: frontend/design_handoff_ledson_booking/
    (README.md + "LedsOn Booking.dc.html"). Alta fidelidad: colores,
    tipografía, radios y espaciados tomados con precisión de ahí.
-   Se usa SOLO dentro de App.tsx (header/footer/switch), Home.tsx,
-   BookingForm.tsx y AssistedBookingForm.tsx, como capa de contenido
-   flotando sobre el fondo animado de graffiti.css (que se mantiene
-   intacto).
+   Se usa dentro de App.tsx (header/footer/switch), Home.tsx,
+   BookingForm.tsx, AssistedBookingForm.tsx y BigScreenView.tsx, como capa
+   de contenido flotando sobre el fondo animado de graffiti.css (que se
+   mantiene intacto).
 
    Nota de arquitectura: el handoff envuelve header+contenido+footer
    en UN solo panel flotante de 576px. Aquí mantenemos el header y el
@@ -239,23 +239,6 @@ body {
   line-height: 1.6;
   margin-bottom: 12px;
 }
-.ledson-qr-caption {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: var(--ledson-text-faint);
-  margin-top: 8px;
-}
-.ledson-qr-box {
-  display: inline-block;
-  padding: 10px;
-  margin-top: 18px;
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid var(--ledson-border);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-  line-height: 0;
-}
-
 /* ============ BARRA DE PROGRESO SEGMENTADA ============ */
 .ledson-progress {
   margin-bottom: 18px;
@@ -534,6 +517,53 @@ body {
 }
 
 /* ============================================================
+   PANTALLA GRANDE (BigScreenView, ruta /screen)
+   Misma tarjeta blanca + azul de marca que Home/Booking, pero
+   escalada con clamp() porque acá se ve desde lejos en un
+   proyector, no de cerca en un celular — nada de los tamaños de
+   .ledson-card aplica bien a esa distancia de lectura.
+   ============================================================ */
+.ledson-screen-card {
+  background: #ffffff;
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 4px 14px rgba(0, 0, 0, 0.25);
+  padding: clamp(32px, 4vw, 56px) clamp(40px, 6vw, 72px);
+  text-align: center;
+  max-width: min(90vw, 720px);
+}
+.ledson-screen-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 800 !important;
+  color: var(--ledson-blue) !important;
+  font-size: clamp(2.2rem, 5vw, 3.6rem) !important;
+  line-height: 1.15;
+  margin-bottom: 14px !important;
+}
+.ledson-screen-subtitle {
+  font-family: 'Inter', sans-serif;
+  color: var(--ledson-text-body);
+  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.ledson-screen-qr-box {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid var(--ledson-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.ledson-screen-qr-caption {
+  display: block;
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(0.8rem, 1.1vw, 1rem);
+  color: var(--ledson-text-muted);
+  margin-top: 14px;
+}
+
+/* ============================================================
    CRECIMIENTO MODERADO EN DESKTOP
    El diseño de referencia del handoff es 576px (pensado para el
    kiosco vertical y para celulares, que son los destinos reales).
@@ -671,10 +701,6 @@ body {
   .ledson-filter-card-desc {
     font-size: 10.5px !important;
   }
-  .ledson-qr-box {
-    padding: 6px;
-    margin-top: 8px;
-  }
 }
 
 /* ============================================================
@@ -738,14 +764,6 @@ body {
   .ledson-filter-card-desc {
     font-size: 10.5px !important;
   }
-  .ledson-qr-box {
-    padding: 6px;
-    margin-top: 6px;
-  }
-  .ledson-qr-caption {
-    font-size: 10.5px;
-    margin-top: 4px;
-  }
   .ledson-btn-primary,
   .ledson-btn-outline {
     min-height: 40px !important;
@@ -801,14 +819,6 @@ body {
   }
   .ledson-filter-card-desc {
     display: none;
-  }
-  .ledson-qr-box {
-    padding: 4px;
-    margin-top: 4px;
-  }
-  .ledson-qr-caption {
-    font-size: 9.5px;
-    margin-top: 3px;
   }
   .ledson-btn-primary,
   .ledson-btn-outline {
