@@ -21,8 +21,8 @@ interface FilterOption {
   description?: string;
 }
 
-const FILTER_STEP_LABELS = ['ELIGE TU FILTRO', 'DATOS Y PAGO', 'TU FOTO'];
-const NO_FILTER_STEP_LABELS = ['DATOS Y PAGO', 'TU FOTO'];
+const FILTER_STEP_LABELS = ['ELIGE TU FILTRO', 'TUS DATOS', 'FOTO Y PAGO'];
+const NO_FILTER_STEP_LABELS = ['TUS DATOS', 'FOTO Y PAGO'];
 
 export function BookingForm() {
   const navigate = useNavigate();
@@ -97,27 +97,35 @@ export function BookingForm() {
     const dlocalBookingId = sessionStorage.getItem('dlocal_booking_id');
     const dlocalPaymentId = sessionStorage.getItem('dlocal_payment_id');
 
+    // La foto/video ya quedó guardada en el backend (attach-media) antes de
+    // salir a pagar, así que al volver solo hace falta confirmar el pago —
+    // no se le vuelve a pedir la foto al usuario.
     if (statusParam === 'success' && bookingIdParam) {
-      setBookingId(bookingIdParam);
-      setPaymentStatus('APPROVED');
-      setActiveStep(2);
+      sessionStorage.removeItem('dlocal_booking_id');
+      sessionStorage.removeItem('dlocal_payment_id');
+      sessionStorage.removeItem('dlocal_link');
+      finalizeBooking(bookingIdParam);
     } else if (dlocalBookingId && dlocalPaymentId) {
-      setActiveStep(2);
       setBookingId(dlocalBookingId);
       axios.get(`${API_BASE_URL}/api/dlocalgo/status/${dlocalPaymentId}`)
         .then(res => {
           if (res.data && (res.data.status === 'PAID' || res.data.status === 'APPROVED' || res.data.status === 'COMPLETED' || res.data.status === 'AUTHORIZED')) {
-            setPaymentStatus('APPROVED');
+            sessionStorage.removeItem('dlocal_booking_id');
+            sessionStorage.removeItem('dlocal_payment_id');
+            sessionStorage.removeItem('dlocal_link');
+            finalizeBooking(dlocalBookingId);
           } else {
+            // Pago aún no confirmado: se queda en el paso de foto y pago,
+            // donde vive el botón "Ya realicé el pago" para reintentar.
+            const storedLink = sessionStorage.getItem('dlocal_link');
+            if (storedLink) setDlocalgoLink(storedLink);
             setPaymentStatus(`PENDING_${dlocalPaymentId}`);
-            setActiveStep(1);
+            setActiveStep(2);
           }
-          sessionStorage.removeItem('dlocal_booking_id');
-          sessionStorage.removeItem('dlocal_payment_id');
         })
         .catch(err => {
           console.error('Error verifying DLocal status', err);
-          setActiveStep(1);
+          setActiveStep(2);
         });
     }
 
@@ -297,7 +305,9 @@ export function BookingForm() {
     setFileMediaType('image');
   };
 
-  const handleDataSubmitAndPay = async (e: React.FormEvent) => {
+  // Paso 1: solo guarda los datos de la reserva (PENDING, sin pago). El pago
+  // se dispara más adelante, al subir la foto/video.
+  const handleDataSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (filtersEnabled && filters.length > 0 && !selectedFilter) { alert('Debes seleccionar un filtro primero.'); return; }
     if (!habeasData) { alert('Debes aceptar la política de tratamiento de datos personales para continuar.'); return; }
@@ -310,52 +320,31 @@ export function BookingForm() {
         paymentMethod: paymentGateway === 'dlocalgo' ? 'DLocal Go' : 'Wompi',
         requiresInvoice: requiresInvoice === 'SI'
       });
-      const generatedBookingId = initRes.data.id;
-      setBookingId(generatedBookingId);
-
-      const amountInCents = servicePrice * 100;
-      const reference = `booking-${generatedBookingId}`;
-
-      if (paymentGateway === 'dlocalgo') {
-        const dlocalRes = await axios.post(`${API_BASE_URL}/api/dlocalgo/create-link`, {
-          amount: servicePrice,
-          currency: 'COP',
-          reference: reference,
-          successUrl: `${window.location.origin}/booking?status=success&bookingId=${generatedBookingId}`,
-          backUrl: `${window.location.origin}/booking`
-        });
-        if (dlocalRes.data && dlocalRes.data.redirect_url) {
-          sessionStorage.setItem('dlocal_booking_id', generatedBookingId);
-          sessionStorage.setItem('dlocal_payment_id', dlocalRes.data.id);
-          setDlocalgoLink(dlocalRes.data.redirect_url);
-          setPaymentStatus(`PENDING_${dlocalRes.data.id}`);
-          window.location.href = dlocalRes.data.redirect_url;
-        } else {
-          throw new Error('No redirect URL received from DLocal Go');
-        }
-      } else {
-        const wompiRes = await axios.get(`${API_BASE_URL}/api/wompi/integrity-signature?reference=${reference}&amountInCents=${amountInCents}&currency=COP`);
-        const { signature } = wompiRes.data;
-        const checkout = new (window as any).WidgetCheckout({
-          currency: 'COP',
-          amountInCents: amountInCents,
-          reference: reference,
-          publicKey: import.meta.env.VITE_WOMPI_PUBLIC_KEY,
-          signature: { integrity: signature },
-        });
-        checkout.open((result: any) => {
-          const transaction = result.transaction;
-          console.log('Transaction result: ', transaction);
-          setPaymentStatus(transaction.status);
-          if (transaction.status === 'APPROVED') setActiveStep(2);
-          else setActiveStep(3);
-        });
-      }
+      setBookingId(initRes.data.id);
+      setActiveStep(2);
     } catch (error) {
-      console.error('Error iniciando pago:', error);
-      alert(t('paymentErrorAlert'));
+      console.error('Error guardando la reserva:', error);
+      alert(t('bookingCreateErrorAlert'));
     } finally {
       setIsSubmittingForm(false);
+    }
+  };
+
+  // Confirma el pago ya aprobado: asigna el minuto exacto de proyección y
+  // dispara la generación con IA. No reenvía la foto/video: para Wompi ya se
+  // mandó junto con esta misma llamada (ver handleUploadAndPay); para dLocal
+  // Go ya quedó guardada de antes vía attach-media, porque el navegador
+  // pierde el estado al salir a pagar y volver.
+  const finalizeBooking = async (id: string) => {
+    try {
+      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${id}/confirm-payment`, {});
+      setBookingId(id);
+      setFinalResult(confirmRes.data);
+      setPaymentStatus('APPROVED');
+      setActiveStep(3);
+    } catch (err) {
+      console.error('Error confirmando la reserva:', err);
+      alert(t('uploadErrorAlert'));
     }
   };
 
@@ -382,27 +371,79 @@ export function BookingForm() {
     }
   };
 
-  const submitPhotoAndConfirm = async () => {
+  // Paso 2: al dar "Subir y pagar" se dispara el cobro. Wompi no navega
+  // fuera de la página, así que la foto se manda junto con la confirmación
+  // del pago. dLocal Go sí redirige a una página externa (se pierde el
+  // estado del navegador), así que la foto se guarda primero en el backend
+  // (attach-media) y luego se redirige a pagar.
+  const handleUploadAndPay = async () => {
     const finalImage = useWebcam ? capturedImage : fileImageBase64;
     if (!finalImage || !bookingId) { alert(t('takeOrUploadAlert')); return; }
     const isVideo = !useWebcam && fileMediaType === 'video';
+    const mediaPayload = {
+      imageBase64: finalImage,
+      ...(isVideo && videoTrim ? { trimStart: videoTrim.trimStart, trimEnd: videoTrim.trimEnd } : {}),
+      ...(bookingSystemType === 'franjas' && timeSlot ? { timeSlot } : {}),
+    };
+
     setIsUploadingPhoto(true);
     try {
-      // La foto ya llega recortada por ImageCropModal; el video no se edita
-      // ni se recomprime, solo se envía junto con el tramo elegido.
-      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, {
-        imageBase64: finalImage,
-        ...(isVideo && videoTrim ? { trimStart: videoTrim.trimStart, trimEnd: videoTrim.trimEnd } : {}),
-        ...(bookingSystemType === 'franjas' && timeSlot ? { timeSlot } : {}),
-      });
-      setFinalResult(confirmRes.data);
-      setActiveStep(3);
+      const amountInCents = servicePrice * 100;
+      const reference = `booking-${bookingId}`;
+
+      if (paymentGateway === 'dlocalgo') {
+        await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/attach-media`, mediaPayload);
+
+        const dlocalRes = await axios.post(`${API_BASE_URL}/api/dlocalgo/create-link`, {
+          amount: servicePrice,
+          currency: 'COP',
+          reference: reference,
+          successUrl: `${window.location.origin}/booking?status=success&bookingId=${bookingId}`,
+          backUrl: `${window.location.origin}/booking`
+        });
+        if (dlocalRes.data && dlocalRes.data.redirect_url) {
+          sessionStorage.setItem('dlocal_booking_id', bookingId);
+          sessionStorage.setItem('dlocal_payment_id', dlocalRes.data.id);
+          sessionStorage.setItem('dlocal_link', dlocalRes.data.redirect_url);
+          setDlocalgoLink(dlocalRes.data.redirect_url);
+          setPaymentStatus(`PENDING_${dlocalRes.data.id}`);
+          window.location.href = dlocalRes.data.redirect_url;
+        } else {
+          throw new Error('No redirect URL received from DLocal Go');
+        }
+      } else {
+        const wompiRes = await axios.get(`${API_BASE_URL}/api/wompi/integrity-signature?reference=${reference}&amountInCents=${amountInCents}&currency=COP`);
+        const { signature } = wompiRes.data;
+        const checkout = new (window as any).WidgetCheckout({
+          currency: 'COP',
+          amountInCents: amountInCents,
+          reference: reference,
+          publicKey: import.meta.env.VITE_WOMPI_PUBLIC_KEY,
+          signature: { integrity: signature },
+        });
+        checkout.open(async (result: any) => {
+          const transaction = result.transaction;
+          console.log('Transaction result: ', transaction);
+          setPaymentStatus(transaction.status);
+          if (transaction.status === 'APPROVED') {
+            try {
+              const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, mediaPayload);
+              setFinalResult(confirmRes.data);
+            } catch (err) {
+              console.error(err);
+              alert(t('uploadErrorAlert'));
+            }
+          }
+          setActiveStep(3);
+          setIsUploadingPhoto(false);
+        });
+        return;
+      }
     } catch (err) {
-      console.error(err);
-      alert(t('uploadErrorAlert'));
-    } finally {
-      setIsUploadingPhoto(false);
+      console.error('Error al subir y pagar:', err);
+      alert(t('paymentErrorAlert'));
     }
+    setIsUploadingPhoto(false);
   };
 
   const handleCopyCode = (code: string) => {
@@ -440,6 +481,9 @@ export function BookingForm() {
     setFinalResult(null);
     setSelectedFranja(null);
     setDlocalgoLink('');
+    sessionStorage.removeItem('dlocal_booking_id');
+    sessionStorage.removeItem('dlocal_payment_id');
+    sessionStorage.removeItem('dlocal_link');
   };
 
   // La webcam siempre captura foto; el video solo puede venir de un archivo.
@@ -532,9 +576,9 @@ export function BookingForm() {
           </Box>
         )}
 
-        {/* STEP 2: DATA & PAYMENT */}
+        {/* STEP 2: DATA */}
         {activeStep === 1 && (
-          <Box component="form" onSubmit={handleDataSubmitAndPay} className="ledson-card">
+          <Box component="form" onSubmit={handleDataSubmit} className="ledson-card">
             <Text className="ledson-section-title">{filtersEnabled ? 2 : 1}. {t('step2Title')}</Text>
             <Text className="ledson-step-subtitle">{t('step2Subtitle')}</Text>
             <Grid>
@@ -586,50 +630,26 @@ export function BookingForm() {
                   >
                     <IconArrowLeft size={18} />
                   </Button>
-                  {paymentGateway === 'dlocalgo' && dlocalgoLink && paymentStatus?.startsWith('PENDING_') ? (
-                    <Button
-                      className="ledson-btn-primary"
-                      style={{ flex: 1 }}
-                      onClick={async () => {
-                        try {
-                          const pid = paymentStatus.split('_')[1];
-                          const res = await axios.get(`${API_BASE_URL}/api/dlocalgo/status/${pid}`);
-                          if (res.data && res.data.status === 'PAID') {
-                            setPaymentStatus('APPROVED');
-                            setActiveStep(2);
-                          } else {
-                            alert(t('paymentProcessing'));
-                          }
-                        } catch (err) {
-                          console.error('Error verifying DLocalGo payment', err);
-                          alert(t('paymentErrorAlert'));
-                        }
-                      }}
-                    >
-                      {t('alreadyPaid')}
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      className="ledson-btn-primary"
-                      style={{ flex: 1 }}
-                      leftSection={<IconCreditCard size={20} />}
-                      loading={isSubmittingForm}
-                      disabled={isSubmittingForm}
-                    >
-                      {t('payWith')} {paymentGateway === 'dlocalgo' ? 'DLocal Go' : 'Wompi'} (${servicePrice.toLocaleString('es-CO')} COP)
-                    </Button>
-                  )}
+                  <Button
+                    type="submit"
+                    className="ledson-btn-primary"
+                    style={{ flex: 1 }}
+                    rightSection={<IconArrowRight size={20} />}
+                    loading={isSubmittingForm}
+                    disabled={isSubmittingForm}
+                  >
+                    {t('nextStep')}
+                  </Button>
                 </Group>
               </Grid.Col>
             </Grid>
           </Box>
         )}
 
-        {/* STEP 3: PHOTO CAPTURE */}
+        {/* STEP 3: PHOTO CAPTURE & PAYMENT */}
         {activeStep === 2 && (
           <Box className="ledson-card">
-            <Text className="ledson-section-title">{t('paymentApproved')}</Text>
+            <Text className="ledson-section-title">{t('uploadStepTitle')}</Text>
             <Text className="ledson-step-subtitle">{t('nowUploadPhoto')}</Text>
 
             {!((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
@@ -729,15 +749,39 @@ export function BookingForm() {
               <Button className="ledson-btn-outline ledson-btn-back" onClick={() => setActiveStep(1)} aria-label={t('back')}>
                 <IconArrowLeft size={18} />
               </Button>
-              <Button
-                className="ledson-btn-primary"
-                style={{ flex: 1 }}
-                loading={isUploadingPhoto}
-                onClick={submitPhotoAndConfirm}
-                disabled={(!useWebcam && !fileImageBase64) || (useWebcam && !capturedImage)}
-              >
-                {t('next')}
-              </Button>
+              {paymentGateway === 'dlocalgo' && dlocalgoLink && paymentStatus?.startsWith('PENDING_') ? (
+                <Button
+                  className="ledson-btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={async () => {
+                    try {
+                      const pid = paymentStatus.split('_')[1];
+                      const res = await axios.get(`${API_BASE_URL}/api/dlocalgo/status/${pid}`);
+                      if (res.data && res.data.status === 'PAID') {
+                        await finalizeBooking(bookingId as string);
+                      } else {
+                        alert(t('paymentProcessing'));
+                      }
+                    } catch (err) {
+                      console.error('Error verifying DLocalGo payment', err);
+                      alert(t('paymentErrorAlert'));
+                    }
+                  }}
+                >
+                  {t('alreadyPaid')}
+                </Button>
+              ) : (
+                <Button
+                  className="ledson-btn-primary"
+                  style={{ flex: 1 }}
+                  leftSection={<IconCreditCard size={20} />}
+                  loading={isUploadingPhoto}
+                  onClick={handleUploadAndPay}
+                  disabled={isUploadingPhoto || (!useWebcam && !fileImageBase64) || (useWebcam && !capturedImage)}
+                >
+                  {t('payWith')} (${servicePrice.toLocaleString('es-CO')} COP)
+                </Button>
+              )}
             </Group>
           </Box>
         )}
