@@ -388,6 +388,57 @@ export class BookingsService {
     return { id: bookingRef.id, ...booking };
   }
 
+  // Guarda la foto/video (y la franja elegida, si aplica) en una reserva que
+  // sigue PENDING, sin marcarla como pagada ni asignarle hora. Se usa cuando
+  // la pasarela de pago redirige a una página externa (dLocal Go): hay que
+  // persistir el archivo ANTES de salir de la página, porque al volver se
+  // pierde el estado del navegador.
+  async attachMedia(
+    id: string,
+    data: {
+      imageBase64?: string;
+      timeSlot?: string;
+      trimStart?: number;
+      trimEnd?: number;
+    },
+  ) {
+    const db = this.firebase.getFirestore();
+    const bookingRef = db.collection('lr_bookings').doc(id);
+    const bookingDoc = await bookingRef.get();
+
+    if (!bookingDoc.exists)
+      throw new NotFoundException('Booking no encontrado');
+    const booking = bookingDoc.data();
+    if (!booking) throw new NotFoundException('Booking sin datos');
+
+    if (booking.status !== 'PENDING') {
+      return { success: true, message: 'La reserva ya fue procesada' };
+    }
+
+    const update: Record<string, any> = {};
+
+    if (data.imageBase64) {
+      const uploaded = await this.uploadMediaBase64(
+        data.imageBase64,
+        'bookings',
+      );
+      update.imageUrl = uploaded.url;
+      update.mediaType = uploaded.mediaType;
+      update.trimStart = data.trimStart ?? null;
+      update.trimEnd = data.trimEnd ?? null;
+    }
+
+    if (data.timeSlot) {
+      update.timeSlot = data.timeSlot;
+    }
+
+    if (Object.keys(update).length > 0) {
+      await bookingRef.update(update);
+    }
+
+    return { success: true };
+  }
+
   async confirmPayment(
     id: string,
     data?: {

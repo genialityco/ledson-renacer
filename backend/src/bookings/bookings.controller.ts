@@ -38,6 +38,20 @@ export class BookingsController {
     return this.bookingsService.initBooking(data);
   }
 
+  @Post(':id/attach-media')
+  async attachMedia(
+    @Param('id') id: string,
+    @Body()
+    data: {
+      imageBase64?: string;
+      timeSlot?: string;
+      trimStart?: number;
+      trimEnd?: number;
+    },
+  ) {
+    return this.bookingsService.attachMedia(id, data);
+  }
+
   @Post(':id/confirm-payment')
   async confirmPayment(
     @Param('id') id: string,
