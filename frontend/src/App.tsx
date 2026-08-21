@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { AppShell, Title, Group, Text, Center, Loader } from '@mantine/core';
+import { AppShell, Group, Text, Center, Loader } from '@mantine/core';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { LanguageProvider, useLanguage } from './i18n';
 import './graffiti.css';
@@ -41,10 +41,7 @@ function AppContent() {
     <AppShell >
   <AppShell.Header className="ledson-header">
     <Group gap={6} className="ledson-logo-group" onClick={() => navigate('/')}>
-      <span className="ledson-logo-icon" />
-      <Title order={3} className="ledson-logo">
-        led's<span className="ledson-logo-thin">on</span>
-      </Title>
+      <img src="/logo-leds-on.png" alt="Led's On" className="ledson-logo-img" />
     </Group>
     <Group gap={8} className="ledson-lang">
       <Text component="span" className="ledson-lang-label" data-active={language === 'es'}>ES</Text>

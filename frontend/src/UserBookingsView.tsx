@@ -5,6 +5,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { useLanguage } from './i18n';
 import { API_BASE_URL } from './config';
+import './graffiti.css';
+import './ledson-clean.css';
 
 export function UserBookingsView() {
   const navigate = useNavigate();
@@ -81,7 +83,23 @@ export function UserBookingsView() {
   };
 
   return (
-    <Container size="sm" py="xl">
+    <Box className="ledson-bg-white ledson-bubbles-wrap">
+      <div className="paint-particles ledson-bubbles">
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+        <span className="particle" />
+      </div>
+
+      <Container size="sm" py="xl" style={{ position: 'relative', zIndex: 2 }}>
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/')} mb="md">
         {t('backHome')}
       </Button>
@@ -179,6 +197,7 @@ export function UserBookingsView() {
           ))}
         </Grid>
       )}
-    </Container>
+      </Container>
+    </Box>
   );
 }

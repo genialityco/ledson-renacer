@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Badge, Modal, ScrollArea, UnstyledButton, ActionIcon } from '@mantine/core';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Badge, Modal, ScrollArea, UnstyledButton, ActionIcon, Input } from '@mantine/core';
 import { IconCamera, IconX, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -28,6 +28,12 @@ interface SellerOption {
 
 const FILTER_STEP_LABELS = ['ELIGE EL ESTILO', 'DATOS Y COBRO', 'LA FOTO'];
 const NO_FILTER_STEP_LABELS = ['DATOS Y COBRO', 'LA FOTO'];
+const DOCUMENT_TYPE_OPTIONS = [
+  { value: 'CC', label: 'Cédula de ciudadanía' },
+  { value: 'CE', label: 'Cédula de extranjería' },
+  { value: 'TI', label: 'Tarjeta de identidad' },
+  { value: 'PA', label: 'Pasaporte' },
+];
 
 export function AssistedBookingForm() {
   const navigate = useNavigate();
@@ -60,6 +66,7 @@ export function AssistedBookingForm() {
   const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number } | null>(null);
 
   const [name, setName] = useState('');
+  const [docType, setDocType] = useState<string | null>(null);
   const [docId, setDocId] = useState('');
   const [email, setEmail] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -283,9 +290,9 @@ export function AssistedBookingForm() {
   const isVideoSelected = !useWebcam && fileMediaType === 'video';
 
   return (
-    <Box className="graffiti-wall ledson-booking-wrap">
+    <Box className="ledson-bg-white ledson-booking-wrap">
 
-      <div className="paint-particles">
+      <div className="paint-particles ledson-bubbles">
         <span className="particle" />
         <span className="particle" />
         <span className="particle" />
@@ -299,13 +306,6 @@ export function AssistedBookingForm() {
         <span className="particle" />
         <span className="particle" />
       </div>
-      {/* Decoración spray de fondo */}
-      <div className="spray-cloud spray-cloud--pink" />
-      <div className="spray-cloud spray-cloud--cyan" />
-      <div className="spray-cloud spray-cloud--yellow" />
-      <div className="drip drip--1" />
-      <div className="drip drip--2" />
-      <div className="drip drip--3" />
 
       <Container size="md" py={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
         <Title order={2} ta="center" className="ledson-title">
@@ -376,22 +376,37 @@ export function AssistedBookingForm() {
             <Text className="ledson-step-subtitle">Completa los datos del cliente y registra el pago recibido en el estand.</Text>
             <Grid>
               <Grid.Col span={12}>
-                <TextInput label="Nombre completo" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
+                <TextInput label="Nombre completo" placeholder="Juan Pérez" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput label="ID / Cédula" required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} />
+                <Input.Wrapper label="Documento de identidad" required>
+                  <Grid gap="xs" mt={4}>
+                    <Grid.Col span={5}>
+                      <Select placeholder="Tipo" data={DOCUMENT_TYPE_OPTIONS} required value={docType} onChange={setDocType} />
+                    </Grid.Col>
+                    <Grid.Col span={7}>
+                      <TextInput placeholder="Número de documento" required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} />
+                    </Grid.Col>
+                  </Grid>
+                </Input.Wrapper>
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput type="email" label="Correo Electrónico" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+                <TextInput type="email" label="Correo Electrónico" placeholder="tucorreo@email.com" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput label="WhatsApp (Celular)" required placeholder="Ej: +573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
+                <Input.Wrapper label="Nacionalidad" required>
+                  <Grid gap="xs" mt={4}>
+                    <Grid.Col span={6}>
+                      <Select placeholder="País" data={countries} searchable required value={country} onChange={handleCountryChange} />
+                    </Grid.Col>
+                    <Grid.Col span={6}>
+                      <Select placeholder="Ciudad" data={cities} searchable disabled={!country || isFetchingCities} required value={city} onChange={(val) => setCity(val || '')} />
+                    </Grid.Col>
+                  </Grid>
+                </Input.Wrapper>
               </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Select label="Nacionalidad (País)" placeholder="Selecciona país" data={countries} searchable required value={country} onChange={handleCountryChange} />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Select label="Ciudad" placeholder={country ? 'Selecciona ciudad' : 'Primero selecciona un país'} data={cities} searchable disabled={!country || isFetchingCities} required value={city} onChange={(val) => setCity(val || '')} />
+              <Grid.Col span={12}>
+                <TextInput label="Número de celular" required placeholder="+573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
               </Grid.Col>
 
               {bookingSystemType === 'slots' && (
@@ -419,7 +434,7 @@ export function AssistedBookingForm() {
 
               <Grid.Col span={12}>
                 <Text size="sm" fw={500} mb={4} style={{ color: '#33363b' }}>Valor del servicio a cobrar</Text>
-                <Text size="xl" fw={700} mb="sm" style={{ color: '#1c5cab' }}>${servicePrice.toLocaleString('es-CO')} COP</Text>
+                <Text size="xl" fw={700} mb="sm" style={{ color: '#0559A5' }}>${servicePrice.toLocaleString('es-CO')} COP</Text>
               </Grid.Col>
               <Grid.Col span={12}>
                 <Select label="Método de pago físico recibido" placeholder="Efectivo, Datáfono o QR" data={['Efectivo', 'Datáfono', 'QR']} required value={paymentMethod} onChange={(val) => val && setPaymentMethod(val)} />
@@ -432,7 +447,8 @@ export function AssistedBookingForm() {
 
               <Grid.Col span={12} mt="sm">
                 <Checkbox
-                  label={<Text size="sm">Acepto los <a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }} style={{ color: '#1c5cab' }}>términos y condiciones y la política de tratamiento de datos personales</a>.</Text>}
+                  size="xs"
+                  label={<Text size="xs">Acepto la <a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }} style={{ color: '#0559A5' }}>Política de Tratamiento de Datos Personales</a> y los <a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }} style={{ color: '#0559A5' }}>Términos y Condiciones</a> de LED'S ON</Text>}
                   checked={habeasData}
                   onChange={(event) => setHabeasData(event.currentTarget.checked)}
                   required
@@ -515,6 +531,12 @@ export function AssistedBookingForm() {
               </Grid>
             )}
 
+            {!((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
+              <Text size="xs" c="dimmed" ta="center" mb={16}>
+                Si vas a subir un video, se recomienda que sea en formato vertical: se proyectará en una pantalla vertical.
+              </Text>
+            )}
+
             {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
               <Box mb={18}>
                 <Box className="ledson-preview-wrap">
@@ -537,13 +559,13 @@ export function AssistedBookingForm() {
             {bookingSystemType === 'franjas' && (
               <Text size="sm" mb="md" style={{ color: '#33363b' }}>
                 Horario aproximado de publicación:{' '}
-                <Text span fw={700} style={{ color: '#1c5cab' }}>
+                <Text span fw={700} style={{ color: '#0559A5' }}>
                   {currentFranja ? currentFranja.replace('-', ' - ') : '...'}
                 </Text>
               </Text>
             )}
 
-            <Text size="sm" fw={500} mb="md" style={{ color: '#1c5cab' }}>
+            <Text size="sm" fw={500} mb="md" style={{ color: '#0559A5' }}>
               {isVideoSelected ? 'Tu video está listo para proyectarse en pantalla' : 'Estamos listos para agregar la magia de la comuna 13'}
             </Text>
             <Group gap={10}>
@@ -570,22 +592,22 @@ export function AssistedBookingForm() {
             <Title order={3} mb="md" className="ledson-section-title">¡Reserva Asistida Completada!</Title>
 
             {finalResult?.queuePosition && (
-              <Text size="xl" fw={700} style={{ color: '#1c5cab' }} mb="xs">
+              <Text size="xl" fw={700} style={{ color: '#0559A5' }} mb="xs">
                 Turno del cliente en la fila: #{finalResult.queuePosition}
               </Text>
             )}
             {finalResult?.timeSlot && (
               <Text size="sm" mb="xs" style={{ color: '#33363b' }}>
-                Horario reservado: <Text span fw={700} style={{ color: '#1c5cab' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
+                Horario reservado: <Text span fw={700} style={{ color: '#0559A5' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
               </Text>
             )}
             {finalResult?.exactTime && finalResult.exactTime !== 'Sin asignar' && finalResult.exactTime !== 'Agotado/Lleno' ? (
               <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
-                Hora asignada para la proyección: <Text span fw={700} style={{ color: '#1c5cab' }}>~{finalResult.exactTime}</Text>
+                Hora asignada para la proyección: <Text span fw={700} style={{ color: '#0559A5' }}>~{finalResult.exactTime}</Text>
               </Text>
             ) : (
               <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
-                Hora asignada para la proyección: <Text span fw={700} style={{ color: '#1c5cab' }}>Sin asignar</Text>
+                Hora asignada para la proyección: <Text span fw={700} style={{ color: '#0559A5' }}>Sin asignar</Text>
               </Text>
             )}
 

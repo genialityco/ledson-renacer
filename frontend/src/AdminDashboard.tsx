@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Textarea, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect } from '@mantine/core';
+import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Textarea, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect, CloseButton } from '@mantine/core';
 import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
@@ -950,26 +950,40 @@ export function AdminDashboard() {
               <Grid.Col span={{ base: 12, md: 4 }}>
                 <TextInput
                   label="Imagen Header (Arriba)"
+                  description="Si se deja vacía, la pantalla no muestra header."
                   placeholder="URL o subir archivo..."
                   value={headerUrl}
                   onChange={e => setHeaderUrl(e.currentTarget.value)}
+                  rightSectionWidth={headerUrl ? 68 : 36}
                   rightSection={
-                    <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setHeaderUrl })} accept="image/*">
-                      {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
-                    </FileButton>
+                    <Group gap={4} wrap="nowrap">
+                      {headerUrl && (
+                        <CloseButton size="sm" title="Quitar imagen header" onClick={() => setHeaderUrl('')} />
+                      )}
+                      <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setHeaderUrl })} accept="image/*">
+                        {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
+                      </FileButton>
+                    </Group>
                   }
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 4 }}>
                 <TextInput
                   label="Imagen Footer (Abajo)"
+                  description="Si se deja vacía, la pantalla no muestra footer."
                   placeholder="URL o subir archivo..."
                   value={footerUrl}
                   onChange={e => setFooterUrl(e.currentTarget.value)}
+                  rightSectionWidth={footerUrl ? 68 : 36}
                   rightSection={
-                    <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setFooterUrl })} accept="image/*">
-                      {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
-                    </FileButton>
+                    <Group gap={4} wrap="nowrap">
+                      {footerUrl && (
+                        <CloseButton size="sm" title="Quitar imagen footer" onClick={() => setFooterUrl('')} />
+                      )}
+                      <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setFooterUrl })} accept="image/*">
+                        {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
+                      </FileButton>
+                    </Group>
                   }
                 />
               </Grid.Col>

@@ -1299,6 +1299,7 @@ export class BookingsService {
     const projectionData = {
       id: bookingId,
       name: b.name || '',
+      code: b.code || '',
       imageUrl: b.generatedImageUrl || b.imageUrl || '',
       mediaType: b.mediaType || 'image',
       timestamp: Date.now(),

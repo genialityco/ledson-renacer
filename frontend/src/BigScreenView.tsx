@@ -425,6 +425,29 @@ export function BigScreenView() {
                   </Box>
                 </Box>
               )}
+
+              {/* Código de reserva de la proyección activa, superpuesto sobre la
+                  imagen/video para que quien la ve pueda identificar su turno. */}
+              {displayProjection?.code && (
+                <Box style={{
+                  position: 'absolute',
+                  bottom: 24,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 30,
+                  padding: '8px 20px',
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(0,0,0,0.55)',
+                  color: '#fff',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 700,
+                  fontSize: 'clamp(1rem, 2vw, 1.6rem)',
+                  letterSpacing: 2,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                }}>
+                  {displayProjection.code}
+                </Box>
+              )}
             </div>
           )}
         </MantineTransition>

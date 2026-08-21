@@ -18,7 +18,7 @@ interface PhotoboothImage {
 export function Home() {
   const [images, setImages] = useState<PhotoboothImage[]>([]);
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   // Mismos puntos de quiebre que ledson-clean.css (700 de ancho,
   // 800 / 560 de alto) para que los espaciados queden proporcionales
   // en cada tamaño. El alto manda sobre el ancho: una pantalla ancha pero
@@ -31,7 +31,13 @@ export function Home() {
   const roomy = isDesktop && !isShort;
 
   const containerPy = isVeryShort ? 2 : roomy ? 40 : 6;
-  const groupMt = isVeryShort ? 6 : roomy ? 20 : 10;
+  const groupMt = isVeryShort ? 6 : roomy ? 28 : 10;
+
+  // Título de bienvenida partido en dos líneas fijas (en vez de dejar que
+  // el texto haga wrap solo) para un balance visual prolijo en la tarjeta.
+  const welcomeTitleLines = language === 'es'
+    ? ["Bienvenido(a) a la", "Experiencia LED'S ON"]
+    : ['Welcome to the', "LED'S ON Experience"];
 
   useEffect(() => {
     // El backend ya siembra los filtros de ejemplo una sola vez al arrancar
@@ -45,8 +51,8 @@ export function Home() {
   }, []);
 
   return (
-    <Box className="graffiti-wall ledson-home-wrap">
- <div className="paint-particles">
+    <Box className="ledson-bg-white ledson-home-wrap">
+      <div className="paint-particles ledson-bubbles">
         <span className="particle" />
         <span className="particle" />
         <span className="particle" />
@@ -60,24 +66,6 @@ export function Home() {
         <span className="particle" />
         <span className="particle" />
       </div>
-      {/* Splatters decorativos de fondo */}
-       <div className="spray-cloud spray-cloud--pink" />
-      <div className="spray-cloud spray-cloud--cyan" />
-      <div className="spray-cloud spray-cloud--yellow" />
-
-      {/* Salpicaduras irregulares de pintura */}
-      <svg className="splat splat--1" viewBox="0 0 200 200" fill="#ff3399">
-        <path d="M100 20c18 8 22 30 40 30s30-18 40 4-6 38-2 54 18 30 0 42-40-2-54 8-22 34-44 30-26-26-44-32-40 6-50-14 8-36 4-54-18-30 0-44 38 4 54-6 28-36 60-28z" />
-        <circle cx="30" cy="40" r="6" /><circle cx="175" cy="150" r="5" /><circle cx="60" cy="180" r="4" />
-      </svg>
-      <svg className="splat splat--2" viewBox="0 0 200 200" fill="#29c5ff">
-        <path d="M96 24c20 4 18 28 38 32s34-12 42 10-10 36-4 52 16 34-4 44-38-6-52 4-26 30-46 24-20-30-38-38-38 10-48-12 12-34 8-52-16-32 4-44 36 8 52-2 22-30 62-22z" />
-        <circle cx="40" cy="60" r="5" /><circle cx="160" cy="40" r="4" /><circle cx="150" cy="170" r="6" />
-      </svg>
-      <svg className="splat splat--3" viewBox="0 0 200 200" fill="#ffbe1e">
-        <path d="M100 16c16 10 26 26 44 28s28-16 38 6-8 38 0 54 16 28-2 42-36 0-50 12-24 32-46 26-22-28-40-34-36 12-48-8 10-38 4-56-14-28 6-42 36 6 50-4 26-34 64-24z" />
-        <circle cx="34" cy="48" r="5" /><circle cx="168" cy="130" r="6" /><circle cx="70" cy="172" r="4" />
-      </svg>
 
       {/* Imágenes cayendo */}
       <div className="falling-container">
@@ -129,7 +117,9 @@ export function Home() {
           </Box>
 
           <Title order={2} className="ledson-welcome-title">
-            {t('welcomeTitle')}
+            {welcomeTitleLines[0]}
+            <br />
+            {welcomeTitleLines[1]}
           </Title>
           <Text className="ledson-body-text">{t('welcomeText1')}</Text>
           <Text className="ledson-body-text">{t('welcomeText2')}</Text>

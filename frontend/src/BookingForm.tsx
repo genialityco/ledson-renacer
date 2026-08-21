@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon } from '@mantine/core';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon, Input } from '@mantine/core';
 import { IconCamera, IconCreditCard, IconX, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -22,7 +22,7 @@ interface FilterOption {
 }
 
 const FILTER_STEP_LABELS = ['ELIGE TU FILTRO', 'TUS DATOS', 'FOTO Y PAGO'];
-const NO_FILTER_STEP_LABELS = ['TUS DATOS', 'FOTO Y PAGO'];
+const NO_FILTER_STEP_LABELS = ['INGRESA TUS DATOS', 'FOTO Y PAGO'];
 
 export function BookingForm() {
   const navigate = useNavigate();
@@ -59,6 +59,7 @@ export function BookingForm() {
   const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number } | null>(null);
 
   const [name, setName] = useState('');
+  const [docType, setDocType] = useState<string | null>(null);
   const [docId, setDocId] = useState('');
   const [email, setEmail] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -89,6 +90,12 @@ export function BookingForm() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const { t } = useLanguage();
+  const documentTypeOptions = [
+    { value: 'CC', label: t('docTypeCC') },
+    { value: 'CE', label: t('docTypeCE') },
+    { value: 'TI', label: t('docTypeTI') },
+    { value: 'PA', label: t('docTypePA') },
+  ];
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -490,9 +497,9 @@ export function BookingForm() {
   const isVideoSelected = !useWebcam && fileMediaType === 'video';
 
   return (
-    <Box className="graffiti-wall ledson-booking-wrap">
+    <Box className="ledson-bg-white ledson-booking-wrap">
 
- <div className="paint-particles">
+      <div className="paint-particles ledson-bubbles">
         <span className="particle" />
         <span className="particle" />
         <span className="particle" />
@@ -506,13 +513,6 @@ export function BookingForm() {
         <span className="particle" />
         <span className="particle" />
       </div>
-      {/* Decoración spray de fondo */}
-      <div className="spray-cloud spray-cloud--pink" />
-      <div className="spray-cloud spray-cloud--cyan" />
-      <div className="spray-cloud spray-cloud--yellow" />
-      <div className="drip drip--1" />
-      <div className="drip drip--2" />
-      <div className="drip drip--3" />
 
       <Container size="md" py={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
         <Title order={2} ta="center" className="ledson-title">
@@ -583,22 +583,37 @@ export function BookingForm() {
             <Text className="ledson-step-subtitle">{t('step2Subtitle')}</Text>
             <Grid>
               <Grid.Col span={12}>
-                <TextInput label={t('fullName')} required value={name} onChange={(e) => setName(e.currentTarget.value)} />
+                <TextInput label={t('fullName')} placeholder={t('fullNamePlaceholder')} required value={name} onChange={(e) => setName(e.currentTarget.value)} />
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput label={t('docId')} required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} />
+                <Input.Wrapper label={t('docId')} required>
+                  <Grid gap="xs" mt={4}>
+                    <Grid.Col span={5}>
+                      <Select placeholder={t('docTypePlaceholder')} data={documentTypeOptions} required value={docType} onChange={setDocType} />
+                    </Grid.Col>
+                    <Grid.Col span={7}>
+                      <TextInput placeholder={t('docNumberPlaceholder')} required value={docId} onChange={(e) => setDocId(e.currentTarget.value)} />
+                    </Grid.Col>
+                  </Grid>
+                </Input.Wrapper>
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput type="email" label={t('email')} required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+                <TextInput type="email" label={t('email')} placeholder={t('emailPlaceholder')} required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput label={t('whatsapp')} required placeholder="Ej: +573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
+                <Input.Wrapper label={t('country')} required>
+                  <Grid gap="xs" mt={4}>
+                    <Grid.Col span={6}>
+                      <Select placeholder={t('selectCountry')} data={countries} searchable required value={country} onChange={handleCountryChange} />
+                    </Grid.Col>
+                    <Grid.Col span={6}>
+                      <Select placeholder={t('selectCity')} data={cities} searchable disabled={!country || isFetchingCities} required value={city} onChange={(val) => setCity(val || '')} />
+                    </Grid.Col>
+                  </Grid>
+                </Input.Wrapper>
               </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Select label={t('country')} placeholder={t('selectCountry')} data={countries} searchable required value={country} onChange={handleCountryChange} />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Select label={t('city')} placeholder={country ? t('selectCity') : t('selectCountryFirst')} data={cities} searchable disabled={!country || isFetchingCities} required value={city} onChange={(val) => setCity(val || '')} />
+              <Grid.Col span={12}>
+                <TextInput label={t('whatsapp')} required placeholder="+573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
               </Grid.Col>
 
               {bookingSystemType === 'slots' && (
@@ -614,7 +629,7 @@ export function BookingForm() {
 
               <Grid.Col span={12} mt="sm">
                 <Checkbox
-                  label={<Text size="sm">{t('habeasDataText1')}<a href="#" target="_blank">{t('habeasDataText2')}</a>.</Text>}
+                  label={<Text size="xs">{t('habeasDataPrefix')}<a href="#" target="_blank">{t('habeasDataLink1')}</a>{t('habeasDataMiddle')}<a href="#" target="_blank">{t('habeasDataLink2')}</a>{t('habeasDataSuffix')}</Text>}
                   checked={habeasData}
                   onChange={(event) => setHabeasData(event.currentTarget.checked)}
                   required
@@ -699,6 +714,12 @@ export function BookingForm() {
               </Grid>
             )}
 
+            {!((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
+              <Text size="xs" c="dimmed" ta="center" mb={16}>
+                {t('verticalVideoHint')}
+              </Text>
+            )}
+
             {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
               <Box mb={18}>
                 <Box className="ledson-preview-wrap">
@@ -722,7 +743,7 @@ export function BookingForm() {
               <Box mb="md">
                 <Text size="sm" mb={4}>
                   {t('approxFranjaLabel')}{' '}
-                  <Text span fw={700} style={{ color: '#1c5cab' }}>
+                  <Text span fw={700} style={{ color: '#0559A5' }}>
                     {timeSlot ? timeSlot.replace('-', ' - ') : '...'}
                   </Text>
                 </Text>
@@ -742,7 +763,7 @@ export function BookingForm() {
               </Box>
             )}
 
-            <Text size="sm" fw={500} mb="md" style={{ color: '#1c5cab' }}>
+            <Text size="sm" fw={500} mb="md" style={{ color: '#0559A5' }}>
               {isVideoSelected ? t('videoReady') : t('magicReady')}
             </Text>
             <Group gap={10}>
@@ -825,22 +846,22 @@ export function BookingForm() {
                 <Box className="ledson-result-icon"><IconCheck size={28} /></Box>
                 <Title order={3} mb="md" className="ledson-section-title">{t('bookingCompleted')}</Title>
                 {finalResult?.queuePosition && (
-                  <Text size="xl" fw={700} style={{ color: '#1c5cab' }} mb="xs">
+                  <Text size="xl" fw={700} style={{ color: '#0559A5' }} mb="xs">
                     {t('queueTurn')}{finalResult.queuePosition}
                   </Text>
                 )}
                 {finalResult?.timeSlot && (
                   <Text size="sm" mb="xs" style={{ color: '#33363b' }}>
-                    {t('franjaAssigned')} <Text span fw={700} style={{ color: '#1c5cab' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
+                    {t('franjaAssigned')} <Text span fw={700} style={{ color: '#0559A5' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
                   </Text>
                 )}
                 {finalResult?.exactTime && finalResult.exactTime !== 'Sin asignar' && finalResult.exactTime !== 'Agotado/Lleno' ? (
                   <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
-                    {t('assignedTime')} <Text span fw={700} style={{ color: '#1c5cab' }}>~{finalResult.exactTime}</Text>
+                    {t('assignedTime')} <Text span fw={700} style={{ color: '#0559A5' }}>~{finalResult.exactTime}</Text>
                   </Text>
                 ) : (
                   <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
-                    {t('assignedTime')} <Text span fw={700} style={{ color: '#1c5cab' }}>{t('unassigned')}</Text>
+                    {t('assignedTime')} <Text span fw={700} style={{ color: '#0559A5' }}>{t('unassigned')}</Text>
                   </Text>
                 )}
 
