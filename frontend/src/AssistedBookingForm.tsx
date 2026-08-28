@@ -63,7 +63,9 @@ export function AssistedBookingForm() {
   const [rawImageForCrop, setRawImageForCrop] = useState<string | null>(null);
   const [videoTrimModalOpened, setVideoTrimModalOpened] = useState(false);
   const [rawVideoFile, setRawVideoFile] = useState<File | null>(null);
-  const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number } | null>(null);
+  const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number; frameX?: number; frameY?: number; frameZoom?: number } | null>(null);
+  const [cropWidth, setCropWidth] = useState(576);
+  const [cropHeight, setCropHeight] = useState(1152);
 
   const [name, setName] = useState('');
   const [docType, setDocType] = useState<string | null>(null);
@@ -106,6 +108,10 @@ export function AssistedBookingForm() {
     });
     axios.get(`${API_BASE_URL}/api/sellers`).then((res) => {
       setSellers(res.data.map((s: any) => ({ id: s._id, name: s.name })));
+    });
+    axios.get(`${API_BASE_URL}/api/bookings/screen-settings`).then((res) => {
+      setCropWidth(res.data?.cropWidth || 576);
+      setCropHeight(res.data?.cropHeight || 1152);
     });
   }, []);
 
@@ -229,9 +235,10 @@ export function AssistedBookingForm() {
     if (useWebcam) setUseWebcam(false);
   };
 
-  // El tramo elegido (trimStart/trimEnd) se guarda como metadato junto al
-  // video completo — no se recorta/recodifica el archivo en el navegador.
-  const handleVideoTrimConfirm = (trim: { trimStart: number; trimEnd: number }) => {
+  // El tramo elegido (trimStart/trimEnd) y el encuadre (frameX/frameY/frameZoom)
+  // se guardan como metadatos junto al video completo — no se recorta/recodifica
+  // el archivo en el navegador.
+  const handleVideoTrimConfirm = (trim: { trimStart: number; trimEnd: number; frameX?: number; frameY?: number; frameZoom?: number }) => {
     if (!rawVideoFile) return;
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -267,7 +274,13 @@ export function AssistedBookingForm() {
       const res = await axios.post(`${API_BASE_URL}/api/bookings`, {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
         imageBase64: finalImage, paymentMethod, requiresInvoice: requiresInvoice === 'SI', sellerId,
-        ...(isVideo && videoTrim ? { trimStart: videoTrim.trimStart, trimEnd: videoTrim.trimEnd } : {}),
+        ...(isVideo && videoTrim ? {
+          trimStart: videoTrim.trimStart,
+          trimEnd: videoTrim.trimEnd,
+          frameX: videoTrim.frameX,
+          frameY: videoTrim.frameY,
+          frameZoom: videoTrim.frameZoom,
+        } : {}),
       });
       setFinalResult(res.data);
       setActiveStep(3);
@@ -673,9 +686,9 @@ export function AssistedBookingForm() {
         <ImageCropModal
           opened={imageCropModalOpened}
           imageSrc={rawImageForCrop}
-          aspect={1}
-          outputWidth={512}
-          outputHeight={512}
+          aspect={cropWidth / cropHeight}
+          outputWidth={cropWidth}
+          outputHeight={cropHeight}
           onCancel={handleImageCropCancel}
           onConfirm={handleImageCropConfirm}
         />
@@ -683,6 +696,7 @@ export function AssistedBookingForm() {
           opened={videoTrimModalOpened}
           file={rawVideoFile}
           maxSeconds={15}
+          aspect={cropWidth / cropHeight}
           onCancel={handleVideoTrimCancel}
           onConfirm={handleVideoTrimConfirm}
         />

@@ -8,8 +8,12 @@ import { API_BASE_URL } from './config';
 import { ImageCropModal } from './ImageCropModal';
 import { VideoTrimModal } from './VideoTrimModal';
 
-// Proporción real de la pantalla de proyección (576x1152, vertical).
-const SCREEN_ASSET_ASPECT = 576 / 1152;
+// Proporción real de la pantalla de proyección — configurable desde este
+// panel (ver cropWidth/cropHeight) para que el recorte de fotos/videos del
+// admin y de los clientes coincida exactamente con lo que se ve en pantalla.
+// Estos son solo los valores por defecto antes de cargar la configuración.
+const DEFAULT_CROP_WIDTH = 576;
+const DEFAULT_CROP_HEIGHT = 1152;
 
 interface ScreenUploadTarget {
   setUrlCallback: (url: string) => void;
@@ -34,7 +38,7 @@ export function AdminDashboard() {
   const [filters, setFilters] = useState<any[]>([]);
   const [opened, { open, close }] = useDisclosure(false);
   const [newFilter, setNewFilter] = useState<any>({
-    label: '', description: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: ''
+    label: '', description: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: ''
   });
   const [sellers, setSellers] = useState<any[]>([]);
   const [sellerModalOpened, { open: openSellerModal, close: closeSellerModal }] = useDisclosure(false);
@@ -47,6 +51,23 @@ export function AdminDashboard() {
   const [videoProjectionDuration, setVideoProjectionDuration] = useState(15);
   const [globalGridStartTime, setGlobalGridStartTime] = useState('08:00:00');
   const [globalGridEndTime, setGlobalGridEndTime] = useState('17:00:00');
+  const [cropWidth, setCropWidth] = useState(DEFAULT_CROP_WIDTH);
+  const [cropHeight, setCropHeight] = useState(DEFAULT_CROP_HEIGHT);
+
+  // Efecto de Revelado de Proyección: global, con o sin filtros activos (antes
+  // vivía en cada filtro, pero sin filtro seleccionado no había de dónde
+  // sacarlo). "spray" = lata 3D (como hoy); "fade" = fundido simple + marco;
+  // "video-overlay" = un video se reproduce encima y se desvanece al final,
+  // revelando la foto/video real que ya está debajo.
+  const [revealEffect, setRevealEffect] = useState('spray');
+  const [revealOverlayVideoUrl, setRevealOverlayVideoUrl] = useState('');
+  const [revealOverlayFadeSeconds, setRevealOverlayFadeSeconds] = useState(2);
+  const [containerTransition, setContainerTransition] = useState('fade');
+
+  // Marco global compuesto SOLO en la foto que se envía por correo (la
+  // proyección en pantalla no lo usa). Reemplaza al marco por filtro para
+  // este propósito, ya que este evento tiene los filtros desactivados.
+  const [emailFrameUrl, setEmailFrameUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [pendingUploadTarget, setPendingUploadTarget] = useState<ScreenUploadTarget | null>(null);
   const [rawImageForCrop, setRawImageForCrop] = useState<string | null>(null);
@@ -56,10 +77,19 @@ export function AdminDashboard() {
   const [contentGrid, setContentGrid] = useState<any[]>([]);
   const [deadTimes, setDeadTimes] = useState<any[]>([]);
   const [gridModalOpened, { open: openGridModal, close: closeGridModal }] = useDisclosure(false);
-  const [newGridItem, setNewGridItem] = useState<any>({ 
+  const [newGridItem, setNewGridItem] = useState<any>({
     name: '', url: '', type: 'image', duration: 10, priority: 1, active: true,
     targetAppearances: 100, currentAppearances: 0, cooldownPeriod: 30, noConsecutive: true, exclusionWindows: [], transition: 'fade'
   });
+
+  // Pantalla de Reposo: independiente de la Parrilla de Contenidos. Solo se
+  // activa tras N minutos sin proyecciones NI reservas pendientes (ver
+  // hasPendingQueue en screen-settings) — mientras tanto la Parrilla sigue
+  // funcionando exactamente igual que hoy.
+  const [restScreenIdleMinutes, setRestScreenIdleMinutes] = useState(5);
+  const [restScreenItems, setRestScreenItems] = useState<any[]>([]);
+  const [restItemModalOpened, { open: openRestItemModal, close: closeRestItemModal }] = useDisclosure(false);
+  const [newRestItem, setNewRestItem] = useState<any>({ name: '', url: '', type: 'image', duration: 10 });
 
   // Remove unused addSecondsToTime if it's there but actually used inside useEffect.
   // Actually wait, let's keep it but suppress the TS warning by removing if not used. 
@@ -118,8 +148,17 @@ export function AdminDashboard() {
         setVideoProjectionDuration(resScreen.data.videoProjectionDuration || 15);
         setGlobalGridStartTime(resScreen.data.globalGridStartTime || '08:00:00');
         setGlobalGridEndTime(resScreen.data.globalGridEndTime || '17:00:00');
+        setCropWidth(resScreen.data.cropWidth || DEFAULT_CROP_WIDTH);
+        setCropHeight(resScreen.data.cropHeight || DEFAULT_CROP_HEIGHT);
         setContentGrid(resScreen.data.contentGrid || []);
         setDeadTimes(resScreen.data.deadTimes || []);
+        setRestScreenIdleMinutes(resScreen.data.restScreenIdleMinutes ?? 5);
+        setRestScreenItems(resScreen.data.restScreenItems || []);
+        setRevealEffect(resScreen.data.revealEffect || 'spray');
+        setRevealOverlayVideoUrl(resScreen.data.revealOverlayVideoUrl || '');
+        setRevealOverlayFadeSeconds(resScreen.data.revealOverlayFadeSeconds ?? 2);
+        setContainerTransition(resScreen.data.containerTransition || 'fade');
+        setEmailFrameUrl(resScreen.data.emailFrameUrl || '');
       }
     } catch (e) {
       console.error('Error fetching admin data', e);
@@ -157,7 +196,7 @@ export function AdminDashboard() {
       await axios.post(`${API_BASE_URL}/api/images`, newFilter);
     }
     
-    setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: '' });
+    setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: '' });
     close();
     fetchData();
   };
@@ -208,8 +247,8 @@ export function AdminDashboard() {
     }
   };
 
-  const handleUpdateSettings = async (overrideGrid?: any[]) => {
-    await axios.put(`${API_BASE_URL}/api/bookings/screen-settings`, { 
+  const handleUpdateSettings = async (overrideGrid?: any[], overrideRestItems?: any[]) => {
+    await axios.put(`${API_BASE_URL}/api/bookings/screen-settings`, {
       backgroundUrl: screenBgUrl,
       headerUrl,
       footerUrl,
@@ -217,8 +256,17 @@ export function AdminDashboard() {
       videoProjectionDuration,
       globalGridStartTime,
       globalGridEndTime,
+      cropWidth,
+      cropHeight,
       contentGrid: overrideGrid || contentGrid,
-      deadTimes
+      deadTimes,
+      restScreenIdleMinutes,
+      restScreenItems: overrideRestItems || restScreenItems,
+      revealEffect,
+      revealOverlayVideoUrl,
+      revealOverlayFadeSeconds,
+      containerTransition,
+      emailFrameUrl,
     });
     alert('Configuración de la Pantalla Gigante actualizada');
   };
@@ -617,7 +665,7 @@ export function AdminDashboard() {
           </Table>
 
           <Modal opened={opened} onClose={() => {
-            setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, transitionEffect: 'fade', frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: '' });
+            setNewFilter({ label: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: '' });
             close();
           }} title={newFilter._id ? "Editar Filtro" : "Añadir Nuevo Filtro"}>
             <TextInput label="Label (Ej: Estilo Acuarela)" value={newFilter.label} onChange={e => setNewFilter({...newFilter, label: e.currentTarget.value})} mb="sm" />
@@ -667,22 +715,12 @@ export function AdminDashboard() {
             />
 
             <Text fw={500} mt="md" mb="xs">Visualización en Pantalla Gigante</Text>
-            <Select 
-              label="Efecto de Transición"
-              value={newFilter.transitionEffect}
-              onChange={(val) => setNewFilter({...newFilter, transitionEffect: val || 'fade'})}
-              data={[
-                { value: 'fade', label: 'Desvanecimiento (Fade)' },
-                { value: 'slide-up', label: 'Deslizar hacia arriba' },
-                { value: 'slide-down', label: 'Deslizar hacia abajo' },
-                { value: 'slide-right', label: 'Deslizar a la derecha' },
-                { value: 'slide-left', label: 'Deslizar a la izquierda' },
-                { value: 'scale', label: 'Escalar' },
-                { value: 'pop', label: 'Pop' },                { value: 'particles', label: 'Partículas' },              ]}
-              mb="sm"
-            />
-            <TextInput 
-              label="Marco Decorativo (PNG con transparencia)" 
+            <Text size="xs" c="dimmed" mb="xs">
+              El efecto de revelado y la transición de entrada/salida ahora se configuran de forma global
+              en la pestaña Pantalla → "Efecto de Revelado de Proyección" (aplica con o sin filtros activos).
+            </Text>
+            <TextInput
+              label="Marco Decorativo (PNG con transparencia)"
               placeholder="URL o subir archivo..." 
               value={newFilter.frameUrl} 
               onChange={e => setNewFilter({...newFilter, frameUrl: e.currentTarget.value})}
@@ -935,15 +973,22 @@ export function AdminDashboard() {
             <Title order={4} mb="sm">Configuración de Pantalla (En Espera / Carrusel)</Title>
             <Grid mb="sm">
               <Grid.Col span={{ base: 12, md: 4 }}>
-                <TextInput 
-                  label="Fondo Global (Opcional)" 
-                  placeholder="URL o subir archivo..." 
-                  value={screenBgUrl} 
+                <TextInput
+                  label="Fondo Global (Opcional)"
+                  description="Si se deja vacía, la pantalla no muestra fondo personalizado."
+                  placeholder="URL o subir archivo..."
+                  value={screenBgUrl}
                   onChange={e => setScreenBgUrl(e.currentTarget.value)}
+                  rightSectionWidth={screenBgUrl ? 68 : 36}
                   rightSection={
-                    <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setScreenBgUrl })} accept="image/*,video/*">
-                      {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
-                    </FileButton>
+                    <Group gap={4} wrap="nowrap">
+                      {screenBgUrl && (
+                        <CloseButton size="sm" title="Quitar imagen de fondo" onClick={() => setScreenBgUrl('')} />
+                      )}
+                      <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setScreenBgUrl })} accept="image/*,video/*">
+                        {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
+                      </FileButton>
+                    </Group>
                   }
                 />
               </Grid.Col>
@@ -1027,6 +1072,131 @@ export function AdminDashboard() {
               </Grid.Col>
             </Grid>
 
+            <Grid mb="xl">
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <Text size="sm" fw={500} mb={2}>Proporción de Recorte (Foto/Video del cliente)</Text>
+                <Text size="xs" c="dimmed" mb="xs">Debe coincidir con la proporción real de la pantalla/proyector. Se usa para recortar la foto del cliente (incluida la que se envía a la IA), su video, y las imágenes/videos que subas aquí para fondo/header/footer.</Text>
+                <Group gap="xs" wrap="nowrap">
+                  <NumberInput
+                    label="Ancho (px)"
+                    value={cropWidth}
+                    onChange={(val) => setCropWidth(Number(val) || DEFAULT_CROP_WIDTH)}
+                    min={64}
+                    max={4000}
+                    style={{ flex: 1 }}
+                  />
+                  <Text mt={24}>×</Text>
+                  <NumberInput
+                    label="Alto (px)"
+                    value={cropHeight}
+                    onChange={(val) => setCropHeight(Number(val) || DEFAULT_CROP_HEIGHT)}
+                    min={64}
+                    max={4000}
+                    style={{ flex: 1 }}
+                  />
+                </Group>
+              </Grid.Col>
+            </Grid>
+
+            <Box mb="xl" pt="md" style={{ borderTop: '1px solid #eee' }}>
+              <Title order={5} mb={2}>Efecto de Revelado de Proyección</Title>
+              <Text size="xs" c="dimmed" mb="sm">
+                Cómo se revela la foto/video de cada cliente al proyectarse — global, aplica con o sin filtros activos.
+              </Text>
+              <Grid>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Select
+                    label="Efecto de Revelado"
+                    value={revealEffect}
+                    onChange={(val) => setRevealEffect(val || 'spray')}
+                    data={[
+                      { value: 'spray', label: 'Spray 3D (lata pintando)' },
+                      { value: 'fade', label: 'Fade simple + marco' },
+                      { value: 'video-overlay', label: 'Overlay de Video (se desvanece al final)' },
+                    ]}
+                    mb="sm"
+                  />
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Select
+                    label="Entrada/Salida del Contenedor"
+                    value={containerTransition}
+                    onChange={(val) => setContainerTransition(val || 'fade')}
+                    data={[
+                      { value: 'fade', label: 'Desvanecimiento (Fade)' },
+                      { value: 'slide-up', label: 'Deslizar hacia arriba' },
+                      { value: 'slide-down', label: 'Deslizar hacia abajo' },
+                      { value: 'slide-right', label: 'Deslizar a la derecha' },
+                      { value: 'slide-left', label: 'Deslizar a la izquierda' },
+                      { value: 'particles', label: 'Partículas' },
+                    ]}
+                    mb="sm"
+                  />
+                </Grid.Col>
+              </Grid>
+              {revealEffect === 'video-overlay' && (
+                <Grid>
+                  <Grid.Col span={{ base: 12, md: 6 }}>
+                    <TextInput
+                      label="Video Overlay"
+                      description="Se reproduce encima de la foto/video real y se desvanece en los últimos segundos configurados."
+                      placeholder="URL o subir archivo..."
+                      value={revealOverlayVideoUrl}
+                      onChange={(e) => setRevealOverlayVideoUrl(e.currentTarget.value)}
+                      rightSectionWidth={revealOverlayVideoUrl ? 68 : 36}
+                      rightSection={
+                        <Group gap={4} wrap="nowrap">
+                          {revealOverlayVideoUrl && (
+                            <CloseButton size="sm" title="Quitar video overlay" onClick={() => setRevealOverlayVideoUrl('')} />
+                          )}
+                          <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setRevealOverlayVideoUrl })} accept="video/*">
+                            {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16} /></ActionIcon>}
+                          </FileButton>
+                        </Group>
+                      }
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={{ base: 12, md: 6 }}>
+                    <NumberInput
+                      label="Duración del Fade (segundos)"
+                      description="En los últimos N segundos del video overlay, se desvanece revelando lo real"
+                      value={revealOverlayFadeSeconds}
+                      onChange={(val) => setRevealOverlayFadeSeconds(Number(val) || 2)}
+                      min={0.5}
+                      max={15}
+                      step={0.5}
+                    />
+                  </Grid.Col>
+                </Grid>
+              )}
+            </Box>
+
+            <Box mb="xl" pt="md" style={{ borderTop: '1px solid #eee' }}>
+              <Title order={5} mb={2}>Marco para el Correo</Title>
+              <Text size="xs" c="dimmed" mb="sm">
+                PNG con transparencia que se compone SOLO sobre la foto que se envía por correo al cliente
+                (no aplica a la proyección en pantalla ni a video). Se ajusta automáticamente al tamaño de la foto.
+              </Text>
+              <TextInput
+                label="Marco del Correo"
+                placeholder="URL o subir archivo..."
+                value={emailFrameUrl}
+                onChange={(e) => setEmailFrameUrl(e.currentTarget.value)}
+                maw={420}
+                rightSectionWidth={emailFrameUrl ? 68 : 36}
+                rightSection={
+                  <Group gap={4} wrap="nowrap">
+                    {emailFrameUrl && (
+                      <CloseButton size="sm" title="Quitar marco del correo" onClick={() => setEmailFrameUrl('')} />
+                    )}
+                    <FileButton onChange={(f) => handleUploadFile(f, setEmailFrameUrl)} accept="image/png">
+                      {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16} /></ActionIcon>}
+                    </FileButton>
+                  </Group>
+                }
+              />
+            </Box>
+
             <Group align="flex-end" justify="space-between" mt="md">
               <Button color="teal" onClick={() => handleUpdateSettings()}>Guardar Configuración de Standby</Button>
               <Button color="red" variant="light" onClick={handleClearScreen}>Forzar Limpieza de Pantalla (Quitar proyección actual)</Button>
@@ -1100,6 +1270,128 @@ export function AdminDashboard() {
                 </Table.Tbody>
               </Table>
             </Box>
+
+            <Box mt="xl" pt="xl" style={{ borderTop: '1px solid #eee' }}>
+              <Title order={4} mb="sm">Pantalla de Reposo (Salvapantallas por Inactividad)</Title>
+              <Text c="dimmed" size="sm" mb="sm">
+                Independiente de la Parrilla de arriba. Solo se activa cuando la pantalla lleva el tiempo configurado
+                SIN proyecciones y SIN reservas pendientes por proyectar — mientras eso no pase, la Parrilla y la
+                tarjeta de bienvenida siguen funcionando exactamente igual que hoy.
+              </Text>
+              <NumberInput
+                label="Activar tras (minutos de inactividad)"
+                description="0 desactiva la pantalla de reposo"
+                value={restScreenIdleMinutes}
+                onChange={(val) => setRestScreenIdleMinutes(Number(val) || 0)}
+                min={0}
+                max={180}
+                maw={280}
+                mb="md"
+              />
+              <Group mb="sm">
+                <Button onClick={() => {
+                  setNewRestItem({ name: '', url: '', type: 'image', duration: 10 });
+                  openRestItemModal();
+                }} variant="light" color="grape">+ Añadir a Pantalla de Reposo</Button>
+              </Group>
+              <Table striped>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Nombre</Table.Th>
+                    <Table.Th>Miniatura</Table.Th>
+                    <Table.Th>Tipo</Table.Th>
+                    <Table.Th>Duración</Table.Th>
+                    <Table.Th>Acciones</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {restScreenItems.map((item, idx) => (
+                    <Table.Tr key={idx}>
+                      <Table.Td>{item.name}</Table.Td>
+                      <Table.Td>
+                        {item.type === 'video' ? (
+                          <video src={item.url} style={{ width: 40, height: 40, objectFit: 'cover' }} muted />
+                        ) : (
+                          <Image src={item.url} w={40} h={40} radius="sm" style={{ objectFit: 'cover' }} />
+                        )}
+                      </Table.Td>
+                      <Table.Td><Badge color={item.type === 'video' ? 'red' : 'blue'}>{item.type}</Badge></Table.Td>
+                      <Table.Td>{item.duration}s</Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <Button size="xs" color="blue" variant="subtle" onClick={() => {
+                            setNewRestItem(item);
+                            openRestItemModal();
+                          }}>Editar</Button>
+                          <Button size="xs" color="red" variant="subtle" onClick={() => {
+                            const items = [...restScreenItems];
+                            items.splice(idx, 1);
+                            setRestScreenItems(items);
+                            handleUpdateSettings(undefined, items); // Guardar automáticamente al eliminar
+                          }}>Eliminar</Button>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                  {restScreenItems.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={5} ta="center" c="dimmed">No hay contenidos en la pantalla de reposo</Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Box>
+
+            <Modal opened={restItemModalOpened} size="lg" onClose={() => {
+              setNewRestItem({ name: '', url: '', type: 'image', duration: 10 });
+              closeRestItemModal();
+            }} title={(newRestItem as any).id ? 'Editar Contenido de Reposo' : 'Añadir Contenido a Pantalla de Reposo'}>
+              <TextInput label="Nombre Descriptivo" placeholder="Ej. Promo Coca-Cola" value={newRestItem.name} onChange={(e) => setNewRestItem({ ...newRestItem, name: e.currentTarget.value })} mb="sm" required />
+
+              <TextInput
+                label="URL del Archivo"
+                placeholder="Subir imagen o video..."
+                value={newRestItem.url}
+                onChange={(e) => setNewRestItem({ ...newRestItem, url: e.currentTarget.value })}
+                mb="sm"
+                required
+                rightSection={
+                  <FileButton onChange={(f) => handleScreenAssetSelect(f, {
+                    setUrlCallback: (url) => setNewRestItem((prev: any) => ({ ...prev, url })),
+                    setTypeCallback: (type) => setNewRestItem((prev: any) => ({ ...prev, type })),
+                    setDurationCallback: (duration) => setNewRestItem((prev: any) => ({ ...prev, duration })),
+                    setTrimCallback: (trimStart, trimEnd) => setNewRestItem((prev: any) => ({ ...prev, trimStart, trimEnd })),
+                  })} accept="image/*,video/*">
+                    {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16} /></ActionIcon>}
+                  </FileButton>
+                }
+              />
+
+              {newRestItem.type === 'video' ? (
+                <NumberInput label="Duración detectada (Segundos)" value={newRestItem.duration} disabled mb="sm" />
+              ) : (
+                <NumberInput label="Duración en pantalla (Segundos)" value={newRestItem.duration} onChange={(val) => setNewRestItem({ ...newRestItem, duration: Number(val) || 10 })} mb="sm" />
+              )}
+
+              <Button fullWidth onClick={() => {
+                if (!newRestItem.name || !newRestItem.url) return alert('Completa nombre y url');
+
+                let updatedItems;
+                if ((newRestItem as any).id) {
+                  updatedItems = restScreenItems.map(item => item.id === (newRestItem as any).id ? newRestItem : item);
+                } else {
+                  updatedItems = [...restScreenItems, { ...newRestItem, id: Date.now().toString() }];
+                }
+
+                setRestScreenItems(updatedItems);
+                handleUpdateSettings(undefined, updatedItems); // Guardar automáticamente
+
+                setNewRestItem({ name: '', url: '', type: 'image', duration: 10 });
+                closeRestItemModal();
+              }}>
+                {(newRestItem as any).id ? 'Guardar Cambios' : 'Añadir a Pantalla de Reposo'}
+              </Button>
+            </Modal>
 
             <Modal opened={gridModalOpened} size="lg" onClose={() => {
               setNewGridItem({ 
@@ -1231,10 +1523,10 @@ export function AdminDashboard() {
             <ImageCropModal
               opened={imageCropModalOpened}
               imageSrc={rawImageForCrop}
-              aspect={SCREEN_ASSET_ASPECT}
-              outputWidth={576}
-              outputHeight={1152}
-              title="Ajusta el encuadre (proporción de la pantalla: 576×1152)"
+              aspect={cropWidth / cropHeight}
+              outputWidth={cropWidth}
+              outputHeight={cropHeight}
+              title={`Ajusta el encuadre (proporción de la pantalla: ${cropWidth}×${cropHeight})`}
               onCancel={handleScreenImageCropCancel}
               onConfirm={handleScreenImageCropConfirm}
             />

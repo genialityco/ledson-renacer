@@ -46,7 +46,7 @@ const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: 
             onEnded={() => {
               if(props.in) onEnded();
             }}
-            style={{ width: '100%', height: '100%', objectFit: 'contain', opacity: props.in ? 1 : 0, transition: 'opacity 0.5s' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: props.in ? 1 : 0, transition: 'opacity 0.5s' }}
           />
         ) : (
           <img 
@@ -67,6 +67,9 @@ export function BigScreenView() {
     footerUrl: '',
     carouselImages: [],
     contentGrid: [],
+    restScreenIdleMinutes: 0,
+    restScreenItems: [],
+    hasPendingQueue: false,
     currentProjection: null
   });
   const [, setCurrentTimeString] = useState('');
@@ -79,10 +82,84 @@ export function BigScreenView() {
   const fallbackNodeRef = useRef(null);
   const projectionVideoRef = useRef<HTMLVideoElement>(null);
   const { t } = useLanguage();
-  
+
+  // Pantalla de Reposo: independiente de la Parrilla. Solo se activa tras N
+  // minutos SIN proyección y SIN reservas pendientes (settings.hasPendingQueue),
+  // reemplazando lo que se esté mostrando (Parrilla o tarjeta de bienvenida)
+  // por su propio loop de imágenes/videos. En cuanto vuelve a haber una
+  // proyección o alguien entra en cola, se sale de inmediato.
+  const [restScreenActive, setRestScreenActive] = useState(false);
+  const [restCurrentItem, setRestCurrentItem] = useState<any>(null);
+  const restIndexRef = useRef(0);
+  const restTimerRef = useRef<any>(null);
+  const lastActiveAtRef = useRef(Date.now());
+
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    if (settings.currentProjection || settings.hasPendingQueue) {
+      lastActiveAtRef.current = Date.now();
+    }
+  }, [settings.currentProjection, settings.hasPendingQueue]);
+
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      const s = settingsRef.current;
+      if (s.currentProjection || s.hasPendingQueue) {
+        setRestScreenActive(false);
+        return;
+      }
+      const idleMinutes = s.restScreenIdleMinutes || 0;
+      const items = s.restScreenItems || [];
+      if (idleMinutes > 0 && items.length > 0) {
+        const idleMs = Date.now() - lastActiveAtRef.current;
+        setRestScreenActive(idleMs >= idleMinutes * 60000);
+      } else {
+        setRestScreenActive(false);
+      }
+    }, 1000);
+    return () => clearInterval(checkInterval);
+  }, []);
+
+  const advanceRestScreen = () => {
+    const items = settingsRef.current.restScreenItems || [];
+    if (items.length === 0) {
+      setRestCurrentItem(null);
+      return;
+    }
+    const idx = restIndexRef.current % items.length;
+    restIndexRef.current = idx + 1;
+    const selected = items[idx];
+    setRestCurrentItem({
+      id: selected.id,
+      url: selected.url,
+      type: selected.type || 'image',
+      duration: selected.duration || 10,
+      trimStart: selected.trimStart,
+      trimEnd: selected.trimEnd,
+      renderKey: `rest-${selected.id}-${Date.now()}`,
+    });
+  };
+
+  useEffect(() => {
+    if (!restScreenActive) {
+      setRestCurrentItem(null);
+      restIndexRef.current = 0;
+      return;
+    }
+    if (!restCurrentItem) {
+      advanceRestScreen();
+      return;
+    }
+    if (restCurrentItem.type === 'video') return; // avanza vía onEnded
+    const durationMs = (restCurrentItem.duration || 10) * 1000;
+    restTimerRef.current = setTimeout(advanceRestScreen, durationMs);
+    return () => {
+      if (restTimerRef.current) clearTimeout(restTimerRef.current);
+    };
+  }, [restScreenActive, restCurrentItem]);
 
   const fetchSettings = async () => {
     try {
@@ -112,7 +189,9 @@ export function BigScreenView() {
 
   const advanceCarousel = () => {
     // Si hay una proyección activa, no queremos iterar y gastar "apariciones" o interrumpir.
-    if (settingsRef.current.currentProjection) return;
+    // Tampoco si está activa la Pantalla de Reposo: se pausa la Parrilla por completo
+    // (no se consumen apariciones/cooldowns de items que no se están viendo).
+    if (settingsRef.current.currentProjection || restScreenActive) return;
 
     // Calculate current time explicitly to avoid stale closures
     const d = new Date();
@@ -181,8 +260,8 @@ export function BigScreenView() {
   };
 
   useEffect(() => {
-    if (settings.currentProjection) return;
-    if (currentItem?.type === 'video') return; 
+    if (settings.currentProjection || restScreenActive) return;
+    if (currentItem?.type === 'video') return;
 
     if (currentItem) {
       const durationMs = (currentItem.duration || 5) * 1000;
@@ -198,7 +277,7 @@ export function BigScreenView() {
       if (settings.contentGrid?.length > 0) {
         advanceCarousel();
       }
-      
+
       // Keep checking every 3 seconds if there are items but none were eligible (e.g., all on cooldown)
       const intervalId = setInterval(() => {
         advanceCarousel();
@@ -208,7 +287,7 @@ export function BigScreenView() {
         clearInterval(intervalId);
       };
     }
-  }, [currentItem, settings.currentProjection, settings.contentGrid?.length]);
+  }, [currentItem, settings.currentProjection, settings.contentGrid?.length, restScreenActive]);
 
   // Lógica de expiración de la proyección. El video usa su propia duración
   // configurable (videoProjectionDuration) en vez de la de fotos — si el
@@ -255,6 +334,35 @@ export function BigScreenView() {
     }
   }, [settings.currentProjection]);
 
+  // Efecto de revelado "Overlay de Video": un video se reproduce encima de la
+  // foto/video real (que ya está debajo, visible desde el inicio) y en sus
+  // últimos `revealOverlayFadeSeconds` se desvanece (opacidad 1→0) revelándolo.
+  const [overlayOpacity, setOverlayOpacity] = useState(1);
+  // La foto/video real no debe verse ni un instante antes de que el overlay
+  // ya esté pintando frames encima — si no, hay un flash de la foto real
+  // antes de que el video de transición alcance a cubrirla. Se mantiene
+  // oculta (pantalla negra) hasta que el overlay confirma que ya se ve.
+  const [overlayReady, setOverlayReady] = useState(false);
+  const overlayVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    setOverlayOpacity(1);
+    setOverlayReady(false);
+    if (displayProjection?.revealEffect !== 'video-overlay') return;
+    // Salvavidas: si el overlay no arranca pronto (error de red, url rota),
+    // no dejamos la pantalla negra para siempre.
+    const fallback = setTimeout(() => setOverlayReady(true), 1500);
+    return () => clearTimeout(fallback);
+  }, [displayProjection?.id, displayProjection?.revealEffect]);
+
+  const handleOverlayTimeUpdate = () => {
+    const v = overlayVideoRef.current;
+    if (!v || !v.duration) return;
+    const fadeSeconds = displayProjection?.revealOverlayFadeSeconds || 2;
+    const remaining = v.duration - v.currentTime;
+    setOverlayOpacity(remaining <= fadeSeconds ? Math.max(0, remaining / fadeSeconds) : 1);
+  };
+
   const particleTransition = {
     in: { opacity: 1, WebkitMaskSize: '200px 200px', transform: 'scale(1)', filter: 'blur(0px)' },
     out: { opacity: 0, WebkitMaskSize: '2px 2px', transform: 'scale(1.2)', filter: 'blur(10px)' },
@@ -265,19 +373,14 @@ export function BigScreenView() {
     ? particleTransition
     : (displayProjection?.transitionEffect || 'fade');
 
-  // Si el admin no configuró una imagen de fondo desde /admin, usamos el
-  // muro animado de grafiti (mismo lenguaje visual que Home/Booking) en vez
-  // de negro liso. Si SÍ configuró una imagen, esa sigue mandando igual que
-  // antes — no perdemos esa funcionalidad.
   const hasCustomBackground = !!settings.backgroundUrl;
 
   return (
     <Box
-      className={hasCustomBackground ? undefined : 'graffiti-wall'}
       style={{
         width: '100vw',
         height: '100vh',
-        backgroundColor: hasCustomBackground ? '#000' : undefined,
+        backgroundColor: '#000',
         backgroundImage: hasCustomBackground ? `url(${settings.backgroundUrl})` : undefined,
         backgroundSize: hasCustomBackground ? 'cover' : undefined,
         backgroundPosition: hasCustomBackground ? 'center' : undefined,
@@ -287,31 +390,6 @@ export function BigScreenView() {
         position: 'relative'
       }}
     >
-      {!hasCustomBackground && (
-        <>
-          <div className="paint-particles">
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-            <span className="particle" />
-          </div>
-          <div className="spray-cloud spray-cloud--pink" />
-          <div className="spray-cloud spray-cloud--cyan" />
-          <div className="spray-cloud spray-cloud--yellow" />
-          <div className="drip drip--1" />
-          <div className="drip drip--2" />
-          <div className="drip drip--3" />
-        </>
-      )}
-
       {/* HEADER */}
       {settings.headerUrl && (
         <Box style={{ width: '100%', height: '15vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.4)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)', position: 'relative', zIndex: 2 }}>
@@ -325,11 +403,18 @@ export function BigScreenView() {
         {/* El carrusel siempre está renderizado debajo */}
         <Box style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', overflow: 'hidden', zIndex: 10 }}>
           <TransitionGroup style={{ width: '100%', height: '100%', position: 'relative' }} childFactory={(child) => React.cloneElement(child as React.ReactElement<any>, { classNames: currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass })}>
-            {hasCarousel ? (
-              <CarouselItem 
-                key={currentItem.renderKey} 
-                item={currentItem} 
-                transitionClass={currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass} 
+            {restScreenActive && restCurrentItem ? (
+              <CarouselItem
+                key={restCurrentItem.renderKey}
+                item={restCurrentItem}
+                transitionClass={transitionClass}
+                onEnded={advanceRestScreen}
+              />
+            ) : hasCarousel ? (
+              <CarouselItem
+                key={currentItem.renderKey}
+                item={currentItem}
+                transitionClass={currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass}
                 onEnded={handleVideoEnded}
               />
             ) : (
@@ -358,7 +443,9 @@ export function BigScreenView() {
         >
           {(styles) => (
             <div style={{ ...styles, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, zIndex: 20 }}>
-              {displayProjection?.mediaType === 'video' ? (
+              {displayProjection?.revealEffect === 'video-overlay' && !overlayReady ? (
+                <Box style={{ width: '100%', height: '100%', backgroundColor: '#000' }} />
+              ) : displayProjection?.mediaType === 'video' ? (
                 // El video se proyecta tal cual, sin el efecto de spray (que es
                 // un canvas pensado solo para revelar una imagen estática).
                 // Muteado porque los navegadores bloquean el autoplay con
@@ -389,40 +476,63 @@ export function BigScreenView() {
                         v.currentTime = displayProjection.trimStart || 0;
                       }
                     }}
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      // Mismo transform que aplicó VideoTrimModal al elegir el
+                      // encuadre, para que lo que el cliente vio al recortar
+                      // sea exactamente lo que se proyecta.
+                      transform: displayProjection?.frameZoom
+                        ? `scale(${displayProjection.frameZoom}) translate(${displayProjection.frameX || 0}%, ${displayProjection.frameY || 0}%)`
+                        : undefined,
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    }}
                   />
                 </Box>
-              ) : displayProjection?.transitionEffect === 'spray' || true ? (
+              ) : displayProjection?.revealEffect === 'spray' ? (
                 <SprayEffect
                   imageUrl={displayProjection?.imageUrl}
                   frameUrl={displayProjection?.frameUrl}
                 />
               ) : (
-                <Box style={{ 
-                  flex: 1, 
-                  display: 'flex', 
-                  justifyContent: 'center', 
-                  alignItems: 'center', 
-                  position: 'relative', 
-                  overflow: 'hidden',
-                  WebkitMaskImage: displayProjection?.transitionEffect === 'particles' ? 'radial-gradient(circle, black 60%, transparent 70%)' : 'none',
-                  WebkitMaskRepeat: 'repeat',
-                  WebkitMaskPosition: 'center'
-                }}>
-                  <Box style={{ position: 'relative', height: '100%', aspectRatio: '1 / 1', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <img 
-                      src={displayProjection?.imageUrl} 
-                      alt="Proyección" 
-                      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }} 
+                // "fade" y "video-overlay" comparten esta base: la foto se
+                // muestra directa, a pantalla completa. Para "video-overlay"
+                // esto es lo que queda debajo, esperando a que el video de
+                // arriba se desvanezca; para "fade" ES el revelado completo
+                // (la entrada/salida ya la da el contenedor externo).
+                <Box style={{ position: 'relative', flex: 1, width: '100%', height: '100%', overflow: 'hidden' }}>
+                  <img
+                    src={displayProjection?.imageUrl}
+                    alt="Proyección"
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
+                  />
+                  {displayProjection?.frameUrl && (
+                    <img
+                      src={displayProjection?.frameUrl}
+                      alt="Marco"
+                      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
                     />
-                    {displayProjection?.frameUrl && (
-                      <img 
-                        src={displayProjection?.frameUrl} 
-                        alt="Marco" 
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} 
-                      />
-                    )}
-                  </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* Overlay de Video: se superpone a la foto/video real (arriba)
+                  y se desvanece en sus últimos segundos, revelándolo. */}
+              {displayProjection?.revealEffect === 'video-overlay' && displayProjection?.revealOverlayVideoUrl && (
+                <Box style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 25, pointerEvents: 'none' }}>
+                  <video
+                    key={displayProjection?.id}
+                    ref={overlayVideoRef}
+                    src={displayProjection.revealOverlayVideoUrl}
+                    autoPlay
+                    muted
+                    playsInline
+                    onPlaying={() => setOverlayReady(true)}
+                    onError={() => setOverlayReady(true)}
+                    onTimeUpdate={handleOverlayTimeUpdate}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: overlayOpacity }}
+                  />
                 </Box>
               )}
 
@@ -431,17 +541,16 @@ export function BigScreenView() {
               {displayProjection?.code && (
                 <Box style={{
                   position: 'absolute',
-                  bottom: 24,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
+                  bottom: 12,
+                  right: 12,
                   zIndex: 30,
-                  padding: '8px 20px',
+                  padding: '6px 16px',
                   borderRadius: 999,
                   backgroundColor: 'rgba(0,0,0,0.55)',
                   color: '#fff',
                   fontFamily: "'Inter', sans-serif",
                   fontWeight: 700,
-                  fontSize: 'clamp(1rem, 2vw, 1.6rem)',
+                  fontSize: 'clamp(0.9rem, 1.6vw, 1.3rem)',
                   letterSpacing: 2,
                   boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                 }}>

@@ -280,8 +280,10 @@ export function SprayEffect({ imageUrl, frameUrl, onComplete }: { imageUrl: stri
   return (
     <Box style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 30, pointerEvents: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       
-      {/* Contenedor relativo 1:1 donde ocurre la magia */}
-      <Box ref={containerRef} style={{ position: 'relative', height: '100%', aspectRatio: '1 / 1', overflow: 'hidden' }}>
+      {/* Contenedor a pantalla completa donde ocurre la magia — la imagen se
+          dibuja con object-fit: cover dentro del canvas (ver drawImage abajo),
+          así que llenar el 100% del espacio disponible no la deforma. */}
+      <Box ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
         
         {/* Canvas principal donde se revela la foto */}
         <canvas 

@@ -56,7 +56,7 @@ export function BookingForm() {
   const [rawImageForCrop, setRawImageForCrop] = useState<string | null>(null);
   const [videoTrimModalOpened, setVideoTrimModalOpened] = useState(false);
   const [rawVideoFile, setRawVideoFile] = useState<File | null>(null);
-  const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number } | null>(null);
+  const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number; frameX?: number; frameY?: number; frameZoom?: number } | null>(null);
 
   const [name, setName] = useState('');
   const [docType, setDocType] = useState<string | null>(null);
@@ -88,6 +88,8 @@ export function BookingForm() {
   const [isAssigningFranja, setIsAssigningFranja] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [cropWidth, setCropWidth] = useState(576);
+  const [cropHeight, setCropHeight] = useState(1152);
   const [codeCopied, setCodeCopied] = useState(false);
   const { t } = useLanguage();
   const documentTypeOptions = [
@@ -158,6 +160,13 @@ export function BookingForm() {
         setServicePrice(res.data?.price ?? 15000);
       })
       .catch((err) => console.error("Error fetching plan settings", err));
+
+    axios.get(`${API_BASE_URL}/api/bookings/screen-settings`)
+      .then((res) => {
+        setCropWidth(res.data?.cropWidth || 576);
+        setCropHeight(res.data?.cropHeight || 1152);
+      })
+      .catch((err) => console.error("Error fetching screen settings", err));
   }, []);
 
   // Política de filtros desactivada: el paso "elegir filtro" no existe en el
@@ -292,9 +301,10 @@ export function BookingForm() {
     if (useWebcam) setUseWebcam(false);
   };
 
-  // El tramo elegido (trimStart/trimEnd) se guarda como metadato junto al
-  // video completo — no se recorta/recodifica el archivo en el navegador.
-  const handleVideoTrimConfirm = (trim: { trimStart: number; trimEnd: number }) => {
+  // El tramo elegido (trimStart/trimEnd) y el encuadre (frameX/frameY/frameZoom)
+  // se guardan como metadatos junto al video completo — no se recorta/recodifica
+  // el archivo en el navegador.
+  const handleVideoTrimConfirm = (trim: { trimStart: number; trimEnd: number; frameX?: number; frameY?: number; frameZoom?: number }) => {
     if (!rawVideoFile) return;
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -389,7 +399,13 @@ export function BookingForm() {
     const isVideo = !useWebcam && fileMediaType === 'video';
     const mediaPayload = {
       imageBase64: finalImage,
-      ...(isVideo && videoTrim ? { trimStart: videoTrim.trimStart, trimEnd: videoTrim.trimEnd } : {}),
+      ...(isVideo && videoTrim ? {
+        trimStart: videoTrim.trimStart,
+        trimEnd: videoTrim.trimEnd,
+        frameX: videoTrim.frameX,
+        frameY: videoTrim.frameY,
+        frameZoom: videoTrim.frameZoom,
+      } : {}),
       ...(bookingSystemType === 'franjas' && timeSlot ? { timeSlot } : {}),
     };
 
@@ -429,20 +445,29 @@ export function BookingForm() {
           signature: { integrity: signature },
         });
         checkout.open(async (result: any) => {
-          const transaction = result.transaction;
-          console.log('Transaction result: ', transaction);
-          setPaymentStatus(transaction.status);
-          if (transaction.status === 'APPROVED') {
-            try {
-              const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, mediaPayload);
-              setFinalResult(confirmRes.data);
-            } catch (err) {
-              console.error(err);
-              alert(t('uploadErrorAlert'));
+          // Si el usuario cierra el widget sin completar el pago, Wompi puede
+          // invocar este callback sin transacción (o no invocarlo). En ese
+          // caso no hay nada que confirmar: solo liberamos el botón para que
+          // pueda reintentar, sin avanzar de paso.
+          try {
+            const transaction = result?.transaction;
+            console.log('Transaction result: ', transaction);
+            if (transaction) {
+              setPaymentStatus(transaction.status);
+              if (transaction.status === 'APPROVED') {
+                try {
+                  const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, mediaPayload);
+                  setFinalResult(confirmRes.data);
+                } catch (err) {
+                  console.error(err);
+                  alert(t('uploadErrorAlert'));
+                }
+              }
+              setActiveStep(3);
             }
+          } finally {
+            setIsUploadingPhoto(false);
           }
-          setActiveStep(3);
-          setIsUploadingPhoto(false);
         });
         return;
       }
@@ -936,9 +961,9 @@ export function BookingForm() {
         <ImageCropModal
           opened={imageCropModalOpened}
           imageSrc={rawImageForCrop}
-          aspect={1}
-          outputWidth={512}
-          outputHeight={512}
+          aspect={cropWidth / cropHeight}
+          outputWidth={cropWidth}
+          outputHeight={cropHeight}
           onCancel={handleImageCropCancel}
           onConfirm={handleImageCropConfirm}
         />
@@ -946,6 +971,7 @@ export function BookingForm() {
           opened={videoTrimModalOpened}
           file={rawVideoFile}
           maxSeconds={15}
+          aspect={cropWidth / cropHeight}
           onCancel={handleVideoTrimCancel}
           onConfirm={handleVideoTrimConfirm}
         />

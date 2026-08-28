@@ -115,6 +115,7 @@ const translations = {
     trimPause: "Pausar",
     trimCancel: "Cancelar",
     trimConfirm: "Confirmar tramo",
+    trimFrameDragHint: "arrastra el video para moverlo",
 
     // UserBookingsView
     backHome: "Volver al inicio",
@@ -249,6 +250,7 @@ const translations = {
     trimPause: "Pause",
     trimCancel: "Cancel",
     trimConfirm: "Confirm clip",
+    trimFrameDragHint: "drag the video to reposition it",
 
     // UserBookingsView
     backHome: "Back to home",

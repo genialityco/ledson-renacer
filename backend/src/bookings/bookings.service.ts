@@ -5,6 +5,14 @@ import { EmailService } from '../email/email.service';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormData from 'form-data';
+import sharp from 'sharp';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegPath from 'ffmpeg-static';
+import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
+
+if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
 
 @Injectable()
 export class BookingsService {
@@ -39,7 +47,12 @@ export class BookingsService {
   // que se envía en completeProjection() cuando termina la proyección.
   private async sendBookingCodeEmail(
     booking: any,
-    opts: { code: string; timeSlot?: string; exactTime?: string; franjaFull?: boolean },
+    opts: {
+      code: string;
+      timeSlot?: string;
+      exactTime?: string;
+      franjaFull?: boolean;
+    },
   ) {
     if (!booking.email || !opts.code) return;
     const db = this.firebase.getFirestore();
@@ -48,7 +61,9 @@ export class BookingsService {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const statusLink = `${frontendUrl}/my-bookings?code=${opts.code}`;
     const hasExactTime =
-      opts.exactTime && opts.exactTime !== 'Sin asignar' && opts.exactTime !== 'Agotado/Lleno';
+      opts.exactTime &&
+      opts.exactTime !== 'Sin asignar' &&
+      opts.exactTime !== 'Agotado/Lleno';
 
     const scheduleLineEs = opts.franjaFull
       ? 'Tu foto ya quedó confirmada. El horario que habías elegido se llenó justo antes de confirmar — entra al enlace de abajo para elegir otro.'
@@ -96,9 +111,16 @@ export class BookingsService {
         : "¡Gracias por tu reserva en Led's on Renacer!";
 
     try {
-      await this.emailService.sendEmail(booking.email, subject, lang === 'en' ? htmlEn : htmlEs);
+      await this.emailService.sendEmail(
+        booking.email,
+        subject,
+        lang === 'en' ? htmlEn : htmlEs,
+      );
     } catch (e: any) {
-      console.error('Error enviando correo de confirmación de foto:', e.message);
+      console.error(
+        'Error enviando correo de confirmación de foto:',
+        e.message,
+      );
     }
   }
 
@@ -116,7 +138,11 @@ export class BookingsService {
   private async uploadMediaBase64(
     mediaBase64: string,
     folder = 'bookings',
-  ): Promise<{ url: string; mediaType: 'image' | 'video'; contentType: string }> {
+  ): Promise<{
+    url: string;
+    mediaType: 'image' | 'video';
+    contentType: string;
+  }> {
     const match = mediaBase64.match(/^data:([\w/+.-]+);base64,/);
     const contentType = match?.[1] || 'image/jpeg';
     const mediaType: 'image' | 'video' = contentType.startsWith('video/')
@@ -400,6 +426,9 @@ export class BookingsService {
       timeSlot?: string;
       trimStart?: number;
       trimEnd?: number;
+      frameX?: number;
+      frameY?: number;
+      frameZoom?: number;
     },
   ) {
     const db = this.firebase.getFirestore();
@@ -426,6 +455,9 @@ export class BookingsService {
       update.mediaType = uploaded.mediaType;
       update.trimStart = data.trimStart ?? null;
       update.trimEnd = data.trimEnd ?? null;
+      update.frameX = data.frameX ?? null;
+      update.frameY = data.frameY ?? null;
+      update.frameZoom = data.frameZoom ?? null;
     }
 
     if (data.timeSlot) {
@@ -446,6 +478,9 @@ export class BookingsService {
       timeSlot?: string;
       trimStart?: number;
       trimEnd?: number;
+      frameX?: number;
+      frameY?: number;
+      frameZoom?: number;
     },
   ) {
     const db = this.firebase.getFirestore();
@@ -468,14 +503,26 @@ export class BookingsService {
     // y dónde cortar la reproducción.
     let trimStart: number | null = booking.trimStart ?? null;
     let trimEnd: number | null = booking.trimEnd ?? null;
+    // Encuadre elegido por el usuario para el video (arrastrar/zoom en el
+    // frontend) — posición relativa (%) y zoom, aplicados en pantalla con el
+    // mismo transform CSS que usó el selector, sin volver a recortar a ciegas.
+    let frameX: number | null = booking.frameX ?? null;
+    let frameY: number | null = booking.frameY ?? null;
+    let frameZoom: number | null = booking.frameZoom ?? null;
 
     // Si se envía la foto o video después del pago, se sube ahora
     if (data?.imageBase64) {
-      const uploaded = await this.uploadMediaBase64(data.imageBase64, 'bookings');
+      const uploaded = await this.uploadMediaBase64(
+        data.imageBase64,
+        'bookings',
+      );
       imageUrl = uploaded.url;
       mediaType = uploaded.mediaType;
       trimStart = data.trimStart ?? null;
       trimEnd = data.trimEnd ?? null;
+      frameX = data.frameX ?? null;
+      frameY = data.frameY ?? null;
+      frameZoom = data.frameZoom ?? null;
     }
 
     // Calcular slot exacto de proyección
@@ -530,6 +577,9 @@ export class BookingsService {
           mediaType,
           trimStart,
           trimEnd,
+          frameX,
+          frameY,
+          frameZoom,
         });
 
         // Generar la imagen automáticamente en segundo plano
@@ -564,6 +614,9 @@ export class BookingsService {
         mediaType,
         trimStart,
         trimEnd,
+        frameX,
+        frameY,
+        frameZoom,
       });
 
       this.generateImage(id).catch((err) =>
@@ -698,16 +751,23 @@ export class BookingsService {
       mediaType,
       trimStart,
       trimEnd,
+      frameX,
+      frameY,
+      frameZoom,
       ...(bookingSystemType === 'queue' ? { queuePosition } : {}),
     });
 
     // Generar la imagen automáticamente en segundo plano
-    this.generateImage(id).catch(err => console.error(`Error auto-generando imagen para ${id}:`, err));
+    this.generateImage(id).catch((err) =>
+      console.error(`Error auto-generando imagen para ${id}:`, err),
+    );
     this.sendBookingCodeEmail(booking, {
       code: booking.code,
       timeSlot: booking.timeSlot,
       exactTime,
-    }).catch((err) => console.error(`Error enviando correo de código para ${id}:`, err));
+    }).catch((err) =>
+      console.error(`Error enviando correo de código para ${id}:`, err),
+    );
 
     return { success: true, exactTime, queuePosition, code: booking.code };
   }
@@ -727,6 +787,9 @@ export class BookingsService {
       sellerId,
       trimStart,
       trimEnd,
+      frameX,
+      frameY,
+      frameZoom,
     } = data;
 
     let imageUrl = '';
@@ -909,6 +972,9 @@ export class BookingsService {
       mediaType,
       trimStart: trimStart ?? null,
       trimEnd: trimEnd ?? null,
+      frameX: frameX ?? null,
+      frameY: frameY ?? null,
+      frameZoom: frameZoom ?? null,
       status: 'APPROVED', // Lo marcamos como APPROVED
       paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
       requiresInvoice: data.requiresInvoice || false, // boolean
@@ -920,12 +986,19 @@ export class BookingsService {
     await bookingRef.set(booking);
 
     // Generar la imagen automáticamente en segundo plano
-    this.generateImage(bookingRef.id).catch(err => console.error(`Error auto-generando imagen para ${bookingRef.id}:`, err));
+    this.generateImage(bookingRef.id).catch((err) =>
+      console.error(`Error auto-generando imagen para ${bookingRef.id}:`, err),
+    );
     this.sendBookingCodeEmail(booking, {
       code: booking.code,
       timeSlot: booking.timeSlot,
       exactTime,
-    }).catch((err) => console.error(`Error enviando correo de código para ${bookingRef.id}:`, err));
+    }).catch((err) =>
+      console.error(
+        `Error enviando correo de código para ${bookingRef.id}:`,
+        err,
+      ),
+    );
 
     return { id: bookingRef.id, ...booking };
   }
@@ -1055,7 +1128,8 @@ export class BookingsService {
     // Llamar a la API externa de generación (principal)
     let generatedBuffer: Buffer | null = null;
     try {
-      const aiApiUrl = process.env.AI_GENERATION_API_URL || 'http://localhost:8000';
+      const aiApiUrl =
+        process.env.AI_GENERATION_API_URL || 'http://localhost:8000';
       const generateRes = await axios.post(`${aiApiUrl}/generate`, form, {
         headers: form.getHeaders(),
         responseType: 'arraybuffer',
@@ -1202,7 +1276,9 @@ export class BookingsService {
         response.data?.candidates?.[0]?.content?.parts || [];
       const imagePart = candidateParts.find((p: any) => p.inlineData?.data);
 
-      return imagePart ? Buffer.from(imagePart.inlineData.data, 'base64') : null;
+      return imagePart
+        ? Buffer.from(imagePart.inlineData.data, 'base64')
+        : null;
     } catch (geminiError: any) {
       console.error(
         'Error llamando a Gemini:',
@@ -1215,7 +1291,7 @@ export class BookingsService {
   async getScreenSettings() {
     const db = this.firebase.getFirestore();
     const doc = await db.collection('lr_settings').doc('screen').get();
-    return doc.exists
+    const data = doc.exists
       ? doc.data()
       : {
           backgroundUrl: '',
@@ -1226,10 +1302,44 @@ export class BookingsService {
           projectionDuration: 15,
           videoProjectionDuration: 15,
           carouselTransitionDirection: 'right',
+          cropWidth: 576,
+          cropHeight: 1152,
           contentGrid: [],
           deadTimes: [], // Tiempos muertos (descansos)
+          restScreenIdleMinutes: 5,
+          restScreenItems: [],
+          revealEffect: 'spray',
+          revealOverlayVideoUrl: '',
+          revealOverlayFadeSeconds: 2,
+          containerTransition: 'fade',
+          emailFrameUrl: '',
           currentProjection: null,
         };
+
+    // La pantalla de reposo no debe interrumpir a un cliente que ya pagó y
+    // está esperando su turno de proyección (aunque `currentProjection` esté
+    // vacío en este instante) — se lo indicamos al frontend con este flag.
+    const hasPendingQueue = await this.hasPendingQueueToday();
+
+    return { ...data, hasPendingQueue };
+  }
+
+  private async hasPendingQueueToday(): Promise<boolean> {
+    const db = this.firebase.getFirestore();
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const targetDateStr = `${year}-${month}-${day}`;
+
+    const snapshot = await db
+      .collection('lr_bookings')
+      .where('bookingDate', '==', targetDateStr)
+      .where('status', 'in', ['APPROVED', 'GENERATED'])
+      .limit(1)
+      .get();
+
+    return !snapshot.empty;
   }
 
   async updateScreenSettings(data: any) {
@@ -1279,7 +1389,6 @@ export class BookingsService {
 
     if (!b) throw new NotFoundException('Booking sin datos');
 
-    let transitionEffect = 'fade';
     let frameUrl = '';
 
     if (b.selectedFilter) {
@@ -1290,11 +1399,23 @@ export class BookingsService {
       if (filterDoc.exists) {
         const filterData = filterDoc.data();
         if (filterData) {
-          transitionEffect = filterData.transitionEffect || 'fade';
           frameUrl = filterData.frameUrl || '';
         }
       }
     }
+
+    // El efecto de revelado y la transición de entrada/salida ya NO dependen
+    // del filtro (con filtros desactivados no habría de dónde sacarlos) — son
+    // una configuración global en lr_settings/screen, válida con o sin filtro.
+    const screenSettingsDoc = await db
+      .collection('lr_settings')
+      .doc('screen')
+      .get();
+    const screenSettings = screenSettingsDoc.exists
+      ? screenSettingsDoc.data() || {}
+      : {};
+    const revealEffect = screenSettings.revealEffect || 'spray';
+    const transitionEffect = screenSettings.containerTransition || 'fade';
 
     const projectionData = {
       id: bookingId,
@@ -1304,9 +1425,18 @@ export class BookingsService {
       mediaType: b.mediaType || 'image',
       timestamp: Date.now(),
       transitionEffect,
+      revealEffect,
+      revealOverlayVideoUrl:
+        revealEffect === 'video-overlay'
+          ? screenSettings.revealOverlayVideoUrl || ''
+          : '',
+      revealOverlayFadeSeconds: screenSettings.revealOverlayFadeSeconds || 2,
       frameUrl,
       trimStart: b.trimStart ?? null,
       trimEnd: b.trimEnd ?? null,
+      frameX: b.frameX ?? null,
+      frameY: b.frameY ?? null,
+      frameZoom: b.frameZoom ?? null,
     };
 
     await db
@@ -1318,6 +1448,215 @@ export class BookingsService {
       .doc(bookingId)
       .update({ status: 'SHOWN' });
     return { success: true };
+  }
+
+  // Compone el marco (PNG con transparencia, configurado globalmente en
+  // lr_settings/screen) sobre la foto ya generada, SOLO para el correo — la
+  // proyección en pantalla no se toca. Tanto la foto como el marco se ajustan
+  // a la Proporción de Recorte configurada (cropWidth/cropHeight) — la misma
+  // que usa el resto del sistema — en vez de a las dimensiones que devolvió
+  // la API externa de IA (que puede no respetar la proporción original).
+  // Devuelve null si algo falla, para que el llamador pueda seguir usando la
+  // foto sin marco como respaldo.
+  private async compositeEmailFrame(
+    imageUrl: string,
+    frameUrl: string,
+    cropWidth: number,
+    cropHeight: number,
+  ): Promise<string | null> {
+    try {
+      const [imageRes, frameRes] = await Promise.all([
+        axios.get(imageUrl, { responseType: 'arraybuffer' }),
+        axios.get(frameUrl, { responseType: 'arraybuffer' }),
+      ]);
+      const imageBuffer = Buffer.from(imageRes.data);
+      const frameBuffer = Buffer.from(frameRes.data);
+
+      // "cover": llena exactamente cropWidth x cropHeight recortando el
+      // sobrante, igual que object-fit: cover en la pantalla grande.
+      const resizedImage = await sharp(imageBuffer)
+        .resize(cropWidth, cropHeight, { fit: 'cover' })
+        .toBuffer();
+
+      // "contain": el marco se ajusta completo dentro de cropWidth x
+      // cropHeight sin deformarse, rellenando el sobrante con transparencia.
+      const resizedFrame = await sharp(frameBuffer)
+        .resize(cropWidth, cropHeight, {
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .toBuffer();
+
+      const composited = await sharp(resizedImage)
+        .composite([{ input: resizedFrame }])
+        .jpeg({ quality: 90 })
+        .toBuffer();
+
+      const storage = this.firebase.getStorage();
+      const bucket = storage.bucket();
+      const fileName = `generated/email-framed-${Date.now()}-${uuidv4()}.jpg`;
+      const file = bucket.file(fileName);
+      await file.save(composited, { metadata: { contentType: 'image/jpeg' } });
+
+      try {
+        await file.makePublic();
+        return file.publicUrl();
+      } catch {
+        const [url] = await file.getSignedUrl({
+          action: 'read',
+          expires: '01-01-2100',
+        });
+        return url;
+      }
+    } catch (e: any) {
+      console.error('Error componiendo marco para el correo:', e.message);
+      return null;
+    }
+  }
+
+  // Igual que compositeEmailFrame pero para video: compone el marco sobre
+  // CADA fotograma durante toda la duración (filtro overlay de ffmpeg), no
+  // solo una miniatura. Recodifica el video completo — es lento (segundos a
+  // decenas de segundos) por eso se corre desacoplado del request que lo
+  // dispara (ver sendFramedVideoResultEmail). El audio original se conserva
+  // sin recodificar.
+  //
+  // El video original NUNCA se recorta al subirlo (solo se guarda
+  // frameX/frameY/frameZoom como metadatos para el CSS de la pantalla), así
+  // que aquí se lleva a la Proporción de Recorte configurada (cropWidth x
+  // cropHeight) con un recorte tipo "cover" (igual que object-fit: cover en
+  // pantalla) antes de superponer el marco, ya ajustado a ese mismo tamaño.
+  private async compositeEmailFrameVideo(
+    videoUrl: string,
+    frameUrl: string,
+    cropWidth: number,
+    cropHeight: number,
+  ): Promise<string | null> {
+    const outputPath = path.join(
+      os.tmpdir(),
+      `email-framed-${Date.now()}-${uuidv4()}.mp4`,
+    );
+    const w = Math.round(cropWidth);
+    const h = Math.round(cropHeight);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg()
+          .input(videoUrl)
+          .input(frameUrl)
+          .complexFilter([
+            `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[base]`,
+            `[1:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,format=rgba,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black@0[ovr]`,
+            '[base][ovr]overlay=0:0:format=auto[outv]',
+          ])
+          .outputOptions(['-map', '[outv]', '-map', '0:a?', '-c:a', 'copy'])
+          .output(outputPath)
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(err))
+          .run();
+      });
+
+      const buffer = fs.readFileSync(outputPath);
+      const storage = this.firebase.getStorage();
+      const bucket = storage.bucket();
+      const fileName = `generated/email-framed-${Date.now()}-${uuidv4()}.mp4`;
+      const file = bucket.file(fileName);
+      await file.save(buffer, { metadata: { contentType: 'video/mp4' } });
+
+      try {
+        await file.makePublic();
+        return file.publicUrl();
+      } catch {
+        const [url] = await file.getSignedUrl({
+          action: 'read',
+          expires: '01-01-2100',
+        });
+        return url;
+      }
+    } catch (e: any) {
+      console.error(
+        'Error componiendo marco en video para el correo:',
+        e.message,
+      );
+      return null;
+    } finally {
+      fs.promises.unlink(outputPath).catch(() => {});
+    }
+  }
+
+  private buildResultEmail(
+    name: string,
+    mediaBlockEs: string,
+    mediaBlockEn: string,
+    isVideo: boolean,
+    lang: string,
+  ): { html: string; subject: string } {
+    const htmlEs = `
+        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #228be6;">¡Hola ${name}!</h1>
+          <p>Gracias por ser parte de la experiencia <strong>Led's on Renacer</strong>.</p>
+          <p>Aquí tienes el recuerdo de tu photobooth:</p>
+          ${mediaBlockEs}
+          <p>¡Esperamos que lo hayas disfrutado!</p>
+          <br/>
+          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+        </div>
+      `;
+    const htmlEn = `
+        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #228be6;">Hello ${name}!</h1>
+          <p>Thank you for being part of the <strong>Led's on Renacer</strong> experience.</p>
+          <p>Here is your photobooth memory:</p>
+          ${mediaBlockEn}
+          <p>We hope you enjoyed it!</p>
+          <br/>
+          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
+        </div>
+      `;
+
+    const html = lang === 'en' ? htmlEn : htmlEs;
+    const subject = isVideo
+      ? lang === 'en'
+        ? "Your Led's on Renacer video is ready!"
+        : "¡Tu video de Led's on Renacer está listo!"
+      : lang === 'en'
+        ? "Your Led's on Renacer photo is ready!"
+        : "¡Tu foto de Led's on Renacer está lista!";
+
+    return { html, subject };
+  }
+
+  // Camino pesado: compone el marco sobre el video completo antes de mandar
+  // el correo. Se invoca sin `await` desde completeProjection (fire-and-forget)
+  // para no bloquear esa respuesta ni el envío de WhatsApp que sigue después.
+  private async sendFramedVideoResultEmail(
+    b: any,
+    bookingRef: FirebaseFirestore.DocumentReference,
+    originalVideoUrl: string,
+    emailFrameUrl: string,
+    lang: string,
+    cropWidth: number,
+    cropHeight: number,
+  ) {
+    const framedUrl = await this.compositeEmailFrameVideo(
+      originalVideoUrl,
+      emailFrameUrl,
+      cropWidth,
+      cropHeight,
+    );
+    const videoUrl = framedUrl || originalVideoUrl; // si falla, se manda el original sin marco
+
+    const mediaBlockEs = `<p><a href="${videoUrl}" style="color: #228be6; font-weight: 700;">Ver tu video</a></p>`;
+    const mediaBlockEn = `<p><a href="${videoUrl}" style="color: #228be6; font-weight: 700;">Watch your video</a></p>`;
+    const { html, subject } = this.buildResultEmail(
+      b.name,
+      mediaBlockEs,
+      mediaBlockEn,
+      true,
+      lang,
+    );
+
+    await this.emailService.sendEmail(b.email, subject, html);
+    await bookingRef.update({ emailSent: true });
   }
 
   async completeProjection(bookingId: string) {
@@ -1343,57 +1682,80 @@ export class BookingsService {
 
     // 4. Enviar el correo electrónico
     if (b.email && !b.emailSent) {
-      const generalDoc = await db.collection('lr_settings').doc('general').get();
-      const lang = generalDoc.exists ? (generalDoc.data()?.language || 'es') : 'es';
+      const generalDoc = await db
+        .collection('lr_settings')
+        .doc('general')
+        .get();
+      const lang = generalDoc.exists
+        ? generalDoc.data()?.language || 'es'
+        : 'es';
 
       const imageUrl = b.generatedImageUrl || b.imageUrl;
       const isVideo = b.mediaType === 'video';
-      // Los clientes de correo en general no reproducen <video> embebido, así
-      // que para video mandamos un enlace directo en vez de incrustarlo.
-      const mediaBlockEs = isVideo
-        ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Ver tu video</a></p>`
-        : `<img src="${imageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
-      const mediaBlockEn = isVideo
-        ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Watch your video</a></p>`
-        : `<img src="${imageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
 
-      const htmlEs = `
-        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #228be6;">¡Hola ${b.name}!</h1>
-          <p>Gracias por ser parte de la experiencia <strong>Led's on Renacer</strong>.</p>
-          <p>Aquí tienes el recuerdo de tu photobooth:</p>
-          ${mediaBlockEs}
-          <p>¡Esperamos que lo hayas disfrutado!</p>
-          <br/>
-          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-        </div>
-      `;
-      const htmlEn = `
-        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #228be6;">Hello ${b.name}!</h1>
-          <p>Thank you for being part of the <strong>Led's on Renacer</strong> experience.</p>
-          <p>Here is your photobooth memory:</p>
-          ${mediaBlockEn}
-          <p>We hope you enjoyed it!</p>
-          <br/>
-          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-        </div>
-      `;
+      // El marco (emailFrameUrl) es global y solo se compone para el correo —
+      // la proyección en pantalla no lleva marco. Se usa la misma Proporción
+      // de Recorte (cropWidth/cropHeight) que el resto del sistema, para que
+      // foto/video y marco queden siempre con la misma dimensión esperada.
+      const screenDoc = await db.collection('lr_settings').doc('screen').get();
+      const screenData = screenDoc.exists ? screenDoc.data() : undefined;
+      const emailFrameUrl = screenData?.emailFrameUrl || '';
+      const cropWidth = screenData?.cropWidth || 576;
+      const cropHeight = screenData?.cropHeight || 1152;
 
-      const html = lang === 'en' ? htmlEn : htmlEs;
-      const subject = isVideo
-        ? (lang === 'en' ? "Your Led's on Renacer video is ready!" : "¡Tu video de Led's on Renacer está listo!")
-        : (lang === 'en' ? "Your Led's on Renacer photo is ready!" : "¡Tu foto de Led's on Renacer está lista!");
-
-      try {
-        await this.emailService.sendEmail(
-          b.email,
-          subject,
-          html,
+      if (isVideo && emailFrameUrl) {
+        // Recodificar el video completo es lento — se dispara sin `await`
+        // para no bloquear ni esta respuesta ni el envío de WhatsApp de abajo.
+        // El correo sale en cuanto termine de componerse en segundo plano.
+        this.sendFramedVideoResultEmail(
+          b,
+          bookingRef,
+          imageUrl,
+          emailFrameUrl,
+          lang,
+          cropWidth,
+          cropHeight,
+        ).catch((e: any) =>
+          console.error(
+            'Error componiendo/enviando video con marco:',
+            e.message,
+          ),
         );
-        await bookingRef.update({ emailSent: true });
-      } catch (e: any) {
-        console.error('Error enviando correo al cliente:', e.message);
+      } else {
+        let emailImageUrl = imageUrl;
+        if (!isVideo && emailFrameUrl) {
+          const composed = await this.compositeEmailFrame(
+            imageUrl,
+            emailFrameUrl,
+            cropWidth,
+            cropHeight,
+          );
+          if (composed) emailImageUrl = composed;
+        }
+
+        // Los clientes de correo en general no reproducen <video> embebido,
+        // así que para video mandamos un enlace directo en vez de incrustarlo.
+        const mediaBlockEs = isVideo
+          ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Ver tu video</a></p>`
+          : `<img src="${emailImageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
+        const mediaBlockEn = isVideo
+          ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Watch your video</a></p>`
+          : `<img src="${emailImageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
+
+        const { html, subject } = this.buildResultEmail(
+          b.name,
+          mediaBlockEs,
+          mediaBlockEn,
+          isVideo,
+          lang,
+        );
+
+        try {
+          await this.emailService.sendEmail(b.email, subject, html);
+          await bookingRef.update({ emailSent: true });
+        } catch (e: any) {
+          console.error('Error enviando correo al cliente:', e.message);
+        }
       }
     }
 
@@ -1408,7 +1770,12 @@ export class BookingsService {
       `[Diagnostic] ENV.WHATSAPP_API_URL: ${process.env.WHATSAPP_API_URL}, ENV.WHATSAPP_ACCOUNT_ID: ${process.env.WHATSAPP_ACCOUNT_ID}`,
     );
 
-    if (b.whatsapp && process.env.WHATSAPP_API_URL && !waSend && b.mediaType !== 'video') {
+    if (
+      b.whatsapp &&
+      process.env.WHATSAPP_API_URL &&
+      !waSend &&
+      b.mediaType !== 'video'
+    ) {
       try {
         const imageUrl = b.generatedImageUrl || b.imageUrl;
         console.log(
@@ -1472,8 +1839,13 @@ export class BookingsService {
 
       if (snapshot.empty) return;
 
-      const generalDoc = await db.collection('lr_settings').doc('general').get();
-      const lang = generalDoc.exists ? (generalDoc.data()?.language || 'es') : 'es';
+      const generalDoc = await db
+        .collection('lr_settings')
+        .doc('general')
+        .get();
+      const lang = generalDoc.exists
+        ? generalDoc.data()?.language || 'es'
+        : 'es';
 
       for (const doc of snapshot.docs) {
         const b = doc.data();
@@ -1509,14 +1881,13 @@ export class BookingsService {
           `;
 
           const html = lang === 'en' ? htmlEn : htmlEs;
-          const subject = lang === 'en' ? "Resume your Led's on Renacer booking!" : "¡Retoma tu reserva de Led's on Renacer!";
+          const subject =
+            lang === 'en'
+              ? "Resume your Led's on Renacer booking!"
+              : "¡Retoma tu reserva de Led's on Renacer!";
 
           try {
-            await this.emailService.sendEmail(
-              b.email,
-              subject,
-              html,
-            );
+            await this.emailService.sendEmail(b.email, subject, html);
             await doc.ref.update({ abandonmentEmailSent: true });
           } catch (e: any) {
             console.error(

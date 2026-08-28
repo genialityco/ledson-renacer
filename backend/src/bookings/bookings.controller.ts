@@ -47,6 +47,9 @@ export class BookingsController {
       timeSlot?: string;
       trimStart?: number;
       trimEnd?: number;
+      frameX?: number;
+      frameY?: number;
+      frameZoom?: number;
     },
   ) {
     return this.bookingsService.attachMedia(id, data);
@@ -61,6 +64,9 @@ export class BookingsController {
       timeSlot?: string;
       trimStart?: number;
       trimEnd?: number;
+      frameX?: number;
+      frameY?: number;
+      frameZoom?: number;
     },
   ) {
     return this.bookingsService.confirmPayment(id, data);
