@@ -8,9 +8,14 @@ import {
   Param,
   Query,
   Res,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ImagesService } from './images.service';
+
+const MAX_UPLOAD_BYTES = 300 * 1024 * 1024; // 300MB — cubre videos largos de la pantalla de reposo/parrilla
 
 @Controller('api/images')
 export class ImagesController {
@@ -51,6 +56,14 @@ export class ImagesController {
   @Post('upload-base64')
   async uploadBase64(@Body() data: { imageBase64: string; folder?: string }) {
     return this.imagesService.uploadImageBase64(data);
+  }
+
+  @Post('upload-file')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }),
+  )
+  async uploadFile(@UploadedFile() file: any, @Body('folder') folder?: string) {
+    return this.imagesService.uploadImageFile(file, folder);
   }
 
   @Post()

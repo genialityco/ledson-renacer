@@ -32,7 +32,11 @@ const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(mi
 // (posición, en % relativo al centro) y frameZoom, y la pantalla aplica
 // exactamente el mismo transform al reproducir — así el encuadre que ve el
 // usuario aquí es el mismo que se proyecta.
-export function VideoTrimModal({ opened, file, maxSeconds = 15, aspect, onCancel, onConfirm }: VideoTrimModalProps) {
+export function VideoTrimModal({ opened, file, maxSeconds, aspect, onCancel, onConfirm }: VideoTrimModalProps) {
+  // Sin maxSeconds no hay límite de duración del tramo (ej. contenido de la
+  // pantalla de reposo, que puede durar lo que sea) — solo se acota si el
+  // caller pasa un valor explícito (ej. 15 para el video del photobooth).
+  const effectiveMax = maxSeconds ?? Infinity;
   const { t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -92,15 +96,15 @@ export function VideoTrimModal({ opened, file, maxSeconds = 15, aspect, onCancel
   const handleLoadedMetadata = () => {
     const d = videoRef.current?.duration || 0;
     setDuration(d);
-    setRange([0, Math.min(d, maxSeconds)]);
+    setRange([0, Math.min(d, effectiveMax)]);
   };
 
   const handleRangeChange = (val: [number, number]) => {
     let [s, e] = val;
-    if (e - s > maxSeconds) {
+    if (e - s > effectiveMax) {
       // Determinar cuál de las dos manijas se movió para mantener fija la otra.
-      if (s !== range[0]) s = e - maxSeconds;
-      else e = s + maxSeconds;
+      if (s !== range[0]) s = e - effectiveMax;
+      else e = s + effectiveMax;
     }
     setRange([s, e]);
     if (videoRef.current) videoRef.current.currentTime = s;
@@ -190,7 +194,9 @@ export function VideoTrimModal({ opened, file, maxSeconds = 15, aspect, onCancel
         <>
           <Group justify="space-between" mt="md" mb={4}>
             <Text size="sm" fw={500}>
-              {t('trimSelectedLabel').replace('{sec}', (range[1] - range[0]).toFixed(1)).replace('{max}', String(maxSeconds))}
+              {maxSeconds != null
+                ? t('trimSelectedLabel').replace('{sec}', (range[1] - range[0]).toFixed(1)).replace('{max}', String(maxSeconds))
+                : t('trimSelectedLabelNoMax').replace('{sec}', (range[1] - range[0]).toFixed(1))}
             </Text>
             <Button
               size="xs"

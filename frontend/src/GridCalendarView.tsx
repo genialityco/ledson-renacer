@@ -143,8 +143,17 @@ export function GridCalendarView() {
     setModalOpened(false);
   };
 
+  const MAX_UPLOAD_MB = 300;
+
+  // Subida multipart real (FormData), no base64+JSON: un video pesado en
+  // base64 puede reventar el JSON.stringify del navegador ("allocation size
+  // overflow") antes de llegar siquiera al backend.
   const handleUploadFile = async (file: File | null) => {
     if (!file) return;
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      alert(`El archivo pesa demasiado (máximo ${MAX_UPLOAD_MB}MB).`);
+      return;
+    }
     setIsUploading(true);
     const isVideo = file.type.startsWith('video/');
     setEditingItem((prev: any) => ({ ...prev, type: isVideo ? 'video' : 'image' }));
@@ -155,7 +164,7 @@ export function GridCalendarView() {
       video.onloadedmetadata = () => {
         window.URL.revokeObjectURL(video.src);
         setEditingItem((prev: any) => ({
-          ...prev, 
+          ...prev,
           duration: Math.round(video.duration),
           end: new Date(prev.start.getTime() + Math.round(video.duration) * 1000)
         }));
@@ -163,24 +172,17 @@ export function GridCalendarView() {
       video.src = URL.createObjectURL(file);
     }
 
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64 = reader.result as string;
-      try {
-        const res = await axios.post(`${API_BASE_URL}/api/images/upload-base64`, { 
-          imageBase64: base64, 
-          folder: 'screen-assets',
-          contentType: file.type,
-          extension: file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg')
-        });
-        setEditingItem((prev: any) => ({ ...prev, url: res.data.url }));
-      } catch(e) {
-        alert('Error subiendo archivo');
-      } finally {
-        setIsUploading(false);
-      }
-    };
-    reader.readAsDataURL(file);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', 'screen-assets');
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/images/upload-file`, formData);
+      setEditingItem((prev: any) => ({ ...prev, url: res.data.url }));
+    } catch (e) {
+      alert('Error subiendo archivo');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const getDatetimeLocalString = (date: Date) => {

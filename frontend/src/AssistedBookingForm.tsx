@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Badge, Modal, ScrollArea, UnstyledButton, ActionIcon, Input } from '@mantine/core';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Badge, Modal, ScrollArea, UnstyledButton, ActionIcon, Input, Loader, Center, NumberInput } from '@mantine/core';
 import { IconCamera, IconX, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -22,6 +22,16 @@ interface FilterOption {
 }
 
 interface SellerOption {
+  id: string;
+  name: string;
+}
+
+interface BenefitOption {
+  id: string;
+  name: string;
+}
+
+interface PaymentMethodOption {
   id: string;
   name: string;
 }
@@ -81,12 +91,20 @@ export function AssistedBookingForm() {
   const [currentFranja, setCurrentFranja] = useState<string | null>(null);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [sellerId, setSellerId] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState('Efectivo');
+  const [benefits, setBenefits] = useState<BenefitOption[]>([]);
+  const [benefitId, setBenefitId] = useState<string | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
+  // Lo escribe el vendedor a mano (puede ser 0 para cortesía) — nunca se
+  // precarga desde el precio general, que es solo informativo acá al lado.
+  const [paidAmount, setPaidAmount] = useState<number | ''>('');
   const [requiresInvoice, setRequiresInvoice] = useState('NO');
   const [habeasData, setHabeasData] = useState(false);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
   const [bookingSystemType, setBookingSystemType] = useState('slots');
-  const [filtersEnabled, setFiltersEnabled] = useState(true);
+  // null = "aún no se sabe" (settings sin cargar); evita que el paso de
+  // filtros aparezca y desaparezca de golpe mientras llega la respuesta.
+  const [filtersEnabled, setFiltersEnabled] = useState<boolean | null>(null);
   const [servicePrice, setServicePrice] = useState(15000);
 
   const [activeStep, setActiveStep] = useState(0);
@@ -109,6 +127,14 @@ export function AssistedBookingForm() {
     axios.get(`${API_BASE_URL}/api/sellers`).then((res) => {
       setSellers(res.data.map((s: any) => ({ id: s._id, name: s.name })));
     });
+    axios.get(`${API_BASE_URL}/api/benefits`).then((res) => {
+      setBenefits(res.data.map((b: any) => ({ id: b._id, name: b.name })));
+    });
+    axios.get(`${API_BASE_URL}/api/payment-methods`).then((res) => {
+      const methods = res.data.map((m: any) => ({ id: m._id, name: m.name }));
+      setPaymentMethods(methods);
+      setPaymentMethod((prev) => prev ?? methods[0]?.name ?? null);
+    });
     axios.get(`${API_BASE_URL}/api/bookings/screen-settings`).then((res) => {
       setCropWidth(res.data?.cropWidth || 576);
       setCropHeight(res.data?.cropHeight || 1152);
@@ -119,7 +145,7 @@ export function AssistedBookingForm() {
   // flujo, así que si por cualquier motivo el terminal cae en activeStep 0
   // (valor inicial, o "Registrar nuevo cliente") lo saltamos directo a datos.
   useEffect(() => {
-    if (!filtersEnabled && activeStep === 0) setActiveStep(1);
+    if (filtersEnabled === false && activeStep === 0) setActiveStep(1);
   }, [filtersEnabled, activeStep]);
 
   useEffect(() => {
@@ -259,6 +285,7 @@ export function AssistedBookingForm() {
   const handleDataSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (filtersEnabled && filters.length > 0 && !selectedFilter) return alert('Debes seleccionar un filtro primero.');
+    if (paidAmount === '' || paidAmount == null) return alert('Debes registrar el valor pagado (puede ser 0 para cortesía).');
     if (!habeasData) return alert('Debes aceptar la política de datos.');
     setActiveStep(2);
   };
@@ -274,6 +301,7 @@ export function AssistedBookingForm() {
       const res = await axios.post(`${API_BASE_URL}/api/bookings`, {
         name, docId, email, whatsapp, country, city, selectedFilter, timeSlot, bookingDate,
         imageBase64: finalImage, paymentMethod, requiresInvoice: requiresInvoice === 'SI', sellerId,
+        benefitId, paidAmount: paidAmount === '' ? null : paidAmount,
         ...(isVideo && videoTrim ? {
           trimStart: videoTrim.trimStart,
           trimEnd: videoTrim.trimEnd,
@@ -330,15 +358,26 @@ export function AssistedBookingForm() {
 
         <StepProgress
           activeStep={activeStep}
-          filtersEnabled={filtersEnabled}
+          filtersEnabled={filtersEnabled ?? true}
           labelsWithFilter={FILTER_STEP_LABELS}
           labelsWithoutFilter={NO_FILTER_STEP_LABELS}
           onStepClick={setActiveStep}
           onHomeClick={() => navigate('/')}
         />
 
+        {/* Settings de plan aún sin cargar: no se sabe todavía si el paso de
+            filtros existe, así que se muestra un loader en vez de arriesgarse
+            a mostrar y luego ocultar el paso 1. */}
+        {filtersEnabled === null && activeStep === 0 && (
+          <Box className="ledson-card">
+            <Center py="xl">
+              <Loader color="blue" />
+            </Center>
+          </Box>
+        )}
+
         {/* STEP 1: FILTERS (solo si la política de filtros está activa) */}
-        {filtersEnabled && activeStep === 0 && (
+        {filtersEnabled === true && activeStep === 0 && (
           <Box className="ledson-card">
             <Text className="ledson-section-title">1. Selecciona el estilo que el cliente desea</Text>
             <Text className="ledson-step-subtitle">Este será el filtro que se aplicará a su fotografía.</Text>
@@ -446,11 +485,43 @@ export function AssistedBookingForm() {
               </Grid.Col>
 
               <Grid.Col span={12}>
-                <Text size="sm" fw={500} mb={4} style={{ color: '#33363b' }}>Valor del servicio a cobrar</Text>
+                <Select
+                  label="Beneficio / Promoción"
+                  placeholder="Selecciona un beneficio (opcional)"
+                  data={benefits.map(b => ({ value: b.id, label: b.name }))}
+                  value={benefitId}
+                  onChange={setBenefitId}
+                  clearable
+                  disabled={benefits.length === 0}
+                />
+              </Grid.Col>
+
+              <Grid.Col span={12}>
+                <Text size="sm" fw={500} mb={4} style={{ color: '#33363b' }}>Valor del servicio (precio general de referencia)</Text>
                 <Text size="xl" fw={700} mb="sm" style={{ color: '#0559A5' }}>${servicePrice.toLocaleString('es-CO')} COP</Text>
               </Grid.Col>
               <Grid.Col span={12}>
-                <Select label="Método de pago físico recibido" placeholder="Efectivo, Datáfono o QR" data={['Efectivo', 'Datáfono', 'QR']} required value={paymentMethod} onChange={(val) => val && setPaymentMethod(val)} />
+                <NumberInput
+                  label="Valor pagado"
+                  description="Escribe el monto realmente recibido (puede ser 0 en caso de cortesía). No viene precargado del precio general."
+                  placeholder="Ej. 15000"
+                  required
+                  min={0}
+                  value={paidAmount}
+                  onChange={(val) => setPaidAmount(val === '' ? '' : Number(val))}
+                  thousandSeparator="."
+                  decimalSeparator=","
+                />
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <Select
+                  label="Método de pago físico recibido"
+                  placeholder="Selecciona el método de pago"
+                  data={paymentMethods.map(m => ({ value: m.name, label: m.name }))}
+                  required
+                  value={paymentMethod}
+                  onChange={(val) => val && setPaymentMethod(val)}
+                />
               </Grid.Col>
               <Grid.Col span={12}>
                 <Radio.Group label="¿Requiere factura electrónica?" withAsterisk value={requiresInvoice} onChange={setRequiresInvoice}>

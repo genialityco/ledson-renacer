@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon, Input } from '@mantine/core';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon, Input, Loader, Center } from '@mantine/core';
 import { IconCamera, IconCreditCard, IconX, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -77,7 +77,9 @@ export function BookingForm() {
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
   const [dlocalgoLink, setDlocalgoLink] = useState('');
-  const [filtersEnabled, setFiltersEnabled] = useState(true);
+  // null = "aún no se sabe" (settings sin cargar); evita que el paso de
+  // filtros aparezca y desaparezca de golpe mientras llega la respuesta.
+  const [filtersEnabled, setFiltersEnabled] = useState<boolean | null>(null);
   const [servicePrice, setServicePrice] = useState(15000);
 
   const [activeStep, setActiveStep] = useState(0);
@@ -172,8 +174,10 @@ export function BookingForm() {
   // Política de filtros desactivada: el paso "elegir filtro" no existe en el
   // flujo, así que si por cualquier motivo el usuario cae en activeStep 0
   // (valor inicial, o "Reserva un nuevo espacio") lo saltamos directo a datos.
+  // Se compara con "=== false" (no con "!filtersEnabled") para no disparar
+  // este salto mientras filtersEnabled todavía es null (settings sin cargar).
   useEffect(() => {
-    if (!filtersEnabled && activeStep === 0) setActiveStep(1);
+    if (filtersEnabled === false && activeStep === 0) setActiveStep(1);
   }, [filtersEnabled, activeStep]);
 
   useEffect(() => {
@@ -549,15 +553,26 @@ export function BookingForm() {
 
         <StepProgress
           activeStep={activeStep}
-          filtersEnabled={filtersEnabled}
+          filtersEnabled={filtersEnabled ?? true}
           labelsWithFilter={FILTER_STEP_LABELS}
           labelsWithoutFilter={NO_FILTER_STEP_LABELS}
           onStepClick={setActiveStep}
           onHomeClick={() => navigate('/')}
         />
 
+        {/* Settings de plan aún sin cargar: no se sabe todavía si el paso de
+            filtros existe, así que se muestra un loader en vez de arriesgarse
+            a mostrar y luego ocultar el paso 1. */}
+        {filtersEnabled === null && activeStep === 0 && (
+          <Box className="ledson-card">
+            <Center py="xl">
+              <Loader color="blue" />
+            </Center>
+          </Box>
+        )}
+
         {/* STEP 1: FILTERS (solo si la política de filtros está activa) */}
-        {filtersEnabled && activeStep === 0 && (
+        {filtersEnabled === true && activeStep === 0 && (
           <Box className="ledson-card">
             <Text className="ledson-section-title">1. {t('step1Title')}</Text>
             <Text className="ledson-step-subtitle">{t('step1Subtitle')}</Text>

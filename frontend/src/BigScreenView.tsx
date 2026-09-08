@@ -541,7 +541,7 @@ export function BigScreenView() {
               {displayProjection?.code && (
                 <Box style={{
                   position: 'absolute',
-                  bottom: 12,
+                  top: 12,
                   right: 12,
                   zIndex: 30,
                   padding: '6px 16px',

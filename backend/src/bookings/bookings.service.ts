@@ -21,14 +21,24 @@ export class BookingsService {
     private emailService: EmailService,
   ) {}
 
+  // Acepta "HH:MM" o "HH:MM:SS" (slotDuration puede ser fraccionario, ej. 0.5
+  // = 30s, así que el minuto asignado puede caer en un segundo exacto).
   private toMins(t: string): number {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
+    const [h, m, s] = t.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0) + (s || 0) / 60;
   }
 
-  private toTimeStr(m: number): string {
-    const h = Math.floor(m / 60) % 24;
-    return `${String(h).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  // Redondea al segundo para evitar arrastre de error de punto flotante al
+  // acumular slotDuration fraccionario. Devuelve "HH:MM" cuando el resultado
+  // cae en un minuto exacto (compatibilidad con todos los datos/UI
+  // existentes) y solo agrega ":SS" cuando slotDuration deja sobrante.
+  private toTimeStr(totalMins: number): string {
+    const totalSeconds = Math.round(totalMins * 60);
+    const h = Math.floor(totalSeconds / 3600) % 24;
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const base = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    return s > 0 ? `${base}:${String(s).padStart(2, '0')}` : base;
   }
 
   // Código corto de reserva (ej: "A3-F9-K2"). Evita caracteres ambiguos
@@ -653,12 +663,15 @@ export class BookingsService {
       queuePosition = existingQueue.size + 1;
 
       const now = new Date();
-      // Ajustar zona horaria si es necesario, asumimos la hora local del servidor
-      let baseTimeMins = now.getHours() * 60 + now.getMinutes();
+      // Se incluyen los segundos de "now" para que la alineación a
+      // slotDuration tenga sentido cuando este es fraccionario (ej. 0.5 =
+      // 30s); truncar a minuto entero perdía hasta 59s de precisión.
+      let baseTimeMins =
+        now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
       // Alinear los minutos base para que sean múltiplos exactos del slotDuration (ej: si es 2 min, horas como 1:30, 1:32)
       const remainder = baseTimeMins % slotDuration;
-      if (remainder !== 0) {
+      if (remainder > 1e-9) {
         baseTimeMins += slotDuration - remainder;
       }
 
@@ -672,8 +685,7 @@ export class BookingsService {
             d.exactTime !== 'Sin asignar' &&
             d.exactTime !== 'Agotado/Lleno'
           ) {
-            const [h, m] = d.exactTime.split(':').map(Number);
-            const mins = h * 60 + m;
+            const mins = this.toMins(d.exactTime);
             if (mins > maxMins) maxMins = mins;
           }
         });
@@ -685,12 +697,7 @@ export class BookingsService {
         }
       }
 
-      const toStr = (m: number) => {
-        const h = Math.floor(m / 60) % 24;
-        const min = m % 60;
-        return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-      };
-      exactTime = toStr(baseTimeMins);
+      exactTime = this.toTimeStr(baseTimeMins);
     } else if (booking.timeSlot) {
       // Existing logic for slots
       let deadTimes = [];
@@ -710,15 +717,8 @@ export class BookingsService {
       const [startStr, endStr] = booking.timeSlot.split('-');
 
       if (startStr && endStr) {
-        const toMins = (t: string) => {
-          const [h, m] = t.split(':').map(Number);
-          return h * 60 + m;
-        };
-        const toStr = (m: number) =>
-          `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-
-        const startMins = toMins(startStr);
-        const endMins = toMins(endStr);
+        const startMins = this.toMins(startStr);
+        const endMins = this.toMins(endStr);
 
         const existing = await db
           .collection('lr_bookings')
@@ -731,9 +731,13 @@ export class BookingsService {
           .filter(Boolean);
 
         for (let m = startMins; m < endMins; m += slotDuration) {
-          const tStr = toStr(m);
+          const tStr = this.toTimeStr(m);
+          // Comparación numérica (no de string) para que la franja muerta
+          // se evalúe bien incluso cuando tStr trae segundos y los
+          // deadTimes solo manejan "HH:MM".
           const isDead = deadTimes.some(
-            (dt: any) => tStr >= dt.startTime && tStr < dt.endTime,
+            (dt: any) =>
+              m >= this.toMins(dt.startTime) && m < this.toMins(dt.endTime),
           );
           if (!isDead && !taken.includes(tStr)) {
             exactTime = tStr;
@@ -785,6 +789,8 @@ export class BookingsService {
       bookingDate,
       imageBase64,
       sellerId,
+      benefitId,
+      paidAmount,
       trimStart,
       trimEnd,
       frameX,
@@ -863,11 +869,15 @@ export class BookingsService {
 
       queuePosition = existingQueue.size + 1;
       const now = new Date();
-      let baseTimeMins = now.getHours() * 60 + now.getMinutes();
+      // Se incluyen los segundos de "now" para que la alineación a
+      // slotDuration tenga sentido cuando este es fraccionario (ej. 0.5 =
+      // 30s); truncar a minuto entero perdía hasta 59s de precisión.
+      let baseTimeMins =
+        now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
       // Alinear los minutos base para que sean múltiplos exactos del slotDuration (ej: si es 2 min, horas como 1:30, 1:32)
       const remainder = baseTimeMins % slotDuration;
-      if (remainder !== 0) {
+      if (remainder > 1e-9) {
         baseTimeMins += slotDuration - remainder;
       }
 
@@ -880,8 +890,7 @@ export class BookingsService {
             d.exactTime !== 'Sin asignar' &&
             d.exactTime !== 'Agotado/Lleno'
           ) {
-            const [h, m] = d.exactTime.split(':').map(Number);
-            const mins = h * 60 + m;
+            const mins = this.toMins(d.exactTime);
             if (mins > maxMins) maxMins = mins;
           }
         });
@@ -891,12 +900,7 @@ export class BookingsService {
         }
       }
 
-      const toStr = (m: number) => {
-        const h = Math.floor(m / 60) % 24;
-        const min = m % 60;
-        return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-      };
-      exactTime = toStr(baseTimeMins);
+      exactTime = this.toTimeStr(baseTimeMins);
     } else if (timeSlot) {
       let deadTimes = [];
       const scheduleDoc = await db
@@ -915,15 +919,8 @@ export class BookingsService {
       const [startStr, endStr] = timeSlot.split('-');
 
       if (startStr && endStr) {
-        const toMins = (t: string) => {
-          const [h, m] = t.split(':').map(Number);
-          return h * 60 + m;
-        };
-        const toStr = (m: number) =>
-          `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-
-        const startMins = toMins(startStr);
-        const endMins = toMins(endStr);
+        const startMins = this.toMins(startStr);
+        const endMins = this.toMins(endStr);
 
         const existing = await db
           .collection('lr_bookings')
@@ -936,9 +933,13 @@ export class BookingsService {
           .filter(Boolean);
 
         for (let m = startMins; m < endMins; m += slotDuration) {
-          const tStr = toStr(m);
+          const tStr = this.toTimeStr(m);
+          // Comparación numérica (no de string) para que la franja muerta
+          // se evalúe bien incluso cuando tStr trae segundos y los
+          // deadTimes solo manejan "HH:MM".
           const isDead = deadTimes.some(
-            (dt: any) => tStr >= dt.startTime && tStr < dt.endTime,
+            (dt: any) =>
+              m >= this.toMins(dt.startTime) && m < this.toMins(dt.endTime),
           );
           if (!isDead && !taken.includes(tStr)) {
             exactTime = tStr;
@@ -976,9 +977,14 @@ export class BookingsService {
       frameY: frameY ?? null,
       frameZoom: frameZoom ?? null,
       status: 'APPROVED', // Lo marcamos como APPROVED
-      paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi', 'Efectivo', 'Datáfono', 'QR'
+      paymentMethod: data.paymentMethod || 'Wompi', // 'Wompi' (auto-reserva) o el nombre de un método de lr_payment_methods (reserva asistida)
       requiresInvoice: data.requiresInvoice || false, // boolean
       sellerId: sellerId || null,
+      benefitId: benefitId || null,
+      // Monto realmente cobrado en la reserva asistida (lo escribe el vendedor
+      // a mano, puede ser 0 para cortesía) — independiente del precio general
+      // vigente, que puede cambiar después.
+      paidAmount: paidAmount != null ? Number(paidAmount) : null,
       createdAt: new Date(),
       ...(bookingSystemType === 'queue' ? { queuePosition } : {}),
     };
@@ -1902,7 +1908,10 @@ export class BookingsService {
     }
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  // Resolución de 10s (no 1min): slotDuration puede ser fraccionario (ej.
+  // 0.5min = 30s) y exactTime puede caer en un segundo exacto — con
+  // EVERY_MINUTE la proyección se disparaba hasta 59s tarde.
+  @Cron(CronExpression.EVERY_10_SECONDS)
   async autoProjectBookings() {
     const db = this.firebase.getFirestore();
     const now = new Date();
@@ -1913,7 +1922,8 @@ export class BookingsService {
     const day = String(now.getDate()).padStart(2, '0');
     const targetDateStr = `${year}-${month}-${day}`;
 
-    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const nowMins =
+      now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
     try {
       const snapshot = await db
@@ -1931,8 +1941,7 @@ export class BookingsService {
           b.exactTime !== 'Sin asignar' &&
           b.exactTime !== 'Agotado/Lleno'
         ) {
-          const [h, m] = b.exactTime.split(':').map(Number);
-          const exactMins = h * 60 + m;
+          const exactMins = this.toMins(b.exactTime);
 
           // Si ya es la hora programada para la proyección y no han pasado más de 5 minutos (margen de tolerancia)
           if (nowMins >= exactMins && nowMins < exactMins + 5) {
@@ -2000,8 +2009,7 @@ export class BookingsService {
           b.exactTime !== 'Sin asignar' &&
           b.exactTime !== 'Agotado/Lleno'
         ) {
-          const [h, m] = b.exactTime.split(':').map(Number);
-          const exactMins = h * 60 + m;
+          const exactMins = this.toMins(b.exactTime);
           console.log(
             `[Diagnostic] Booking ${doc.id} - exactTime: ${b.exactTime}, exactMins: ${exactMins}, nowMins: ${nowMins}, maxMins: ${maxMins}`,
           );

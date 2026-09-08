@@ -69,7 +69,8 @@ export class ImagesService implements OnModuleInit {
       const sampleFilters = [
         {
           label: 'Estilo Botero',
-          description: 'Formas voluminosas y colores cálidos inspirados en el maestro colombiano.',
+          description:
+            'Formas voluminosas y colores cálidos inspirados en el maestro colombiano.',
           value: 'botero',
           imageUrl:
             'https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?auto=format&fit=crop&q=80&w=400',
@@ -139,30 +140,64 @@ export class ImagesService implements OnModuleInit {
     } = data;
     if (!imageBase64) throw new Error('No se proporcionó imagen');
 
-    const storage = this.firebase.getStorage();
-    const bucket = storage.bucket();
-    const fileName = `${folder}/${uuidv4()}.${extension}`;
-    const file = bucket.file(fileName);
-
     const base64Data = imageBase64.replace(/^data:(.*?);base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
+    const fileName = `${folder}/${uuidv4()}.${extension}`;
+
+    const imageUrl = await this.saveBufferToStorage(
+      buffer,
+      fileName,
+      contentType,
+    );
+    return { url: imageUrl };
+  }
+
+  // Subida real multipart (en vez de base64+JSON): evita que un video pesado
+  // (hasta 300MB) reviente el JSON.stringify del navegador ("allocation size
+  // overflow") y el límite de body JSON del backend. Usada por la carga de
+  // media de la pantalla de reposo/parrilla en el admin.
+  async uploadImageFile(
+    file: { buffer: Buffer; originalname?: string; mimetype?: string },
+    folder = 'screen_assets',
+  ) {
+    if (!file?.buffer) throw new Error('No se proporcionó archivo');
+
+    const extension = (
+      file.originalname?.split('.').pop() || 'bin'
+    ).toLowerCase();
+    const contentType = file.mimetype || 'application/octet-stream';
+    const fileName = `${folder}/${uuidv4()}.${extension}`;
+
+    const imageUrl = await this.saveBufferToStorage(
+      file.buffer,
+      fileName,
+      contentType,
+    );
+    return { url: imageUrl };
+  }
+
+  private async saveBufferToStorage(
+    buffer: Buffer,
+    fileName: string,
+    contentType: string,
+  ) {
+    const storage = this.firebase.getStorage();
+    const bucket = storage.bucket();
+    const file = bucket.file(fileName);
 
     await file.save(buffer, {
       metadata: { contentType },
     });
 
-    let imageUrl = '';
     try {
       await file.makePublic();
-      imageUrl = file.publicUrl();
+      return file.publicUrl();
     } catch (e) {
       const [url] = await file.getSignedUrl({
         action: 'read',
         expires: '01-01-2100',
       });
-      imageUrl = url;
+      return url;
     }
-
-    return { url: imageUrl };
   }
 }

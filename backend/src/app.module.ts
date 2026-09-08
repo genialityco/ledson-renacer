@@ -12,6 +12,8 @@ import { SchedulesModule } from './schedules/schedules.module';
 import { DlocalgoModule } from './dlocalgo/dlocalgo.module';
 import { PlansModule } from './plans/plans.module';
 import { SellersModule } from './sellers/sellers.module';
+import { BenefitsModule } from './benefits/benefits.module';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { SellersModule } from './sellers/sellers.module';
     DlocalgoModule,
     PlansModule,
     SellersModule,
+    BenefitsModule,
+    PaymentMethodsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

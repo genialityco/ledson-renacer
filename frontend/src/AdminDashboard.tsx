@@ -43,16 +43,26 @@ export function AdminDashboard() {
   const [sellers, setSellers] = useState<any[]>([]);
   const [sellerModalOpened, { open: openSellerModal, close: closeSellerModal }] = useDisclosure(false);
   const [newSeller, setNewSeller] = useState<any>({ name: '' });
+  const [benefits, setBenefits] = useState<any[]>([]);
+  const [benefitModalOpened, { open: openBenefitModal, close: closeBenefitModal }] = useDisclosure(false);
+  const [newBenefit, setNewBenefit] = useState<any>({ name: '' });
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [paymentMethodModalOpened, { open: openPaymentMethodModal, close: closePaymentMethodModal }] = useDisclosure(false);
+  const [newPaymentMethod, setNewPaymentMethod] = useState<any>({ name: '' });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [screenBgUrl, setScreenBgUrl] = useState('');
   const [headerUrl, setHeaderUrl] = useState('');
   const [footerUrl, setFooterUrl] = useState('');
-  const [projectionDuration, setProjectionDuration] = useState(15);
-  const [videoProjectionDuration, setVideoProjectionDuration] = useState(15);
+  // Los campos numéricos de abajo usan '' como estado intermedio válido
+  // (campo vacío mientras se escribe). Forzar a un número en cada tecla (ej.
+  // `Number(val) || 15`) rompe el cursor al borrar el campo: el valor salta
+  // al fallback y el siguiente dígito se inserta en el lugar equivocado.
+  const [projectionDuration, setProjectionDuration] = useState<number | ''>(15);
+  const [videoProjectionDuration, setVideoProjectionDuration] = useState<number | ''>(15);
   const [globalGridStartTime, setGlobalGridStartTime] = useState('08:00:00');
   const [globalGridEndTime, setGlobalGridEndTime] = useState('17:00:00');
-  const [cropWidth, setCropWidth] = useState(DEFAULT_CROP_WIDTH);
-  const [cropHeight, setCropHeight] = useState(DEFAULT_CROP_HEIGHT);
+  const [cropWidth, setCropWidth] = useState<number | ''>(DEFAULT_CROP_WIDTH);
+  const [cropHeight, setCropHeight] = useState<number | ''>(DEFAULT_CROP_HEIGHT);
 
   // Efecto de Revelado de Proyección: global, con o sin filtros activos (antes
   // vivía en cada filtro, pero sin filtro seleccionado no había de dónde
@@ -61,7 +71,7 @@ export function AdminDashboard() {
   // revelando la foto/video real que ya está debajo.
   const [revealEffect, setRevealEffect] = useState('spray');
   const [revealOverlayVideoUrl, setRevealOverlayVideoUrl] = useState('');
-  const [revealOverlayFadeSeconds, setRevealOverlayFadeSeconds] = useState(2);
+  const [revealOverlayFadeSeconds, setRevealOverlayFadeSeconds] = useState<number | ''>(2);
   const [containerTransition, setContainerTransition] = useState('fade');
 
   // Marco global compuesto SOLO en la foto que se envía por correo (la
@@ -86,7 +96,11 @@ export function AdminDashboard() {
   // activa tras N minutos sin proyecciones NI reservas pendientes (ver
   // hasPendingQueue en screen-settings) — mientras tanto la Parrilla sigue
   // funcionando exactamente igual que hoy.
-  const [restScreenIdleMinutes, setRestScreenIdleMinutes] = useState(5);
+  // '' = campo momentáneamente vacío mientras se escribe. Forzar a un número
+  // en cada tecla (como antes) rompía el cursor: al borrar, el valor saltaba
+  // a 0 y el siguiente dígito se insertaba ANTES del "0" en vez de después
+  // (ej. escribir "45" terminaba en "450").
+  const [restScreenIdleMinutes, setRestScreenIdleMinutes] = useState<number | ''>(5);
   const [restScreenItems, setRestScreenItems] = useState<any[]>([]);
   const [restItemModalOpened, { open: openRestItemModal, close: closeRestItemModal }] = useDisclosure(false);
   const [newRestItem, setNewRestItem] = useState<any>({ name: '', url: '', type: 'image', duration: 10 });
@@ -108,30 +122,36 @@ export function AdminDashboard() {
   const [autoSlotEnd, setAutoSlotEnd] = useState('23:00');
   const [autoSlotInterval, setAutoSlotInterval] = useState<string | null>('60');
   
-  const [slotDuration, setSlotDuration] = useState(1);
-  const [franjaDuration, setFranjaDuration] = useState(15);
+  // '' = campo momentáneamente vacío mientras se escribe (ej. al teclear
+  // "0.5" para pedir 30s, pasa por "0" antes de llegar al punto decimal).
+  const [slotDuration, setSlotDuration] = useState<number | ''>(1);
+  const [franjaDuration, setFranjaDuration] = useState<number | ''>(15);
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
 
   // Plan de uso
   const [planFiltersEnabled, setPlanFiltersEnabled] = useState(true);
   const [planAllowedFilterIds, setPlanAllowedFilterIds] = useState<string[]>([]);
-  const [planPrice, setPlanPrice] = useState(15000);
+  const [planPrice, setPlanPrice] = useState<number | ''>(15000);
 
   const fetchData = async () => {
     try {
-      const [resBookings, resFilters, resScreen, resTemplates, resScheduleSettings, resPlanSettings, resSellers] = await Promise.all([
+      const [resBookings, resFilters, resScreen, resTemplates, resScheduleSettings, resPlanSettings, resSellers, resBenefits, resPaymentMethods] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/bookings`),
         axios.get(`${API_BASE_URL}/api/images/admin`),
         axios.get(`${API_BASE_URL}/api/bookings/screen-settings`),
         axios.get(`${API_BASE_URL}/api/schedules/templates`),
         axios.get(`${API_BASE_URL}/api/schedules/settings`),
         axios.get(`${API_BASE_URL}/api/plans/settings`),
-        axios.get(`${API_BASE_URL}/api/sellers/admin`)
+        axios.get(`${API_BASE_URL}/api/sellers/admin`),
+        axios.get(`${API_BASE_URL}/api/benefits/admin`),
+        axios.get(`${API_BASE_URL}/api/payment-methods/admin`)
       ]);
       setBookings(resBookings.data);
       setFilters(resFilters.data);
       setSellers(resSellers.data);
+      setBenefits(resBenefits.data);
+      setPaymentMethods(resPaymentMethods.data);
       setTemplates(resTemplates.data || []);
       setSlotDuration(resScheduleSettings.data?.slotDuration || 1);
       setFranjaDuration(resScheduleSettings.data?.franjaDuration || 15);
@@ -234,6 +254,52 @@ export function AdminDashboard() {
     fetchData();
   };
 
+  const handleAddBenefit = async () => {
+    if (newBenefit._id) {
+      const { _id, ...updateData } = newBenefit;
+      await axios.put(`${API_BASE_URL}/api/benefits/${_id}`, updateData);
+    } else {
+      await axios.post(`${API_BASE_URL}/api/benefits`, newBenefit);
+    }
+
+    setNewBenefit({ name: '' });
+    closeBenefitModal();
+    fetchData();
+  };
+
+  const handleEditBenefit = (b: any) => {
+    setNewBenefit(b);
+    openBenefitModal();
+  };
+
+  const handleToggleBenefitStatus = async (id: string, active: boolean) => {
+    await axios.put(`${API_BASE_URL}/api/benefits/${id}`, { active });
+    fetchData();
+  };
+
+  const handleAddPaymentMethod = async () => {
+    if (newPaymentMethod._id) {
+      const { _id, ...updateData } = newPaymentMethod;
+      await axios.put(`${API_BASE_URL}/api/payment-methods/${_id}`, updateData);
+    } else {
+      await axios.post(`${API_BASE_URL}/api/payment-methods`, newPaymentMethod);
+    }
+
+    setNewPaymentMethod({ name: '' });
+    closePaymentMethodModal();
+    fetchData();
+  };
+
+  const handleEditPaymentMethod = (m: any) => {
+    setNewPaymentMethod(m);
+    openPaymentMethodModal();
+  };
+
+  const handleTogglePaymentMethodStatus = async (id: string, active: boolean) => {
+    await axios.put(`${API_BASE_URL}/api/payment-methods/${id}`, { active });
+    fetchData();
+  };
+
   const handleGenerateImage = async (id: string) => {
     setGeneratingId(id);
     try {
@@ -252,32 +318,42 @@ export function AdminDashboard() {
       backgroundUrl: screenBgUrl,
       headerUrl,
       footerUrl,
-      projectionDuration,
-      videoProjectionDuration,
+      projectionDuration: Number(projectionDuration) || 15,
+      videoProjectionDuration: Number(videoProjectionDuration) || 15,
       globalGridStartTime,
       globalGridEndTime,
-      cropWidth,
-      cropHeight,
+      cropWidth: Number(cropWidth) || DEFAULT_CROP_WIDTH,
+      cropHeight: Number(cropHeight) || DEFAULT_CROP_HEIGHT,
       contentGrid: overrideGrid || contentGrid,
       deadTimes,
-      restScreenIdleMinutes,
+      restScreenIdleMinutes: Number(restScreenIdleMinutes) || 0,
       restScreenItems: overrideRestItems || restScreenItems,
       revealEffect,
       revealOverlayVideoUrl,
-      revealOverlayFadeSeconds,
+      revealOverlayFadeSeconds: Number(revealOverlayFadeSeconds) || 2,
       containerTransition,
       emailFrameUrl,
     });
     alert('Configuración de la Pantalla Gigante actualizada');
   };
 
+  const MAX_SCREEN_UPLOAD_MB = 300;
+
+  // Subida multipart real (FormData), no base64+JSON: un video de 300MB en
+  // base64 son ~400MB de string y el navegador revienta al hacer
+  // JSON.stringify ("allocation size overflow") antes de que el archivo
+  // llegue siquiera al backend.
   const handleUploadFile = async (
-    file: File | null, 
-    setUrlCallback: (url: string) => void, 
+    file: File | null,
+    setUrlCallback: (url: string) => void,
     setTypeCallback?: (type: string) => void,
     setDurationCallback?: (duration: number) => void
   ) => {
     if (!file) return;
+    if (file.size > MAX_SCREEN_UPLOAD_MB * 1024 * 1024) {
+      alert(`El archivo pesa demasiado (máximo ${MAX_SCREEN_UPLOAD_MB}MB).`);
+      return;
+    }
     setIsUploading(true);
     const isVideo = file.type.startsWith('video/');
     if (setTypeCallback) setTypeCallback(isVideo ? 'video' : 'image');
@@ -292,25 +368,18 @@ export function AdminDashboard() {
       video.src = URL.createObjectURL(file);
     }
 
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64 = reader.result as string;
-      try {
-        const res = await axios.post(`${API_BASE_URL}/api/images/upload-base64`, { 
-          imageBase64: base64, 
-          folder: 'screen-assets',
-          contentType: file.type,
-          extension: file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg')
-        });
-        setUrlCallback(res.data.url);
-      } catch(e) {
-        console.error(e);
-        alert('Error subiendo archivo a Firebase');
-      } finally {
-        setIsUploading(false);
-      }
-    };
-    reader.readAsDataURL(file);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', 'screen-assets');
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/images/upload-file`, formData);
+      setUrlCallback(res.data.url);
+    } catch (e) {
+      console.error(e);
+      alert('Error subiendo archivo a Firebase');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   // Reemplaza la llamada directa a handleUploadFile para las 4 imágenes/videos
@@ -465,7 +534,7 @@ export function AdminDashboard() {
 
   const handleUpdateScheduleSettings = async () => {
     try {
-      await axios.put(`${API_BASE_URL}/api/schedules/settings`, { slotDuration, franjaDuration, bookingSystemType, paymentGateway });
+      await axios.put(`${API_BASE_URL}/api/schedules/settings`, { slotDuration: Number(slotDuration) || 1, franjaDuration: Number(franjaDuration) || 15, bookingSystemType, paymentGateway });
       alert('Ajustes guardados correctamente');
     } catch (e) {
       alert('Error guardando ajustes');
@@ -509,6 +578,8 @@ export function AdminDashboard() {
         <Tabs.List mb="md">
           <Tabs.Tab value="bookings" leftSection={<IconUsers size={16} />}>Reservas y Pagos</Tabs.Tab>
           <Tabs.Tab value="sellers" leftSection={<IconUserPlus size={16} />}>Vendedores</Tabs.Tab>
+          <Tabs.Tab value="benefits" leftSection={<IconCoin size={16} />}>Beneficios/Promoción</Tabs.Tab>
+          <Tabs.Tab value="paymentMethods" leftSection={<IconCoin size={16} />}>Métodos de Pago</Tabs.Tab>
           <Tabs.Tab value="filters" leftSection={<IconFilter size={16} />}>Gestión de Filtros</Tabs.Tab>
           <Tabs.Tab value="plans" leftSection={<IconCoin size={16} />}>Planes de Uso</Tabs.Tab>
           <Tabs.Tab value="schedules" leftSection={<IconCalendar size={16} />}>Gestión de Horarios</Tabs.Tab>
@@ -534,6 +605,8 @@ export function AdminDashboard() {
                   <Table.Th>Método Pago</Table.Th>
                   <Table.Th>Factura Electrónica</Table.Th>
                   <Table.Th>Vendedor</Table.Th>
+                  <Table.Th>Beneficio</Table.Th>
+                  <Table.Th>Valor Pagado</Table.Th>
                   <Table.Th>Estado</Table.Th>
                   <Table.Th>Foto</Table.Th>
                 </Table.Tr>
@@ -556,6 +629,8 @@ export function AdminDashboard() {
                       <Badge color={b.requiresInvoice ? 'yellow' : 'gray'} variant="light">{b.requiresInvoice ? 'Sí' : 'No'}</Badge>
                     </Table.Td>
                     <Table.Td>{sellers.find(s => s._id === b.sellerId)?.name || '—'}</Table.Td>
+                    <Table.Td>{benefits.find(ben => ben._id === b.benefitId)?.name || '—'}</Table.Td>
+                    <Table.Td>{b.paidAmount != null ? `$${Number(b.paidAmount).toLocaleString('es-CO')}` : '—'}</Table.Td>
                     <Table.Td>
                       <Badge color={b.status === 'SHOWN' ? 'blue' : b.status === 'COMPLETED' ? 'grape' : b.status === 'GENERATED' ? 'teal' : 'orange'}>
                         {b.status === 'SHOWN' ? 'PROYECTADA' : b.status === 'COMPLETED' ? 'FINALIZADA' : b.status === 'GENERATED' ? 'GENERADA' : 'EN COLA'}
@@ -619,6 +694,106 @@ export function AdminDashboard() {
           }} title={newSeller._id ? 'Editar Vendedor' : 'Añadir Nuevo Vendedor'}>
             <TextInput label="Nombre del vendedor" value={newSeller.name} onChange={e => setNewSeller({ ...newSeller, name: e.currentTarget.value })} mb="md" />
             <Button fullWidth onClick={handleAddSeller}>Guardar Vendedor</Button>
+          </Modal>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="benefits">
+          <Text size="xs" c="dimmed" mb="sm">
+            Opciones que el vendedor puede elegir en el formulario de reserva asistida (estand físico) para registrar cortesías o promociones. No afectan el precio general de la experiencia.
+          </Text>
+          <Group justify="space-between" mb="sm">
+            <Text fw={500}>Beneficios/Promoción</Text>
+            <Button onClick={openBenefitModal}>+ Añadir Beneficio</Button>
+          </Group>
+          <Table striped>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Nombre</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th>Acciones</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {benefits.map((b) => (
+                <Table.Tr key={b._id}>
+                  <Table.Td>{b.name}</Table.Td>
+                  <Table.Td>
+                    <Badge color={b.active ? 'green' : 'red'}>{b.active ? 'Activo' : 'Inactivo'}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Button size="xs" color="blue" variant="subtle" onClick={() => handleEditBenefit(b)}>Editar</Button>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color={b.active ? 'red' : 'green'}
+                        onClick={() => handleToggleBenefitStatus(b._id, !b.active)}
+                      >
+                        {b.active ? 'Desactivar' : 'Activar'}
+                      </Button>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+
+          <Modal opened={benefitModalOpened} onClose={() => {
+            setNewBenefit({ name: '' });
+            closeBenefitModal();
+          }} title={newBenefit._id ? 'Editar Beneficio' : 'Añadir Nuevo Beneficio'}>
+            <TextInput label="Nombre del beneficio/promoción" placeholder="Ej. Cortesía prensa" value={newBenefit.name} onChange={e => setNewBenefit({ ...newBenefit, name: e.currentTarget.value })} mb="md" />
+            <Button fullWidth onClick={handleAddBenefit}>Guardar Beneficio</Button>
+          </Modal>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="paymentMethods">
+          <Text size="xs" c="dimmed" mb="sm">
+            Métodos de pago disponibles en el formulario de reserva asistida (estand físico).
+          </Text>
+          <Group justify="space-between" mb="sm">
+            <Text fw={500}>Métodos de Pago</Text>
+            <Button onClick={openPaymentMethodModal}>+ Añadir Método de Pago</Button>
+          </Group>
+          <Table striped>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Nombre</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th>Acciones</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {paymentMethods.map((m) => (
+                <Table.Tr key={m._id}>
+                  <Table.Td>{m.name}</Table.Td>
+                  <Table.Td>
+                    <Badge color={m.active ? 'green' : 'red'}>{m.active ? 'Activo' : 'Inactivo'}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Button size="xs" color="blue" variant="subtle" onClick={() => handleEditPaymentMethod(m)}>Editar</Button>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color={m.active ? 'red' : 'green'}
+                        onClick={() => handleTogglePaymentMethodStatus(m._id, !m.active)}
+                      >
+                        {m.active ? 'Desactivar' : 'Activar'}
+                      </Button>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+
+          <Modal opened={paymentMethodModalOpened} onClose={() => {
+            setNewPaymentMethod({ name: '' });
+            closePaymentMethodModal();
+          }} title={newPaymentMethod._id ? 'Editar Método de Pago' : 'Añadir Nuevo Método de Pago'}>
+            <TextInput label="Nombre del método de pago" placeholder="Ej. Efectivo COP" value={newPaymentMethod.name} onChange={e => setNewPaymentMethod({ ...newPaymentMethod, name: e.currentTarget.value })} mb="md" />
+            <Button fullWidth onClick={handleAddPaymentMethod}>Guardar Método de Pago</Button>
           </Modal>
         </Tabs.Panel>
 
@@ -762,7 +937,7 @@ export function AdminDashboard() {
               label="Valor del servicio (COP)"
               description="Precio cobrado por cada reserva en el flujo de pago en línea (Wompi / DLocal Go)"
               value={planPrice}
-              onChange={(val) => setPlanPrice(Number(val) || 0)}
+              onChange={(val) => setPlanPrice(val === '' ? '' : Number(val))}
               min={0}
               step={1000}
               thousandSeparator="."
@@ -815,19 +990,24 @@ export function AdminDashboard() {
               <Grid.Col span={{ base: 12, md: 4 }}>
                 <NumberInput
                   label="Tiempo asignado por usuario (Minutos)"
-                  description="Intervalo exacto de tiempo asignado para cada proyección"
+                  description={
+                    `Intervalo exacto de tiempo asignado para cada proyección. Admite segundos como decimales de minuto (ej. 0.5 = 30s)` +
+                    (typeof slotDuration === 'number' && slotDuration > 0 ? ` — equivale a ${Math.round(slotDuration * 60)}s` : '')
+                  }
                   value={slotDuration}
-                  onChange={(val) => setSlotDuration(Number(val) || 1)}
-                  min={1}
+                  onChange={(val) => setSlotDuration(val === '' ? '' : Number(val))}
+                  min={1 / 60}
                   max={60}
+                  step={0.5}
+                  decimalScale={2}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 4 }}>
                 <NumberInput
                   label="Duración de la franja (Minutos)"
-                  description={`Solo para "Franja Inmediata con Cupo". Capacidad resultante: ${Math.max(1, Math.floor(franjaDuration / (slotDuration || 1)))} personas por franja`}
+                  description={`Solo para "Franja Inmediata con Cupo". Capacidad resultante: ${Math.max(1, Math.floor((Number(franjaDuration) || 1) / (Number(slotDuration) || 1)))} personas por franja`}
                   value={franjaDuration}
-                  onChange={(val) => setFranjaDuration(Number(val) || 15)}
+                  onChange={(val) => setFranjaDuration(val === '' ? '' : Number(val))}
                   min={2}
                   max={120}
                 />
@@ -1039,7 +1219,7 @@ export function AdminDashboard() {
                 <NumberInput
                   label="Duración Proyección Foto (seg)"
                   value={projectionDuration}
-                  onChange={(val) => setProjectionDuration(Number(val) || 15)}
+                  onChange={(val) => setProjectionDuration(val === '' ? '' : Number(val))}
                   min={5}
                   max={300}
                 />
@@ -1049,7 +1229,7 @@ export function AdminDashboard() {
                   label="Duración Proyección Video (seg)"
                   description="Si el video dura más, se corta a este tiempo"
                   value={videoProjectionDuration}
-                  onChange={(val) => setVideoProjectionDuration(Number(val) || 15)}
+                  onChange={(val) => setVideoProjectionDuration(val === '' ? '' : Number(val))}
                   min={5}
                   max={300}
                 />
@@ -1080,7 +1260,7 @@ export function AdminDashboard() {
                   <NumberInput
                     label="Ancho (px)"
                     value={cropWidth}
-                    onChange={(val) => setCropWidth(Number(val) || DEFAULT_CROP_WIDTH)}
+                    onChange={(val) => setCropWidth(val === '' ? '' : Number(val))}
                     min={64}
                     max={4000}
                     style={{ flex: 1 }}
@@ -1089,7 +1269,7 @@ export function AdminDashboard() {
                   <NumberInput
                     label="Alto (px)"
                     value={cropHeight}
-                    onChange={(val) => setCropHeight(Number(val) || DEFAULT_CROP_HEIGHT)}
+                    onChange={(val) => setCropHeight(val === '' ? '' : Number(val))}
                     min={64}
                     max={4000}
                     style={{ flex: 1 }}
@@ -1161,7 +1341,7 @@ export function AdminDashboard() {
                       label="Duración del Fade (segundos)"
                       description="En los últimos N segundos del video overlay, se desvanece revelando lo real"
                       value={revealOverlayFadeSeconds}
-                      onChange={(val) => setRevealOverlayFadeSeconds(Number(val) || 2)}
+                      onChange={(val) => setRevealOverlayFadeSeconds(val === '' ? '' : Number(val))}
                       min={0.5}
                       max={15}
                       step={0.5}
@@ -1278,16 +1458,23 @@ export function AdminDashboard() {
                 SIN proyecciones y SIN reservas pendientes por proyectar — mientras eso no pase, la Parrilla y la
                 tarjeta de bienvenida siguen funcionando exactamente igual que hoy.
               </Text>
-              <NumberInput
-                label="Activar tras (minutos de inactividad)"
-                description="0 desactiva la pantalla de reposo"
-                value={restScreenIdleMinutes}
-                onChange={(val) => setRestScreenIdleMinutes(Number(val) || 0)}
-                min={0}
-                max={180}
-                maw={280}
-                mb="md"
-              />
+              <Group align="flex-end" mb="md">
+                <NumberInput
+                  label="Activar tras (minutos de inactividad)"
+                  description={
+                    `0 desactiva la pantalla de reposo. Admite segundos como decimales de minuto (ej. 0.5 = 30s)` +
+                    (typeof restScreenIdleMinutes === 'number' && restScreenIdleMinutes > 0 ? ` — equivale a ${Math.round(restScreenIdleMinutes * 60)}s` : '')
+                  }
+                  value={restScreenIdleMinutes}
+                  onChange={(val) => setRestScreenIdleMinutes(val === '' ? '' : Number(val))}
+                  min={0}
+                  max={180}
+                  step={0.5}
+                  decimalScale={2}
+                  maw={280}
+                />
+                <Button color="teal" onClick={() => handleUpdateSettings()}>Guardar Minutos de Inactividad</Button>
+              </Group>
               <Group mb="sm">
                 <Button onClick={() => {
                   setNewRestItem({ name: '', url: '', type: 'image', duration: 10 });
@@ -1523,17 +1710,19 @@ export function AdminDashboard() {
             <ImageCropModal
               opened={imageCropModalOpened}
               imageSrc={rawImageForCrop}
-              aspect={cropWidth / cropHeight}
-              outputWidth={cropWidth}
-              outputHeight={cropHeight}
-              title={`Ajusta el encuadre (proporción de la pantalla: ${cropWidth}×${cropHeight})`}
+              aspect={(Number(cropWidth) || DEFAULT_CROP_WIDTH) / (Number(cropHeight) || DEFAULT_CROP_HEIGHT)}
+              outputWidth={Number(cropWidth) || DEFAULT_CROP_WIDTH}
+              outputHeight={Number(cropHeight) || DEFAULT_CROP_HEIGHT}
+              title={`Ajusta el encuadre (proporción de la pantalla: ${Number(cropWidth) || DEFAULT_CROP_WIDTH}×${Number(cropHeight) || DEFAULT_CROP_HEIGHT})`}
               onCancel={handleScreenImageCropCancel}
               onConfirm={handleScreenImageCropConfirm}
             />
+            {/* Sin maxSeconds: el contenido de pantalla de reposo/parrilla no
+                tiene límite de duración (a diferencia del video del
+                photobooth, que sí lo tiene en BookingForm/AssistedBookingForm). */}
             <VideoTrimModal
               opened={videoTrimModalOpened}
               file={rawVideoFile}
-              maxSeconds={15}
               onCancel={handleScreenVideoTrimCancel}
               onConfirm={handleScreenVideoTrimConfirm}
             />

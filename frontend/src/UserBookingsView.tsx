@@ -59,7 +59,11 @@ export function UserBookingsView() {
 
   const formatDateTime = (dateStr: string, timeStr: string) => {
     if (!dateStr || !timeStr) return '';
-    const dateObj = new Date(`${dateStr}T${timeStr}:00`);
+    // exactTime puede venir como "HH:MM" o, si slotDuration deja segundos
+    // sueltos (ej. 0.5min = 30s), como "HH:MM:SS" — solo completar los
+    // segundos cuando no vienen ya incluidos.
+    const timePart = timeStr.split(':').length === 3 ? timeStr : `${timeStr}:00`;
+    const dateObj = new Date(`${dateStr}T${timePart}`);
     
     // Opciones para Intl.DateTimeFormat
     const options: Intl.DateTimeFormatOptions = { 
