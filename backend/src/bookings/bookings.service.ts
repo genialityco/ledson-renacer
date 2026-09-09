@@ -2,6 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { FirebaseService } from '../firebase/firebase.service';
 import { EmailService } from '../email/email.service';
+import {
+  Lang,
+  renderBookingConfirmationEmail,
+  renderResultEmail,
+  renderAbandonedCartEmail,
+  renderButton,
+} from '../email/email.templates';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormData from 'form-data';
@@ -67,71 +74,104 @@ export class BookingsService {
     if (!booking.email || !opts.code) return;
     const db = this.firebase.getFirestore();
     const generalDoc = await db.collection('lr_settings').doc('general').get();
-    const lang = generalDoc.exists ? generalDoc.data()?.language || 'es' : 'es';
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const lang: Lang = generalDoc.exists
+      ? generalDoc.data()?.language || 'es'
+      : 'es';
+    const frontendUrl = this.getFrontendUrl();
     const statusLink = `${frontendUrl}/my-bookings?code=${opts.code}`;
     const hasExactTime =
       opts.exactTime &&
       opts.exactTime !== 'Sin asignar' &&
       opts.exactTime !== 'Agotado/Lleno';
 
-    const scheduleLineEs = opts.franjaFull
-      ? 'Tu foto ya quedó confirmada. El horario que habías elegido se llenó justo antes de confirmar — entra al enlace de abajo para elegir otro.'
-      : hasExactTime
-        ? `Vivirás tu experiencia en pantalla aproximadamente a las <strong>${opts.exactTime}</strong>${opts.timeSlot ? ` (horario ${opts.timeSlot.replace('-', ' - ')})` : ''}.`
-        : '';
-    const scheduleLineEn = opts.franjaFull
-      ? 'Your photo is confirmed. The slot you picked filled up right before confirming — use the link below to choose another one.'
-      : hasExactTime
-        ? `You'll live your experience on screen at approximately <strong>${opts.exactTime}</strong>${opts.timeSlot ? ` (slot ${opts.timeSlot.replace('-', ' - ')})` : ''}.`
-        : '';
+    let scheduleLines: string[];
+    if (opts.franjaFull) {
+      scheduleLines = [
+        lang === 'en'
+          ? 'Your photo is confirmed. The slot you picked filled up right before confirming — use the link below to choose another one.'
+          : 'Tu foto ya quedó confirmada. El horario que habías elegido se llenó justo antes de confirmar — entra al enlace de abajo para elegir otro.',
+      ];
+    } else {
+      scheduleLines = [];
+      if (opts.timeSlot) {
+        scheduleLines.push(
+          lang === 'en'
+            ? `Your reserved time slot is <strong>${opts.timeSlot.replace('-', ' - ')}</strong>`
+            : `Tu horario reservado es <strong>${opts.timeSlot.replace('-', ' - ')}</strong>`,
+        );
+      }
+      if (hasExactTime) {
+        scheduleLines.push(
+          lang === 'en'
+            ? `You'll live your experience on screen at ~<strong>${opts.exactTime}</strong>`
+            : `Vivirás tu experiencia en pantalla a las ~<strong>${opts.exactTime}</strong>`,
+        );
+      }
+    }
 
-    const htmlEs = `
-      <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #1c5cab;">¡Gracias, ${booking.name}!</h1>
-        <p>Ya confirmamos tu foto para la experiencia <strong>Led's on Renacer</strong>.</p>
-        ${scheduleLineEs ? `<p>${scheduleLineEs}</p>` : ''}
-        <p>Tu código de reserva:</p>
-        <p style="font-size: 26px; font-weight: 700; letter-spacing: 3px; color: #1c5cab; border: 2px dashed #1c5cab; border-radius: 12px; padding: 12px 24px; display: inline-block;">${opts.code}</p>
-        <p>Guárdalo para consultar el estado de tu proyección, o entra directo aquí:</p>
-        <p><a href="${statusLink}" style="color: #1c5cab; font-weight: 700;">Consultar el estado de mi reserva</a></p>
-        <p>Cuando tu imagen se proyecte en la pantalla grande, te enviaremos tu recuerdo digital a este correo.</p>
-        <br/>
-        <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-      </div>
-    `;
-    const htmlEn = `
-      <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #1c5cab;">Thank you, ${booking.name}!</h1>
-        <p>We've confirmed your photo for the <strong>Led's on Renacer</strong> experience.</p>
-        ${scheduleLineEn ? `<p>${scheduleLineEn}</p>` : ''}
-        <p>Your booking code:</p>
-        <p style="font-size: 26px; font-weight: 700; letter-spacing: 3px; color: #1c5cab; border: 2px dashed #1c5cab; border-radius: 12px; padding: 12px 24px; display: inline-block;">${opts.code}</p>
-        <p>Save it to check your projection status, or go straight here:</p>
-        <p><a href="${statusLink}" style="color: #1c5cab; font-weight: 700;">Check my booking status</a></p>
-        <p>Once your image is projected on the big screen, we'll email you your digital keepsake.</p>
-        <br/>
-        <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-      </div>
-    `;
-
-    const subject =
-      lang === 'en'
-        ? "Thanks for your Led's on Renacer booking!"
-        : "¡Gracias por tu reserva en Led's on Renacer!";
+    const { html, subject } = renderBookingConfirmationEmail({
+      lang,
+      frontendUrl,
+      name: booking.name,
+      code: opts.code,
+      statusLink,
+      scheduleLines,
+    });
 
     try {
-      await this.emailService.sendEmail(
-        booking.email,
-        subject,
-        lang === 'en' ? htmlEn : htmlEs,
-      );
+      await this.emailService.sendEmail(booking.email, subject, html);
     } catch (e: any) {
       console.error(
         'Error enviando correo de confirmación de foto:',
         e.message,
       );
     }
+  }
+
+  private getFrontendUrl(): string {
+    return process.env.FRONTEND_URL || 'http://localhost:5173';
+  }
+
+  private async findBookingByCode(
+    code: string,
+  ): Promise<{ id: string; data: any } | null> {
+    const db = this.firebase.getFirestore();
+    const snapshot = await db
+      .collection('lr_bookings')
+      .where('code', '==', code.trim().toUpperCase())
+      .limit(1)
+      .get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, data: doc.data() };
+  }
+
+  // Resuelve la URL fuente para la descarga forzada del recuerdo (foto o
+  // video). Prioriza la versión con marco (emailFramedImageUrl/VideoUrl) sobre
+  // el archivo generado sin marco, porque esa es la versión que el usuario ve
+  // efectivamente embebida/enlazada en el correo — descargar la versión sin
+  // marco cuando sí hay una con marco sería inconsistente.
+  async getMediaForDownload(code: string): Promise<{
+    sourceUrl: string;
+    fallbackExtension: string;
+    fallbackContentType: string;
+  }> {
+    const found = await this.findBookingByCode(code);
+    if (!found) throw new NotFoundException('Reserva no encontrada');
+    const b = found.data;
+    const isVideo = b.mediaType === 'video';
+    const sourceUrl = isVideo
+      ? b.emailFramedVideoUrl || b.generatedImageUrl || b.imageUrl
+      : b.emailFramedImageUrl || b.generatedImageUrl || b.imageUrl;
+    if (!sourceUrl)
+      throw new NotFoundException(
+        'Aún no hay un recuerdo generado para esta reserva',
+      );
+    return {
+      sourceUrl,
+      fallbackExtension: isVideo ? 'mp4' : 'jpg',
+      fallbackContentType: isVideo ? 'video/mp4' : 'image/jpeg',
+    };
   }
 
   private todayStr(now = new Date()): string {
@@ -1594,41 +1634,20 @@ export class BookingsService {
     mediaBlockEs: string,
     mediaBlockEn: string,
     isVideo: boolean,
-    lang: string,
+    lang: Lang,
   ): { html: string; subject: string } {
-    const htmlEs = `
-        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #228be6;">¡Hola ${name}!</h1>
-          <p>Gracias por ser parte de la experiencia <strong>Led's on Renacer</strong>.</p>
-          <p>Aquí tienes el recuerdo de tu photobooth:</p>
-          ${mediaBlockEs}
-          <p>¡Esperamos que lo hayas disfrutado!</p>
-          <br/>
-          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-        </div>
-      `;
-    const htmlEn = `
-        <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #228be6;">Hello ${name}!</h1>
-          <p>Thank you for being part of the <strong>Led's on Renacer</strong> experience.</p>
-          <p>Here is your photobooth memory:</p>
-          ${mediaBlockEn}
-          <p>We hope you enjoyed it!</p>
-          <br/>
-          <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-        </div>
-      `;
+    const frontendUrl = this.getFrontendUrl();
+    return renderResultEmail({
+      lang,
+      frontendUrl,
+      name,
+      mediaBlockHtml: lang === 'en' ? mediaBlockEn : mediaBlockEs,
+      isVideo,
+    });
+  }
 
-    const html = lang === 'en' ? htmlEn : htmlEs;
-    const subject = isVideo
-      ? lang === 'en'
-        ? "Your Led's on Renacer video is ready!"
-        : "¡Tu video de Led's on Renacer está listo!"
-      : lang === 'en'
-        ? "Your Led's on Renacer photo is ready!"
-        : "¡Tu foto de Led's on Renacer está lista!";
-
-    return { html, subject };
+  private getDownloadUrl(code: string): string {
+    return `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/bookings/download/${code}`;
   }
 
   // Camino pesado: compone el marco sobre el video completo antes de mandar
@@ -1649,20 +1668,23 @@ export class BookingsService {
       cropWidth,
       cropHeight,
     );
-    const videoUrl = framedUrl || originalVideoUrl; // si falla, se manda el original sin marco
-
-    const mediaBlockEs = `<p><a href="${videoUrl}" style="color: #228be6; font-weight: 700;">Ver tu video</a></p>`;
-    const mediaBlockEn = `<p><a href="${videoUrl}" style="color: #228be6; font-weight: 700;">Watch your video</a></p>`;
+    // El botón de descarga apunta siempre al endpoint de descarga (que resuelve
+    // la versión con marco vía emailFramedVideoUrl si la composición tuvo éxito).
+    const downloadUrl = this.getDownloadUrl(b.code);
+    const mediaBlockEs = renderButton('Descarga tu recuerdo', downloadUrl);
+    const mediaBlockEn = renderButton('Download your memory', downloadUrl);
     const { html, subject } = this.buildResultEmail(
       b.name,
       mediaBlockEs,
       mediaBlockEn,
       true,
-      lang,
+      lang as Lang,
     );
 
     await this.emailService.sendEmail(b.email, subject, html);
-    await bookingRef.update({ emailSent: true });
+    const update: Record<string, any> = { emailSent: true };
+    if (framedUrl) update.emailFramedVideoUrl = framedUrl;
+    await bookingRef.update(update);
   }
 
   async completeProjection(bookingId: string) {
@@ -1729,6 +1751,7 @@ export class BookingsService {
         );
       } else {
         let emailImageUrl = imageUrl;
+        let emailFramedImageUrl: string | undefined;
         if (!isVideo && emailFrameUrl) {
           const composed = await this.compositeEmailFrame(
             imageUrl,
@@ -1736,29 +1759,37 @@ export class BookingsService {
             cropWidth,
             cropHeight,
           );
-          if (composed) emailImageUrl = composed;
+          if (composed) {
+            emailImageUrl = composed;
+            emailFramedImageUrl = composed;
+          }
         }
 
+        const downloadUrl = this.getDownloadUrl(b.code);
         // Los clientes de correo en general no reproducen <video> embebido,
-        // así que para video mandamos un enlace directo en vez de incrustarlo.
+        // así que para video el botón de descarga es el único CTA. Para foto
+        // se mantiene la imagen embebida y se agrega el botón debajo.
         const mediaBlockEs = isVideo
-          ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Ver tu video</a></p>`
-          : `<img src="${emailImageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
+          ? renderButton('Descarga tu recuerdo', downloadUrl)
+          : `<img src="${emailImageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 0 0 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />${renderButton('Descarga tu recuerdo', downloadUrl)}`;
         const mediaBlockEn = isVideo
-          ? `<p><a href="${imageUrl}" style="color: #228be6; font-weight: 700;">Watch your video</a></p>`
-          : `<img src="${emailImageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />`;
+          ? renderButton('Download your memory', downloadUrl)
+          : `<img src="${emailImageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 0 0 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />${renderButton('Download your memory', downloadUrl)}`;
 
         const { html, subject } = this.buildResultEmail(
           b.name,
           mediaBlockEs,
           mediaBlockEn,
           isVideo,
-          lang,
+          lang as Lang,
         );
 
         try {
           await this.emailService.sendEmail(b.email, subject, html);
-          await bookingRef.update({ emailSent: true });
+          const update: Record<string, any> = { emailSent: true };
+          if (emailFramedImageUrl)
+            update.emailFramedImageUrl = emailFramedImageUrl;
+          await bookingRef.update(update);
         } catch (e: any) {
           console.error('Error enviando correo al cliente:', e.message);
         }
@@ -1865,32 +1896,13 @@ export class BookingsService {
             ? `Your photo and your time slot <strong>${b.timeSlot}</strong> on <strong>${b.bookingDate}</strong> are still saved.`
             : `Your photo for <strong>${b.bookingDate}</strong> is still saved.`;
 
-          const htmlEs = `
-            <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-              <h1 style="color: #f59f00;">¡Hola ${b.name}!</h1>
-              <p>Notamos que no terminaste el pago para tu experiencia <strong>Led's on Renacer</strong>.</p>
-              <p>${savedLineEs}</p>
-              <p>Puedes retomar tu compra contactándonos o regresando al punto de venta virtual.</p>
-              <br/>
-              <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-            </div>
-          `;
-          const htmlEn = `
-            <div style="font-family: sans-serif; text-align: center; color: #333; max-width: 600px; margin: 0 auto;">
-              <h1 style="color: #f59f00;">Hello ${b.name}!</h1>
-              <p>We noticed you didn't finish the payment for your <strong>Led's on Renacer</strong> experience.</p>
-              <p>${savedLineEn}</p>
-              <p>You can resume your purchase by contacting us or returning to the virtual point of sale.</p>
-              <br/>
-              <p style="font-size: 12px; color: #999;">Galería Renacer</p>
-            </div>
-          `;
-
-          const html = lang === 'en' ? htmlEn : htmlEs;
-          const subject =
-            lang === 'en'
-              ? "Resume your Led's on Renacer booking!"
-              : "¡Retoma tu reserva de Led's on Renacer!";
+          const frontendUrl = this.getFrontendUrl();
+          const { html, subject } = renderAbandonedCartEmail({
+            lang: lang as Lang,
+            frontendUrl,
+            name: b.name,
+            savedLine: lang === 'en' ? savedLineEn : savedLineEs,
+          });
 
           try {
             await this.emailService.sendEmail(b.email, subject, html);
