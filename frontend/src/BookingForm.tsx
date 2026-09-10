@@ -447,42 +447,46 @@ export function BookingForm() {
           publicKey: import.meta.env.VITE_WOMPI_PUBLIC_KEY,
           signature: { integrity: signature },
         });
+        // Si el usuario cierra el widget sin completar el pago, Wompi puede
+        // invocar este callback sin transacción o directamente no invocarlo
+        // — no es algo que podamos garantizar. Por eso NO dejamos el botón
+        // "cargando" en espera de ese callback (se quedaba así para siempre
+        // si el usuario cerraba el widget): el widget de Wompi ya cubre toda
+        // la pantalla mientras está abierto, así que soltamos el botón apenas
+        // se abre y solo lo volvemos a marcar "cargando" mientras confirmamos
+        // el pago aprobado con el backend.
+        setIsUploadingPhoto(false);
         checkout.open(async (result: any) => {
-          // Si el usuario cierra el widget sin completar el pago, Wompi puede
-          // invocar este callback sin transacción (o no invocarlo). En ese
-          // caso no hay nada que confirmar: solo liberamos el botón para que
-          // pueda reintentar, sin avanzar de paso.
-          try {
-            const transaction = result?.transaction;
-            console.log('Transaction result: ', transaction);
-            if (transaction) {
-              setPaymentStatus(transaction.status);
-              if (transaction.status === 'APPROVED') {
-                try {
-                  const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, mediaPayload);
-                  setFinalResult(confirmRes.data);
-                  // Excluye PII (nombre, cédula, correo, celular) del evento.
-                  trackGtagEvent('purchase', {
-                    transaction_id: confirmRes.data.code,
-                    value: servicePrice,
-                    currency: 'COP',
-                    nationality: country,
-                    city,
-                    items: [{
-                      item_id: selectedFilter || 'ledson-renacer-sin-filtro',
-                      item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
-                      quantity: 1,
-                    }],
-                  });
-                } catch (err) {
-                  console.error(err);
-                  alert(t('uploadErrorAlert'));
-                }
+          const transaction = result?.transaction;
+          console.log('Transaction result: ', transaction);
+          if (transaction) {
+            setPaymentStatus(transaction.status);
+            if (transaction.status === 'APPROVED') {
+              setIsUploadingPhoto(true);
+              try {
+                const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, mediaPayload);
+                setFinalResult(confirmRes.data);
+                // Excluye PII (nombre, cédula, correo, celular) del evento.
+                trackGtagEvent('purchase', {
+                  transaction_id: confirmRes.data.code,
+                  value: servicePrice,
+                  currency: 'COP',
+                  nationality: country,
+                  city,
+                  items: [{
+                    item_id: selectedFilter || 'ledson-renacer-sin-filtro',
+                    item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
+                    quantity: 1,
+                  }],
+                });
+              } catch (err) {
+                console.error(err);
+                alert(t('uploadErrorAlert'));
+              } finally {
+                setIsUploadingPhoto(false);
               }
-              setActiveStep(3);
             }
-          } finally {
-            setIsUploadingPhoto(false);
+            setActiveStep(3);
           }
         });
         return;
