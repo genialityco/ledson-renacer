@@ -54,3 +54,4 @@ backend/.env
 backend/dist/
 backend/node_modules/
 backend/coverage/
+backend/scripts/output/
