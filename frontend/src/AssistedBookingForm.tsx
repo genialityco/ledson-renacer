@@ -13,6 +13,7 @@ import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
 import { API_BASE_URL } from './config';
+import { trackGtagEvent } from './analytics';
 
 interface FilterOption {
   id: string;
@@ -311,6 +312,24 @@ export function AssistedBookingForm() {
         } : {}),
       });
       setFinalResult(res.data);
+      // Excluye PII (nombre, cédula, correo, celular) del evento. La moneda
+      // se extrae del método de pago porque no hay un campo dedicado
+      // ("Efectivo COP" / "Efectivo USD", etc.).
+      trackGtagEvent('pos_sale', {
+        transaction_id: res.data.code,
+        value: paidAmount === '' ? 0 : paidAmount,
+        currency: paymentMethod?.includes('USD') ? 'USD' : 'COP',
+        payment_type: paymentMethod,
+        vendor_name: sellers.find((s) => s.id === sellerId)?.name || '',
+        promotion_name: benefits.find((b) => b.id === benefitId)?.name || '',
+        nationality: country,
+        city,
+        items: [{
+          item_id: selectedFilter || 'ledson-renacer-sin-filtro',
+          item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
+          quantity: 1,
+        }],
+      });
       setActiveStep(3);
     } catch (error) {
       console.error(error);

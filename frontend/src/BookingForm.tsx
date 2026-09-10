@@ -13,6 +13,7 @@ import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
 import { API_BASE_URL } from './config';
+import { trackGtagEvent } from './analytics';
 
 interface FilterOption {
   id: string;
@@ -462,6 +463,19 @@ export function BookingForm() {
                 try {
                   const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, mediaPayload);
                   setFinalResult(confirmRes.data);
+                  // Excluye PII (nombre, cédula, correo, celular) del evento.
+                  trackGtagEvent('purchase', {
+                    transaction_id: confirmRes.data.code,
+                    value: servicePrice,
+                    currency: 'COP',
+                    nationality: country,
+                    city,
+                    items: [{
+                      item_id: selectedFilter || 'ledson-renacer-sin-filtro',
+                      item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
+                      quantity: 1,
+                    }],
+                  });
                 } catch (err) {
                   console.error(err);
                   alert(t('uploadErrorAlert'));
