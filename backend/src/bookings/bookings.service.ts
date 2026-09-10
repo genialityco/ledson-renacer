@@ -1499,9 +1499,11 @@ export class BookingsService {
   // Compone el marco (PNG con transparencia, configurado globalmente en
   // lr_settings/screen) sobre la foto ya generada, SOLO para el correo — la
   // proyección en pantalla no se toca. Tanto la foto como el marco se ajustan
-  // a la Proporción de Recorte configurada (cropWidth/cropHeight) — la misma
-  // que usa el resto del sistema — en vez de a las dimensiones que devolvió
-  // la API externa de IA (que puede no respetar la proporción original).
+  // con "cover" a la Proporción de Recorte configurada (cropWidth/cropHeight)
+  // — la misma que usa el resto del sistema (pantalla y filtros incluidos) —
+  // así ambos llenan siempre el mismo lienzo sin dejar huecos, aunque eso
+  // implique recortar un poco el borde exterior del marco si su PNG no tiene
+  // exactamente esa proporción.
   // Devuelve null si algo falla, para que el llamador pueda seguir usando la
   // foto sin marco como respaldo.
   private async compositeEmailFrame(
@@ -1518,19 +1520,11 @@ export class BookingsService {
       const imageBuffer = Buffer.from(imageRes.data);
       const frameBuffer = Buffer.from(frameRes.data);
 
-      // "cover": llena exactamente cropWidth x cropHeight recortando el
-      // sobrante, igual que object-fit: cover en la pantalla grande.
       const resizedImage = await sharp(imageBuffer)
         .resize(cropWidth, cropHeight, { fit: 'cover' })
         .toBuffer();
-
-      // "contain": el marco se ajusta completo dentro de cropWidth x
-      // cropHeight sin deformarse, rellenando el sobrante con transparencia.
       const resizedFrame = await sharp(frameBuffer)
-        .resize(cropWidth, cropHeight, {
-          fit: 'contain',
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-        })
+        .resize(cropWidth, cropHeight, { fit: 'cover' })
         .toBuffer();
 
       const composited = await sharp(resizedImage)
@@ -1571,7 +1565,8 @@ export class BookingsService {
   // frameX/frameY/frameZoom como metadatos para el CSS de la pantalla), así
   // que aquí se lleva a la Proporción de Recorte configurada (cropWidth x
   // cropHeight) con un recorte tipo "cover" (igual que object-fit: cover en
-  // pantalla) antes de superponer el marco, ya ajustado a ese mismo tamaño.
+  // pantalla) antes de superponer el marco, también recortado a "cover" sobre
+  // ese mismo tamaño para no dejar huecos.
   private async compositeEmailFrameVideo(
     videoUrl: string,
     frameUrl: string,
@@ -1591,7 +1586,7 @@ export class BookingsService {
           .input(frameUrl)
           .complexFilter([
             `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[base]`,
-            `[1:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,format=rgba,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black@0[ovr]`,
+            `[1:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},format=rgba[ovr]`,
             '[base][ovr]overlay=0:0:format=auto[outv]',
           ])
           .outputOptions(['-map', '[outv]', '-map', '0:a?', '-c:a', 'copy'])
