@@ -12,7 +12,7 @@ import { VideoTrimModal } from './VideoTrimModal';
 import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, getLocalDateStr } from './config';
 import { trackGtagEvent } from './analytics';
 
 interface FilterOption {
@@ -86,7 +86,7 @@ export function AssistedBookingForm() {
   const [country, setCountry] = useState<string | null>(null);
   const [city, setCity] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
-  const [bookingDate, setBookingDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bookingDate, setBookingDate] = useState<string>(getLocalDateStr());
   const [availableSlots, setAvailableSlots] = useState<{ value: string; label: string }[]>([]);
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
   const [currentFranja, setCurrentFranja] = useState<string | null>(null);
@@ -162,9 +162,7 @@ export function AssistedBookingForm() {
               { startTime: '23:00', endTime: '00:00' }
             ];
           }
-          const today = new Date();
-          today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-          if (bookingDate === today.toISOString().split('T')[0]) {
+          if (bookingDate === getLocalDateStr()) {
             const now = new Date();
             const currentHour = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
             slots = slots.filter((s: any) => (s.endTime === '00:00' ? '24:00' : s.endTime) > currentHour);
@@ -483,7 +481,7 @@ export function AssistedBookingForm() {
               {bookingSystemType === 'slots' && (
                 <>
                   <Grid.Col span={{ base: 12, sm: 6 }}>
-                    <TextInput type="date" label="Fecha de reserva" required value={bookingDate} onChange={(e) => setBookingDate(e.currentTarget.value)} min={new Date().toISOString().split('T')[0]} />
+                    <TextInput type="date" label="Fecha de reserva" required value={bookingDate} onChange={(e) => setBookingDate(e.currentTarget.value)} min={getLocalDateStr()} />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, sm: 6 }}>
                     <Select label="Franja horaria a elegir" placeholder="Selecciona la hora" data={availableSlots} required value={timeSlot} onChange={setTimeSlot} disabled={availableSlots.length === 0} />

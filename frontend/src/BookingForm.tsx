@@ -12,7 +12,7 @@ import { VideoTrimModal } from './VideoTrimModal';
 import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, getLocalDateStr } from './config';
 import { trackGtagEvent } from './analytics';
 
 interface FilterOption {
@@ -67,7 +67,7 @@ export function BookingForm() {
   const [country, setCountry] = useState<string | null>(null);
   const [city, setCity] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
-  const [bookingDate, setBookingDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bookingDate, setBookingDate] = useState<string>(getLocalDateStr());
   const [availableSlots, setAvailableSlots] = useState<{ value: string; label: string }[]>([]);
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
   const [franjasAvailability, setFranjasAvailability] = useState<{ franjas: any[] } | null>(null);
@@ -194,9 +194,7 @@ export function BookingForm() {
               { startTime: '23:00', endTime: '00:00' },
             ];
           }
-          const today = new Date();
-          today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-          const todayStr = today.toISOString().split('T')[0];
+          const todayStr = getLocalDateStr();
           if (bookingDate === todayStr) {
             const now = new Date();
             const currentHour = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
@@ -513,7 +511,7 @@ export function BookingForm() {
     setWhatsapp('');
     setCountry(null);
     setCity('');
-    setBookingDate(new Date().toISOString().split('T')[0]);
+    setBookingDate(getLocalDateStr());
     setTimeSlot(null);
     setUserPickedFranja(false);
     setHabeasData(false);
@@ -673,7 +671,7 @@ export function BookingForm() {
               {bookingSystemType === 'slots' && (
                 <>
                   <Grid.Col span={{ base: 12, sm: 6 }}>
-                    <TextInput type="date" label={t('bookingDate')} required value={bookingDate} onChange={(e) => setBookingDate(e.currentTarget.value)} min={new Date().toISOString().split('T')[0]} />
+                    <TextInput type="date" label={t('bookingDate')} required value={bookingDate} onChange={(e) => setBookingDate(e.currentTarget.value)} min={getLocalDateStr()} />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, sm: 6 }}>
                     <Select label={t('timeSlot')} placeholder={t('selectTimeSlot')} data={availableSlots} required value={timeSlot} onChange={setTimeSlot} disabled={availableSlots.length === 0} />

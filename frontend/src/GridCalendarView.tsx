@@ -8,7 +8,7 @@ import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/es';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, getLocalDateStr } from './config';
 
 moment.locale('es');
 const localizer = momentLocalizer(moment);
@@ -45,7 +45,7 @@ export function GridCalendarView() {
           start = new Date(item.start);
           end = new Date(item.end);
         } else {
-          const todayStr = new Date().toISOString().split('T')[0];
+          const todayStr = getLocalDateStr();
           start = new Date(`${todayStr}T${item.startTime}`);
           end = new Date(`${todayStr}T${item.endTime}`);
         }
