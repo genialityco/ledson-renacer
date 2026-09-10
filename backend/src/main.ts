@@ -1,3 +1,11 @@
+// El evento ocurre en Medellín/Bogotá (siempre UTC-5, sin horario de verano),
+// pero el servidor de despliegue corre en la zona horaria de su propio host
+// (normalmente UTC). Todo el negocio (franjas, exactTime, cron de proyección
+// automática) asume horas locales de Colombia vía Date.getHours()/getMinutes(),
+// así que sin esto el servidor calculaba "ahora" 5 horas adelantado — un
+// usuario reservando a las 3pm veía que el sistema asignaba/mostraba las 8pm.
+process.env.TZ = process.env.TZ || 'America/Bogota';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';

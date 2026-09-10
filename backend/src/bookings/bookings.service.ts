@@ -433,7 +433,7 @@ export class BookingsService {
       // Publicación inmediata: la reserva siempre es para hoy
       finalBookingDate = this.todayStr();
     } else if (!finalBookingDate) {
-      finalBookingDate = new Date().toISOString().split('T')[0];
+      finalBookingDate = this.todayStr();
     }
 
     const bookingRef = db.collection('lr_bookings').doc();
@@ -855,8 +855,7 @@ export class BookingsService {
     let exactTime = 'Sin asignar';
     let slotDuration = 1;
     let queuePosition = 0;
-    const finalBookingDate =
-      bookingDate || new Date().toISOString().split('T')[0];
+    const finalBookingDate = bookingDate || this.todayStr();
 
     const scheduleSettingsDoc = await db
       .collection('lr_settings')
@@ -1971,7 +1970,7 @@ export class BookingsService {
     const db = this.firebase.getFirestore();
     const now = new Date();
 
-    const targetDateStr = now.toISOString().split('T')[0];
+    const targetDateStr = this.todayStr(now);
     const nowMins = now.getHours() * 60 + now.getMinutes();
     const maxMins = nowMins + 10;
 
