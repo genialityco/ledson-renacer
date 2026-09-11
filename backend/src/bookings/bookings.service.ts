@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { FirebaseService } from '../firebase/firebase.service';
 import { EmailService } from '../email/email.service';
@@ -1459,6 +1463,21 @@ export class BookingsService {
     const screenSettings = screenSettingsDoc.exists
       ? screenSettingsDoc.data() || {}
       : {};
+
+    // Si ya hay una proyección activa de OTRA reserva, no la pisamos: el
+    // cliente que ya está en pantalla perdería su turno sin llegar nunca a
+    // completarse (su timer de /complete en el frontend se cancela al
+    // cambiar currentProjection, así que ni siquiera le llegaría el correo).
+    // Hay que esperar a que termine o despejar la pantalla manualmente.
+    if (
+      screenSettings.currentProjection &&
+      screenSettings.currentProjection.id !== bookingId
+    ) {
+      throw new ConflictException(
+        'Ya hay una proyección activa. Espera a que termine o despeja la pantalla.',
+      );
+    }
+
     const revealEffect = screenSettings.revealEffect || 'spray';
     const transitionEffect = screenSettings.containerTransition || 'fade';
 
@@ -1932,6 +1951,17 @@ export class BookingsService {
       now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
     try {
+      // Si ya hay una proyección activa, no se busca la siguiente todavía —
+      // se espera a que termine (BigScreenView llama a /complete y limpia
+      // currentProjection) para no pisarla a mitad de su tiempo en pantalla.
+      const screenSettingsDoc = await db
+        .collection('lr_settings')
+        .doc('screen')
+        .get();
+      if (screenSettingsDoc.exists && screenSettingsDoc.data()?.currentProjection) {
+        return;
+      }
+
       const snapshot = await db
         .collection('lr_bookings')
         .where('bookingDate', '==', targetDateStr)
@@ -1955,6 +1985,10 @@ export class BookingsService {
               `[Diagnostic] Auto-proyectando reserva ${doc.id} (Hora programada: ${b.exactTime}, Minuto actual: ${now.getHours()}:${now.getMinutes()})`,
             );
             await this.projectBooking(doc.id);
+            // Solo una por tick: si hubiera varias vencidas a la vez, las
+            // demás esperan al siguiente tick (una vez esta termine) en vez
+            // de pisarse entre sí sin llegar a completarse.
+            break;
           }
         }
       }
