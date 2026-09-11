@@ -113,6 +113,13 @@ export function AssistedBookingForm() {
   const [finalResult, setFinalResult] = useState<any>(null);
   const [codeCopied, setCodeCopied] = useState(false);
 
+  // Modo "franjas": tras crear la reserva se le asigna una franja automática,
+  // pero el vendedor puede cambiarla desde el resultado (mismo endpoint
+  // assign-franja que usa BookingForm cuando la franja elegida se llena).
+  const [franjasAvailability, setFranjasAvailability] = useState<{ franjas: any[] } | null>(null);
+  const [selectedNewFranja, setSelectedNewFranja] = useState<string | null>(null);
+  const [isChangingFranja, setIsChangingFranja] = useState(false);
+
   useEffect(() => {
     fetchCountries().then(setCountries).catch((err) => console.error('Error fetching countries', err));
     axios.get(`${API_BASE_URL}/api/images`).then((res) => {
@@ -334,6 +341,38 @@ export function AssistedBookingForm() {
       alert('Hubo un error guardando tus datos.');
     } finally {
       setIsUploadingPhoto(false);
+    }
+  };
+
+  // Al llegar al resultado en modo "franjas", se trae la disponibilidad para
+  // que el vendedor pueda cambiar la franja asignada si no le sirve al cliente.
+  useEffect(() => {
+    if (bookingSystemType !== 'franjas' || activeStep !== 3) return;
+    axios.get(`${API_BASE_URL}/api/bookings/franjas`)
+      .then((res) => setFranjasAvailability(res.data))
+      .catch((err) => console.error('Error fetching franjas', err));
+  }, [bookingSystemType, activeStep]);
+
+  const handleChangeFranja = async () => {
+    if (!selectedNewFranja || !finalResult?.id) return;
+    setIsChangingFranja(true);
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/bookings/${finalResult.id}/assign-franja`, {
+        timeSlot: selectedNewFranja,
+      });
+      if (res.data.franjaFull) {
+        alert('Esa franja se acaba de llenar. Elige otra.');
+        setFranjasAvailability(res.data.availableFranjas);
+        setSelectedNewFranja(null);
+      } else {
+        setFinalResult((prev: any) => ({ ...prev, timeSlot: res.data.timeSlot, exactTime: res.data.exactTime }));
+        setSelectedNewFranja(null);
+      }
+    } catch (err) {
+      console.error('Error cambiando franja', err);
+      alert('Hubo un error cambiando la franja.');
+    } finally {
+      setIsChangingFranja(false);
     }
   };
 
@@ -710,6 +749,34 @@ export function AssistedBookingForm() {
               <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
                 Hora asignada para la proyección: <Text span fw={700} style={{ color: '#0559A5' }}>Sin asignar</Text>
               </Text>
+            )}
+
+            {bookingSystemType === 'franjas' && finalResult?.id && (
+              <Box mb="lg" style={{ maxWidth: '340px', margin: '0 auto 1.5rem' }}>
+                <Select
+                  label="Cambiar franja asignada"
+                  placeholder="Selecciona otra franja"
+                  data={(franjasAvailability?.franjas || [])
+                    .filter((f: any) => f.available)
+                    .map((f: any) => ({
+                      value: f.timeSlot,
+                      label: `${f.timeSlot.replace('-', ' - ')}${f.isCurrent ? ' (actual)' : ''} — ${f.spotsLeft} cupos`,
+                    }))}
+                  value={selectedNewFranja}
+                  onChange={setSelectedNewFranja}
+                  disabled={!franjasAvailability}
+                />
+                <Button
+                  fullWidth
+                  mt="xs"
+                  className="ledson-btn-outline"
+                  loading={isChangingFranja}
+                  disabled={!selectedNewFranja || isChangingFranja}
+                  onClick={handleChangeFranja}
+                >
+                  Confirmar cambio de franja
+                </Button>
+              </Box>
             )}
 
             {finalResult?.code && (

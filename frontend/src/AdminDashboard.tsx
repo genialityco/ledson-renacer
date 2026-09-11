@@ -450,8 +450,12 @@ export function AdminDashboard() {
   };
 
   const handleProject = async (id: string) => {
-    await axios.post(`${API_BASE_URL}/api/bookings/${id}/project`);
-    fetchData();
+    try {
+      await axios.post(`${API_BASE_URL}/api/bookings/${id}/project`);
+      fetchData();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Ya hay una proyección activa. Espera a que termine o despeja la pantalla.');
+    }
   };
 
   const handleSaveTemplate = async () => {

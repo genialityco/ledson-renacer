@@ -442,7 +442,11 @@ export function BigScreenView() {
           timingFunction="ease"
         >
           {(styles) => (
-            <div style={{ ...styles, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, zIndex: 20 }}>
+            // Fondo negro opaco: sin esto, mientras el revelado (spray/fade)
+            // todavía no cubre toda la imagen, o mientras el contenedor se
+            // desvanece hacia adentro, se alcanza a ver la Parrilla o la
+            // Pantalla de Reposo por detrás (quedan debajo en zIndex 10).
+            <div style={{ ...styles, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, zIndex: 20, backgroundColor: '#000' }}>
               {displayProjection?.revealEffect === 'video-overlay' && !overlayReady ? (
                 <Box style={{ width: '100%', height: '100%', backgroundColor: '#000' }} />
               ) : displayProjection?.mediaType === 'video' ? (
