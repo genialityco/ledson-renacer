@@ -2,9 +2,11 @@ import { Box, Text } from '@mantine/core';
 
 // El paso "elegir filtro" solo existe cuando la política de filtros (plan
 // settings > filtersEnabled) está activa. activeStep crudo sigue siendo
-// siempre 0=filtro, 1=datos, 2=foto, 3=confirmada — cuando el paso de filtro
-// está desactivado simplemente nunca se pasa por el 0 y la barra/caption se
-// corren un paso hacia atrás. Compartido entre BookingForm y
+// siempre 0=filtro, 1=datos, 2=foto, 3=confirmada. El TOTAL de pasos (y la
+// cantidad de segmentos de la barra) siempre cuenta el paso de filtro aunque
+// esté oculto — así el "PASO X DE N" no se renumera al apagar/prender la
+// política; el segmento del filtro simplemente queda marcado "done" de una
+// (ya "pasado") cuando está desactivado. Compartido entre BookingForm y
 // AssistedBookingForm para que ambos flujos se mantengan sincronizados.
 export function StepProgress({
   activeStep,
@@ -21,13 +23,13 @@ export function StepProgress({
   onStepClick: (index: number) => void;
   onHomeClick: () => void;
 }) {
+  const totalSteps = labelsWithFilter.length;
   const stepOffset = filtersEnabled ? 0 : 1;
-  const totalSteps = filtersEnabled ? labelsWithFilter.length : labelsWithoutFilter.length;
-  const displayStep = Math.max(0, activeStep - stepOffset);
   const labels = filtersEnabled ? labelsWithFilter : labelsWithoutFilter;
+  const labelIndex = Math.max(0, activeStep - stepOffset);
   const caption =
-    displayStep < totalSteps
-      ? `PASO ${displayStep + 1} DE ${totalSteps} : ${labels[displayStep]}`
+    activeStep < totalSteps
+      ? `PASO ${activeStep + 1} DE ${totalSteps} : ${labels[labelIndex]}`
       : 'RESERVA CONFIRMADA';
 
   return (
@@ -38,8 +40,8 @@ export function StepProgress({
           <span
             key={index}
             className="ledson-progress-seg"
-            data-state={index < displayStep ? 'done' : index === displayStep ? 'active' : undefined}
-            onClick={() => { if (index < displayStep) onStepClick(index + stepOffset); }}
+            data-state={index < Math.max(activeStep, stepOffset) ? 'done' : index === activeStep ? 'active' : undefined}
+            onClick={() => { if (index >= stepOffset && index < activeStep) onStepClick(index); }}
           />
         ))}
       </Box>
