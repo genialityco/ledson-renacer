@@ -923,7 +923,7 @@ export function BookingForm() {
             ) : paymentStatus === 'APPROVED' ? (
               <>
                 <Box className="ledson-result-icon"><IconCheck size={32} /></Box>
-                <Title order={3} mb="md" className="ledson-section-title">{t('bookingCompleted')}</Title>
+                <Title order={3} mb="lg" className="ledson-section-title">{t('bookingCompleted')}</Title>
                 {finalResult?.queuePosition && (
                   <Text size="xl" fw={700} style={{ color: '#0559A5' }} mb="xs">
                     {t('queueTurn')}{finalResult.queuePosition}

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Badge, Modal, ScrollArea, UnstyledButton, ActionIcon, Input, Loader, Center, NumberInput } from '@mantine/core';
-import { IconCamera, IconX, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
+import { IconCamera, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
 import QRCode from 'react-qr-code';
@@ -409,7 +409,7 @@ export function AssistedBookingForm() {
           Reserva Asistida
         </Title>
         <Text ta="center" className="ledson-subtitle">
-          Estand físico — Galería Renacer
+          Punto físico Galería Renacer
         </Text>
 
         <StepProgress
@@ -532,9 +532,24 @@ export function AssistedBookingForm() {
               )}
 
               <Grid.Col span={12}>
+                <Text size="sm" fw={500} mb={4} style={{ color: '#33363b' }}>Precio de venta de referencia</Text>
+                <Text size="xl" fw={700} mb="sm" style={{ color: '#0559A5' }}>${servicePrice.toLocaleString('es-CO')} COP</Text>
+              </Grid.Col>
+
+              <Grid.Col span={6}>
                 <Select
-                  label="Vendedor que atiende"
-                  placeholder="Selecciona un vendedor (opcional)"
+                  label="Método de pago"
+                  placeholder="Selecciona el método de pago"
+                  data={paymentMethods.map(m => ({ value: m.name, label: m.name }))}
+                  required
+                  value={paymentMethod}
+                  onChange={(val) => val && setPaymentMethod(val)}
+                />
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Select
+                  label="Vendedor"
+                  placeholder="vendedor"
                   data={sellers.map(s => ({ value: s.id, label: s.name }))}
                   value={sellerId}
                   onChange={setSellerId}
@@ -543,43 +558,30 @@ export function AssistedBookingForm() {
                 />
               </Grid.Col>
 
-              <Grid.Col span={12}>
-                <Select
-                  label="Beneficio / Promoción"
-                  placeholder="Selecciona un beneficio (opcional)"
-                  data={benefits.map(b => ({ value: b.id, label: b.name }))}
-                  value={benefitId}
-                  onChange={setBenefitId}
-                  clearable
-                  disabled={benefits.length === 0}
-                />
-              </Grid.Col>
-
-              <Grid.Col span={12}>
-                <Text size="sm" fw={500} mb={4} style={{ color: '#33363b' }}>Valor del servicio (precio general de referencia)</Text>
-                <Text size="xl" fw={700} mb="sm" style={{ color: '#0559A5' }}>${servicePrice.toLocaleString('es-CO')} COP</Text>
-              </Grid.Col>
-              <Grid.Col span={12}>
+              <Grid.Col span={6}>
                 <NumberInput
                   label="Valor pagado"
-                  description="Escribe el monto realmente recibido (puede ser 0 en caso de cortesía). No viene precargado del precio general."
-                  placeholder="Ej. 15000"
+                  //description="Monto realmente recibido (puede ser 0 en caso de cortesía). No viene precargado del precio general."
+                  placeholder="Ej. $10.000"
                   required
                   min={0}
+                  hideControls
+                  prefix="$"
                   value={paidAmount}
                   onChange={(val) => setPaidAmount(val === '' ? '' : Number(val))}
                   thousandSeparator="."
                   decimalSeparator=","
                 />
               </Grid.Col>
-              <Grid.Col span={12}>
+              <Grid.Col span={6}>
                 <Select
-                  label="Método de pago físico recibido"
-                  placeholder="Selecciona el método de pago"
-                  data={paymentMethods.map(m => ({ value: m.name, label: m.name }))}
-                  required
-                  value={paymentMethod}
-                  onChange={(val) => val && setPaymentMethod(val)}
+                  label="Beneficio / Promoción"
+                  placeholder="beneficio "
+                  data={benefits.map(b => ({ value: b.id, label: b.name }))}
+                  value={benefitId}
+                  onChange={setBenefitId}
+                  clearable
+                  disabled={benefits.length === 0}
                 />
               </Grid.Col>
               <Grid.Col span={12}>
@@ -681,20 +683,17 @@ export function AssistedBookingForm() {
             )}
 
             {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
-              <Box mb={18}>
-                <Box className="ledson-preview-wrap">
-                  {isVideoSelected ? (
-                    <video src={fileImageBase64 as string} controls />
-                  ) : (
-                    <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" />
-                  )}
-                </Box>
+              <Box className="ledson-preview-wrap" mb={18}>
+                {isVideoSelected ? (
+                  <video src={fileImageBase64 as string} controls />
+                ) : (
+                  <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" />
+                )}
                 <Button
                   className="ledson-preview-remove-btn"
-                  leftSection={<IconX size={14} />}
                   onClick={() => { setCapturedImage(null); setFileImageBase64(null); setFileMediaType('image'); setUseWebcam(false); }}
                 >
-                  Quitar {isVideoSelected ? 'video' : 'imagen'}
+                  Cambiar
                 </Button>
               </Box>
             )}
@@ -731,8 +730,8 @@ export function AssistedBookingForm() {
         {/* STEP 4: RESULTADO */}
         {activeStep === 3 && (
           <Box className="ledson-card ledson-card--center">
-            <Box className="ledson-result-icon"><IconCheck size={28} /></Box>
-            <Title order={3} mb="md" className="ledson-section-title">¡Reserva Asistida Completada!</Title>
+            <Box className="ledson-result-icon"><IconCheck size={32} /></Box>
+            <Title  order={3} mb="lg" className="ledson-section-title">¡Reserva completada exitosamente!</Title>
 
             {finalResult?.queuePosition && (
               <Text size="xl" fw={700} style={{ color: '#0559A5' }} mb="xs">
@@ -740,22 +739,22 @@ export function AssistedBookingForm() {
               </Text>
             )}
             {finalResult?.timeSlot && (
-              <Text size="sm" mb="xs" style={{ color: '#33363b' }}>
-                Horario reservado: <Text span fw={700} style={{ color: '#0559A5' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
+              <Text size="sm" mb={4} style={{ color: '#33363b' }}>
+                Tu horario reservado es: <Text span fw={700} style={{ color: '#0559A5' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
               </Text>
             )}
             {finalResult?.exactTime && finalResult.exactTime !== 'Sin asignar' && finalResult.exactTime !== 'Agotado/Lleno' ? (
-              <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
-                Hora asignada para la proyección: <Text span fw={700} style={{ color: '#0559A5' }}>~{finalResult.exactTime}</Text>
+              <Text size="sm" mb="xl" style={{ color: '#33363b' }}>
+                Vivirás tu experiencia en pantalla a las <Text span fw={700} style={{ color: '#0559A5' }}>~{finalResult.exactTime}</Text>
               </Text>
             ) : (
-              <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
-                Hora asignada para la proyección: <Text span fw={700} style={{ color: '#0559A5' }}>Sin asignar</Text>
+              <Text size="sm" mb="xl" style={{ color: '#33363b' }}>
+                Vivirás tu experiencia en pantalla a las <Text span fw={700} style={{ color: '#0559A5' }}>Sin asignar</Text>
               </Text>
             )}
 
             {bookingSystemType === 'franjas' && finalResult?.id && (
-              <Box mb="lg" style={{ maxWidth: '340px', margin: '0 auto 1.5rem' }}>
+              <Box style={{ maxWidth: '340px', margin: '0 auto 32px' }}>
                 <Select
                   label="Cambiar franja asignada"
                   placeholder="Selecciona otra franja"
@@ -801,7 +800,7 @@ export function AssistedBookingForm() {
               </Box>
             )}
 
-            <Text size="sm" c="dimmed" mb="md">
+            <Text size="md" c="dimmed" mb="md" px="lg">
               Pídele al cliente que guarde el código o escanee el QR para revisar su reserva en /my-bookings.
             </Text>
             <Box style={{ background: '#f8f9fa', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '1.5rem' }}>
@@ -817,7 +816,7 @@ export function AssistedBookingForm() {
               leftSection={<IconArrowLeft size={18} />}
               onClick={() => window.location.reload()}
             >
-              Registrar Nuevo Cliente
+              Registrar nuevo cliente
             </Button>
           </Box>
         )}

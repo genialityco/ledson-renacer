@@ -410,12 +410,14 @@ body {
 .ledson-card .mantine-InputWrapper-required {
   color: var(--ledson-red) !important;
 }
-/* :not([type='checkbox']) — el checkbox de T&C es un <input> real
-   (mantine-Checkbox-input), así que sin esta exclusión heredaba el estilo
-   pensado para campos de texto (fondo, borde cuadrado, padding, min-height).
-   Queda así sin ningún estilo propio de esta hoja: el checkbox por defecto
-   de Mantine, sin overrides. */
-.ledson-card input:not([type='checkbox']),
+/* :not([type='checkbox']):not([type='radio']) — el checkbox de T&C y el
+   radio de "¿Requiere factura electrónica?" son <input> reales
+   (mantine-Checkbox-input / mantine-Radio-radio), así que sin esta
+   exclusión heredaban el estilo pensado para campos de texto (fondo, borde
+   cuadrado, padding, min-height). Quedan así sin ningún estilo propio de
+   esta hoja: el checkbox y el radio por defecto de Mantine, sin overrides,
+   mismo criterio para ambos. */
+.ledson-card input:not([type='checkbox']):not([type='radio']),
 .ledson-card .mantine-Select-input,
 .ledson-card textarea {
   background: #fff !important;
@@ -430,14 +432,10 @@ body {
 .ledson-card input::placeholder {
   color: var(--ledson-text-faint) !important;
 }
-.ledson-card input:not([type='checkbox']):focus,
+.ledson-card input:not([type='checkbox']):not([type='radio']):focus,
 .ledson-card .mantine-Select-input:focus {
   border-color: var(--ledson-blue) !important;
   box-shadow: 0 0 0 3px rgba(5, 89, 165, 0.15) !important;
-}
-.ledson-card .mantine-Radio-radio:checked {
-  background-color: var(--ledson-blue) !important;
-  border-color: var(--ledson-blue) !important;
 }
 .ledson-card a {
   color: var(--ledson-blue) !important;
