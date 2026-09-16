@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon, Input, Loader, Center } from '@mantine/core';
-import { IconCamera, IconCreditCard, IconX, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon, Input, Loader, Center, ScrollArea } from '@mantine/core';
+import { IconCamera, IconCreditCard, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo, IconLock } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -22,8 +22,8 @@ interface FilterOption {
   description?: string;
 }
 
-const FILTER_STEP_LABELS = ['ELIGE TU FILTRO', 'TUS DATOS', 'FOTO Y PAGO'];
-const NO_FILTER_STEP_LABELS = ['INGRESA TUS DATOS', 'FOTO Y PAGO'];
+const FILTER_STEP_LABELS = ['ELIGE TU FILTRO', 'TUS DATOS', 'TU IMAGEN'];
+const NO_FILTER_STEP_LABELS = ['INGRESA TUS DATOS', 'TU IMAGEN'];
 
 export function BookingForm() {
   const navigate = useNavigate();
@@ -73,6 +73,7 @@ export function BookingForm() {
   const [franjasAvailability, setFranjasAvailability] = useState<{ franjas: any[] } | null>(null);
   const [userPickedFranja, setUserPickedFranja] = useState(false);
   const [habeasData, setHabeasData] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
   // Factura electrónica: se envía siempre como "SI" sin mostrar el campo al usuario.
   const requiresInvoice = 'SI';
   const [bookingSystemType, setBookingSystemType] = useState('slots');
@@ -324,6 +325,20 @@ export function BookingForm() {
     setRawVideoFile(null);
     setFileMediaType('image');
   };
+
+  // El botón "Continuar" del paso 2 queda deshabilitado (azul opaco, ver
+  // .ledson-btn-primary:disabled) hasta que todos los campos obligatorios
+  // estén completos, en vez de solo validar al hacer submit.
+  const isStep2Valid =
+    name.trim() !== '' &&
+    !!docType &&
+    docId.trim() !== '' &&
+    email.trim() !== '' &&
+    !!country &&
+    city.trim() !== '' &&
+    whatsapp.trim() !== '' &&
+    habeasData &&
+    (bookingSystemType !== 'slots' || (bookingDate.trim() !== '' && !!timeSlot));
 
   // Paso 1: solo guarda los datos de la reserva (PENDING, sin pago). El pago
   // se dispara más adelante, al subir la foto/video.
@@ -635,9 +650,12 @@ export function BookingForm() {
         {/* STEP 2: DATA */}
         {activeStep === 1 && (
           <Box component="form" onSubmit={handleDataSubmit} className="ledson-card">
-            <Text className="ledson-section-title">{filtersEnabled ? 2 : 1}. {t('step2Title')}</Text>
+            {/* El total de pasos siempre cuenta el paso de filtro aunque esté
+                oculto (ver StepProgress.tsx), así que "Datos" siempre es el
+                paso 2, con o sin filtro habilitado. */}
+            <Text className="ledson-section-title">2. {t('step2Title')}</Text>
             <Text className="ledson-step-subtitle">{t('step2Subtitle')}</Text>
-            <Grid>
+            <Grid gutter="sm">
               <Grid.Col span={12}>
                 <TextInput label={t('fullName')} placeholder={t('fullNamePlaceholder')} required value={name} onChange={(e) => setName(e.currentTarget.value)} />
               </Grid.Col>
@@ -669,7 +687,7 @@ export function BookingForm() {
                 </Input.Wrapper>
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput label={t('whatsapp')} required placeholder="+573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
+                <TextInput label={t('whatsapp')} required placeholder={t('whatsappPlaceholder')} value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
               </Grid.Col>
 
               {bookingSystemType === 'slots' && (
@@ -685,7 +703,7 @@ export function BookingForm() {
 
               <Grid.Col span={12} mt="sm">
                 <Checkbox
-                  label={<Text size="xs">{t('habeasDataPrefix')}<a href="#" target="_blank">{t('habeasDataLink1')}</a>{t('habeasDataMiddle')}<a href="#" target="_blank">{t('habeasDataLink2')}</a>{t('habeasDataSuffix')}</Text>}
+                  label={<Text size="xs">{t('habeasDataPrefix')}<a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }}>{t('habeasDataLink1')}</a>{t('habeasDataMiddle')}<a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }}>{t('habeasDataLink2')}</a>{t('habeasDataSuffix')}</Text>}
                   checked={habeasData}
                   onChange={(event) => setHabeasData(event.currentTarget.checked)}
                   required
@@ -693,7 +711,7 @@ export function BookingForm() {
               </Grid.Col>
 
               <Grid.Col span={12}>
-                <Group justify="space-between" mt="md">
+                <Group justify="space-between" mt="xs">
                   <Button
                     className="ledson-btn-outline ledson-btn-back"
                     onClick={() => (filtersEnabled ? setActiveStep(0) : navigate('/'))}
@@ -707,7 +725,7 @@ export function BookingForm() {
                     style={{ flex: 1 }}
                     rightSection={<IconArrowRight size={20} />}
                     loading={isSubmittingForm}
-                    disabled={isSubmittingForm}
+                    disabled={isSubmittingForm || !isStep2Valid}
                   >
                     {t('nextStep')}
                   </Button>
@@ -720,7 +738,9 @@ export function BookingForm() {
         {/* STEP 3: PHOTO CAPTURE & PAYMENT */}
         {activeStep === 2 && (
           <Box className="ledson-card">
-            <Text className="ledson-section-title">{t('uploadStepTitle')}</Text>
+            {/* Siempre paso 3 del total fijo (filtro=1, datos=2, imagen=3),
+                con o sin filtro habilitado — ver StepProgress.tsx. */}
+            <Text className="ledson-section-title">3. {t('uploadStepTitle')}</Text>
             <Text className="ledson-step-subtitle">{t('nowUploadPhoto')}</Text>
 
             {!((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
@@ -777,17 +797,14 @@ export function BookingForm() {
             )}
 
             {((!useWebcam && fileImageBase64) || (useWebcam && capturedImage)) && (
-              <Box mb={18}>
-                <Box className="ledson-preview-wrap">
-                  {isVideoSelected ? (
-                    <video src={fileImageBase64 as string} controls />
-                  ) : (
-                    <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" />
-                  )}
-                </Box>
+              <Box className="ledson-preview-wrap" mb={18}>
+                {isVideoSelected ? (
+                  <video src={fileImageBase64 as string} controls />
+                ) : (
+                  <img src={(useWebcam ? capturedImage : fileImageBase64) as string} alt="Preview" />
+                )}
                 <Button
                   className="ledson-preview-remove-btn"
-                  leftSection={<IconX size={14} />}
                   onClick={() => { setCapturedImage(null); setFileImageBase64(null); setFileMediaType('image'); setUseWebcam(false); }}
                 >
                   {t('removeImage')}
@@ -796,8 +813,8 @@ export function BookingForm() {
             )}
 
             {bookingSystemType === 'franjas' && (
-              <Box mb="md">
-                <Text size="sm" mb={4}>
+              <Box my="lg">
+                <Text size="sm" mb={16}>
                   {t('approxFranjaLabel')}{' '}
                   <Text span fw={700} style={{ color: '#0559A5' }}>
                     {timeSlot ? timeSlot.replace('-', ' - ') : '...'}
@@ -856,10 +873,16 @@ export function BookingForm() {
                   onClick={handleUploadAndPay}
                   disabled={isUploadingPhoto || (!useWebcam && !fileImageBase64) || (useWebcam && !capturedImage)}
                 >
-                  {t('payWith')} (${servicePrice.toLocaleString('es-CO')} COP)
+                  {t('payWith')} COP ${servicePrice.toLocaleString('es-CO')}
                 </Button>
               )}
             </Group>
+            {paymentGateway !== 'dlocalgo' && (
+              <Group gap={6} justify="center" mt="sm">
+                <IconLock size={13} style={{ color: 'var(--ledson-text-faint)' }} />
+                <Text size="xs" c="dimmed">{t('securePaymentWompi')}</Text>
+              </Group>
+            )}
           </Box>
         )}
 
@@ -899,7 +922,7 @@ export function BookingForm() {
               </>
             ) : paymentStatus === 'APPROVED' ? (
               <>
-                <Box className="ledson-result-icon"><IconCheck size={28} /></Box>
+                <Box className="ledson-result-icon"><IconCheck size={32} /></Box>
                 <Title order={3} mb="md" className="ledson-section-title">{t('bookingCompleted')}</Title>
                 {finalResult?.queuePosition && (
                   <Text size="xl" fw={700} style={{ color: '#0559A5' }} mb="xs">
@@ -907,22 +930,22 @@ export function BookingForm() {
                   </Text>
                 )}
                 {finalResult?.timeSlot && (
-                  <Text size="sm" mb="xs" style={{ color: '#33363b' }}>
+                  <Text size="sm" mb={4} style={{ color: '#33363b' }}>
                     {t('franjaAssigned')} <Text span fw={700} style={{ color: '#0559A5' }}>{finalResult.timeSlot.replace('-', ' - ')}</Text>
                   </Text>
                 )}
                 {finalResult?.exactTime && finalResult.exactTime !== 'Sin asignar' && finalResult.exactTime !== 'Agotado/Lleno' ? (
-                  <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
+                  <Text size="sm" mb="xl" style={{ color: '#33363b' }}>
                     {t('assignedTime')} <Text span fw={700} style={{ color: '#0559A5' }}>~{finalResult.exactTime}</Text>
                   </Text>
                 ) : (
-                  <Text size="sm" mb="lg" style={{ color: '#33363b' }}>
+                  <Text size="sm" mb="xl" style={{ color: '#33363b' }}>
                     {t('assignedTime')} <Text span fw={700} style={{ color: '#0559A5' }}>{t('unassigned')}</Text>
                   </Text>
                 )}
 
                 {finalResult?.code && (
-                  <Box mb="lg">
+                  <Box mb="xl">
                     <Text size="xs" c="dimmed" mb={6}>{t('bookingCodeLabel')}</Text>
                     <Group justify="center" gap={8} wrap="nowrap">
                       <Box className="ledson-code-box">{finalResult.code}</Box>
@@ -944,7 +967,7 @@ export function BookingForm() {
                   {t('photoWillBeProjected')}
                 </Text>
 
-                <Text size="sm" fw={500} mb="xs" style={{ color: '#33363b' }}>
+                <Text size="sm" fw={500} mb="sm" style={{ color: '#33363b' }}>
                   {t('newExperienceQuestion')}
                 </Text>
                 <Button
@@ -952,6 +975,7 @@ export function BookingForm() {
                   className="ledson-btn-primary"
                   leftSection={<IconArrowLeft size={18} />}
                   onClick={resetBookingFlow}
+                  mt="xs"
                 >
                   {t('newReservationBtn')}
                 </Button>
@@ -1006,6 +1030,46 @@ export function BookingForm() {
           onCancel={handleVideoTrimCancel}
           onConfirm={handleVideoTrimConfirm}
         />
+
+        {/* Mismo texto legal que AssistedBookingForm (solo existe en español
+            por ahora). Reemplaza los enlaces que antes eran href="#" y
+            terminaban recargando la app en "/" en vez de mostrar algo. */}
+        <Modal opened={termsModalOpen} onClose={() => setTermsModalOpen(false)} title="Términos y Condiciones - Política de Tratamiento de Datos Personales" size="lg" centered>
+          <ScrollArea h={400} mb="md">
+            <Text size="sm" mb="sm">
+              Al participar en la experiencia "Led's on Renacer" de Galería Renacer, el cliente acepta los siguientes términos:
+            </Text>
+            <Text size="sm" fw={600} mt="md" mb="xs">1. Uso de la fotografía</Text>
+            <Text size="sm" mb="sm">
+              La fotografía capturada será procesada mediante un sistema de inteligencia artificial para generar una versión estilizada,
+              la cual será proyectada en la pantalla principal del evento en el horario asignado, y posteriormente enviada al cliente por correo electrónico y/o WhatsApp.
+            </Text>
+            <Text size="sm" fw={600} mt="md" mb="xs">2. Tratamiento de datos personales (Habeas Data)</Text>
+            <Text size="sm" mb="sm">
+              Los datos personales suministrados (nombre, documento de identidad, correo electrónico, número de WhatsApp, país y ciudad)
+              serán utilizados exclusivamente para la gestión de la reserva, la generación y entrega de la fotografía, y el envío de
+              comunicaciones relacionadas con el evento, de conformidad con la Ley 1581 de 2012 y demás normas aplicables sobre protección de datos personales.
+            </Text>
+            <Text size="sm" mb="sm">
+              El cliente podrá ejercer sus derechos de acceso, corrección, actualización y supresión de sus datos personales
+              contactando a la organización del evento.
+            </Text>
+            <Text size="sm" fw={600} mt="md" mb="xs">3. Autorización de imagen</Text>
+            <Text size="sm" mb="sm">
+              El cliente autoriza a Galería Renacer el uso de su imagen fotográfica y su versión estilizada para su proyección
+              en el evento y su envío personal, sin que esto implique un uso comercial adicional sin previa autorización expresa.
+            </Text>
+            <Text size="sm" fw={600} mt="md" mb="xs">4. Pagos</Text>
+            <Text size="sm" mb="sm">
+              El pago realizado por el servicio corresponde al derecho a participar en la experiencia fotográfica y no es reembolsable,
+              salvo casos de fallas atribuibles a la organización.
+            </Text>
+          </ScrollArea>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setTermsModalOpen(false)}>Cerrar</Button>
+            <Button className="ledson-btn-primary" onClick={() => { setHabeasData(true); setTermsModalOpen(false); }}>Aceptar</Button>
+          </Group>
+        </Modal>
       </Container>
     </Box>
   );

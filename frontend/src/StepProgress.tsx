@@ -27,20 +27,24 @@ export function StepProgress({
   const stepOffset = filtersEnabled ? 0 : 1;
   const labels = filtersEnabled ? labelsWithFilter : labelsWithoutFilter;
   const labelIndex = Math.max(0, activeStep - stepOffset);
-  const caption =
-    activeStep < totalSteps
-      ? `PASO ${activeStep + 1} DE ${totalSteps} : ${labels[labelIndex]}`
-      : 'RESERVA CONFIRMADA';
+  const isConfirmed = activeStep >= totalSteps;
+  const caption = isConfirmed
+    ? 'PAGO CONFIRMADO'
+    : `PASO ${activeStep + 1} DE ${totalSteps} : ${labels[labelIndex]}`;
+  // +1: además de los pasos reales, la barra tiene un segmento final propio
+  // para el estado "confirmado" (así el total visible es siempre 5 con el
+  // de Inicio, igual que en el diseño).
+  const filledUpTo = Math.max(activeStep, stepOffset);
 
   return (
     <Box className="ledson-progress">
       <Box className="ledson-progress-bars">
         <span className="ledson-progress-seg" data-state="done" onClick={onHomeClick} />
-        {Array.from({ length: totalSteps }).map((_, index) => (
+        {Array.from({ length: totalSteps + 1 }).map((_, index) => (
           <span
             key={index}
             className="ledson-progress-seg"
-            data-state={index < Math.max(activeStep, stepOffset) ? 'done' : index === activeStep ? 'active' : undefined}
+            data-state={index < filledUpTo || (isConfirmed && index === activeStep) ? 'done' : index === activeStep ? 'active' : undefined}
             onClick={() => { if (index >= stepOffset && index < activeStep) onStepClick(index); }}
           />
         ))}

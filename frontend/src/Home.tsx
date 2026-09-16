@@ -101,11 +101,13 @@ export function Home() {
         </Text>
 
         <Box className="ledson-progress">
-          {/* 1 segmento activo (Inicio) + 3 pendientes, alineado con el total
-              fijo de StepProgress (siempre cuenta filtro+datos+foto, aunque
-              el paso de filtro esté oculto — ver StepProgress.tsx). */}
+          {/* 1 segmento activo (Inicio) + 4 pendientes, alineado con el total
+              fijo de StepProgress: filtro + datos + imagen + el segmento
+              final de "confirmado" (siempre 5 en total, aunque el paso de
+              filtro esté oculto — ver StepProgress.tsx). */}
           <Box className="ledson-progress-bars">
             <span className="ledson-progress-seg" data-state="active" />
+            <span className="ledson-progress-seg" />
             <span className="ledson-progress-seg" />
             <span className="ledson-progress-seg" />
             <span className="ledson-progress-seg" />

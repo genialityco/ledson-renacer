@@ -40,9 +40,9 @@ interface PaymentMethodOption {
 const FILTER_STEP_LABELS = ['ELIGE EL ESTILO', 'DATOS Y COBRO', 'LA FOTO'];
 const NO_FILTER_STEP_LABELS = ['DATOS Y COBRO', 'LA FOTO'];
 const DOCUMENT_TYPE_OPTIONS = [
-  { value: 'CC', label: 'Cédula de ciudadanía' },
-  { value: 'CE', label: 'Cédula de extranjería' },
-  { value: 'TI', label: 'Tarjeta de identidad' },
+  { value: 'CC', label: 'C.C.' },
+  { value: 'CE', label: 'C.E.' },
+  { value: 'TI', label: 'T.I.' },
   { value: 'PA', label: 'Pasaporte' },
 ];
 
@@ -480,11 +480,14 @@ export function AssistedBookingForm() {
         {/* STEP 2: DATOS Y COBRO */}
         {activeStep === 1 && (
           <Box component="form" onSubmit={handleDataSubmit} className="ledson-card">
-            <Text className="ledson-section-title">{filtersEnabled ? 2 : 1}. Registro de datos y cobro</Text>
+            {/* El total de pasos siempre cuenta el paso de filtro aunque esté
+                oculto (ver StepProgress.tsx), así que "Datos" siempre es el
+                paso 2, con o sin filtro habilitado. */}
+            <Text className="ledson-section-title">2. Registro de datos y cobro</Text>
             <Text className="ledson-step-subtitle">Completa los datos del cliente y registra el pago recibido en el estand.</Text>
-            <Grid>
+            <Grid gutter="sm">
               <Grid.Col span={12}>
-                <TextInput label="Nombre completo" placeholder="Juan Pérez" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
+                <TextInput label="Nombre completo" placeholder="Tu nombre" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
               </Grid.Col>
               <Grid.Col span={12}>
                 <Input.Wrapper label="Documento de identidad" required>
@@ -499,7 +502,7 @@ export function AssistedBookingForm() {
                 </Input.Wrapper>
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput type="email" label="Correo Electrónico" placeholder="tucorreo@email.com" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+                <TextInput type="email" label="Correo electrónico" placeholder="tucorreo@email.com" required value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
               </Grid.Col>
               <Grid.Col span={12}>
                 <Input.Wrapper label="Nacionalidad" required>
@@ -514,7 +517,7 @@ export function AssistedBookingForm() {
                 </Input.Wrapper>
               </Grid.Col>
               <Grid.Col span={12}>
-                <TextInput label="Número de celular" required placeholder="+573001234567" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
+                <TextInput label="Número de celular" required placeholder="Tu número" value={whatsapp} onChange={(e) => setWhatsapp(e.currentTarget.value)} />
               </Grid.Col>
 
               {bookingSystemType === 'slots' && (
@@ -596,7 +599,7 @@ export function AssistedBookingForm() {
               </Grid.Col>
 
               <Grid.Col span={12}>
-                <Group justify="space-between" mt="md">
+                <Group justify="space-between" mt="xs">
                   <Button
                     className="ledson-btn-outline ledson-btn-back"
                     onClick={() => (filtersEnabled ? setActiveStep(0) : navigate('/'))}

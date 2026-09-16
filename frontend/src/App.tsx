@@ -58,7 +58,17 @@ function AppContent() {
     </Group>
   </AppShell.Header>
 
-      <AppShell.Main style={{ backgroundColor: '#f8f9fa', minHeight: 'calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h))' }}>
+      <AppShell.Main
+        style={{
+          backgroundColor: '#f8f9fa',
+          minHeight: 'calc(100vh - var(--ledson-header-h) - var(--ledson-footer-h))',
+          // El footer ahora es position:fixed (pegado siempre al fondo real de
+          // la pantalla, sin importar el alto del contenido) — este padding
+          // evita que tape el final de vistas que no usan .ledson-home-wrap/
+          // .ledson-booking-wrap (Admin, calendarios, Mis reservas).
+          paddingBottom: 'var(--ledson-footer-h)',
+        }}
+      >
         <Suspense fallback={<Center style={{ minHeight: '60vh' }}><Loader color="blue" /></Center>}>
           <Routes>
             <Route path="/" element={<Home />} />
