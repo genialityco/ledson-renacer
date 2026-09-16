@@ -655,7 +655,7 @@ export function BookingForm() {
                 paso 2, con o sin filtro habilitado. */}
             <Text className="ledson-section-title">2. {t('step2Title')}</Text>
             <Text className="ledson-step-subtitle">{t('step2Subtitle')}</Text>
-            <Grid gutter="sm">
+            <Grid gap="sm">
               <Grid.Col span={12}>
                 <TextInput label={t('fullName')} placeholder={t('fullNamePlaceholder')} required value={name} onChange={(e) => setName(e.currentTarget.value)} />
               </Grid.Col>

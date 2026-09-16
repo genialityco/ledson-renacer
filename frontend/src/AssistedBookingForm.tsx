@@ -485,7 +485,7 @@ export function AssistedBookingForm() {
                 paso 2, con o sin filtro habilitado. */}
             <Text className="ledson-section-title">2. Registro de datos y cobro</Text>
             <Text className="ledson-step-subtitle">Completa los datos del cliente y registra el pago recibido en el estand.</Text>
-            <Grid gutter="sm">
+            <Grid gap="sm">
               <Grid.Col span={12}>
                 <TextInput label="Nombre completo" placeholder="Tu nombre" required value={name} onChange={(e) => setName(e.currentTarget.value)} />
               </Grid.Col>
