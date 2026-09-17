@@ -103,7 +103,7 @@ export function UserBookingsView() {
         <span className="particle" />
       </div>
 
-      <Container size="sm" py="xl" style={{ position: 'relative', zIndex: 2 }}>
+      <Container size="sm" className="ledson-wrap-container" pt="xl" style={{ position: 'relative', zIndex: 2 }}>
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/')} mb="md">
         {t('backHome')}
       </Button>

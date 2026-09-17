@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Badge, Modal, ScrollArea, UnstyledButton, ActionIcon, Input, Loader, Center, NumberInput } from '@mantine/core';
+import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Radio, Checkbox, Card, Image, Badge, Modal, UnstyledButton, ActionIcon, Input, Loader, Center, NumberInput } from '@mantine/core';
 import { IconCamera, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -12,8 +12,12 @@ import { VideoTrimModal } from './VideoTrimModal';
 import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
-import { API_BASE_URL, getLocalDateStr } from './config';
+import { API_BASE_URL, getLocalDateStr, getLegalLinks } from './config';
 import { trackGtagEvent } from './analytics';
+
+// Enlaces legales del formulario del stand físico: mismas páginas que el
+// formulario público pero con utm_source=pos_sale.
+const LEGAL_LINKS = getLegalLinks('pos_sale');
 
 interface FilterOption {
   id: string;
@@ -101,7 +105,6 @@ export function AssistedBookingForm() {
   const [paidAmount, setPaidAmount] = useState<number | ''>('');
   const [requiresInvoice, setRequiresInvoice] = useState('NO');
   const [habeasData, setHabeasData] = useState(false);
-  const [termsModalOpen, setTermsModalOpen] = useState(false);
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   // null = "aún no se sabe" (settings sin cargar); evita que el paso de
   // filtros aparezca y desaparezca de golpe mientras llega la respuesta.
@@ -404,7 +407,7 @@ export function AssistedBookingForm() {
         <span className="particle" />
       </div>
 
-      <Container size="md" py={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
+      <Container size="md" className="ledson-wrap-container" pt={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
         <Title order={2} ta="center" className="ledson-title">
           Reserva Asistida
         </Title>
@@ -593,7 +596,7 @@ export function AssistedBookingForm() {
               <Grid.Col span={12} mt="sm">
                 <Checkbox
                   size="xs"
-                  label={<Text size="xs">Acepto la <a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }} style={{ color: '#0559A5' }}>Política de Tratamiento de Datos Personales</a> y los <a href="#" onClick={(e) => { e.preventDefault(); setTermsModalOpen(true); }} style={{ color: '#0559A5' }}>Términos y Condiciones</a> de LED'S ON</Text>}
+                  label={<Text size="xs">Acepto la <a href={LEGAL_LINKS.privacy} target="_blank" rel="noopener noreferrer" style={{ color: '#0559A5' }}>Política de Tratamiento de Datos Personales</a> y los <a href={LEGAL_LINKS.terms} target="_blank" rel="noopener noreferrer" style={{ color: '#0559A5' }}>Términos y Condiciones</a> de LED'S ON</Text>}
                   checked={habeasData}
                   onChange={(event) => setHabeasData(event.currentTarget.checked)}
                   required
@@ -857,43 +860,6 @@ export function AssistedBookingForm() {
           onCancel={handleVideoTrimCancel}
           onConfirm={handleVideoTrimConfirm}
         />
-
-        <Modal opened={termsModalOpen} onClose={() => setTermsModalOpen(false)} title="Términos y Condiciones - Política de Tratamiento de Datos Personales" size="lg" centered>
-          <ScrollArea h={400} mb="md">
-            <Text size="sm" mb="sm">
-              Al participar en la experiencia "Led's on Renacer" de Galería Renacer, el cliente acepta los siguientes términos:
-            </Text>
-            <Text size="sm" fw={600} mt="md" mb="xs">1. Uso de la fotografía</Text>
-            <Text size="sm" mb="sm">
-              La fotografía capturada será procesada mediante un sistema de inteligencia artificial para generar una versión estilizada,
-              la cual será proyectada en la pantalla principal del evento en el horario asignado, y posteriormente enviada al cliente por correo electrónico y/o WhatsApp.
-            </Text>
-            <Text size="sm" fw={600} mt="md" mb="xs">2. Tratamiento de datos personales (Habeas Data)</Text>
-            <Text size="sm" mb="sm">
-              Los datos personales suministrados (nombre, documento de identidad, correo electrónico, número de WhatsApp, país y ciudad)
-              serán utilizados exclusivamente para la gestión de la reserva, la generación y entrega de la fotografía, y el envío de
-              comunicaciones relacionadas con el evento, de conformidad con la Ley 1581 de 2012 y demás normas aplicables sobre protección de datos personales.
-            </Text>
-            <Text size="sm" mb="sm">
-              El cliente podrá ejercer sus derechos de acceso, corrección, actualización y supresión de sus datos personales
-              contactando a la organización del evento.
-            </Text>
-            <Text size="sm" fw={600} mt="md" mb="xs">3. Autorización de imagen</Text>
-            <Text size="sm" mb="sm">
-              El cliente autoriza a Galería Renacer el uso de su imagen fotográfica y su versión estilizada para su proyección
-              en el evento y su envío personal, sin que esto implique un uso comercial adicional sin previa autorización expresa.
-            </Text>
-            <Text size="sm" fw={600} mt="md" mb="xs">4. Pagos</Text>
-            <Text size="sm" mb="sm">
-              El pago realizado por el servicio corresponde al derecho a participar en la experiencia fotográfica y no es reembolsable,
-              salvo casos de fallas atribuibles a la organización.
-            </Text>
-          </ScrollArea>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setTermsModalOpen(false)}>Cerrar</Button>
-            <Button className="ledson-btn-primary" onClick={() => { setHabeasData(true); setTermsModalOpen(false); }}>Aceptar</Button>
-          </Group>
-        </Modal>
       </Container>
     </Box>
   );

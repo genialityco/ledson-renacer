@@ -15,3 +15,18 @@ export const getLocalDateStr = (date = new Date()): string => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+// URLs legales publicadas en myledson.com. Llevan los UTM acordados con el
+// cliente para poder distinguir en analytics desde qué formulario se abrieron:
+// 'web_sale' = formulario público con pago online, 'pos_sale' = formulario del
+// stand físico (Reserva Asistida). Los correos arman sus propias URLs (con
+// utm_source=email) en backend/src/email/email.templates.ts.
+export type LegalUtmSource = 'web_sale' | 'pos_sale';
+
+const legalUrl = (slug: string, source: LegalUtmSource) =>
+  `https://myledson.com/${slug}/?utm_source=${source}&utm_medium=web_app&utm_campaign=leds_on_comuna_13`;
+
+export const getLegalLinks = (source: LegalUtmSource) => ({
+  terms: legalUrl('terminos-y-condiciones', source),
+  privacy: legalUrl('politica-de-tratamiento-de-datos-personales', source),
+});

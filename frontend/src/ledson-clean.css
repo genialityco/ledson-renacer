@@ -893,3 +893,68 @@ body {
 .ledson-bubbles .particle:nth-child(even) {
   background: rgba(47, 174, 74, 0.55);
 }
+
+/* ============================================================
+   DISTANCIA CONSTANTE ENTRE EL RECUADRO Y EL FOOTER
+   El footer sigue fijo al borde inferior de la pantalla, pero
+   antes el aire que quedaba entre la tarjeta y el footer dependía
+   del alto del contenido de cada paso: pegado en los pasos largos
+   (solo el padding del Container) y con mucho blanco en los cortos
+   (el sobrante del wrapper de alto fijo).
+   Ahora el Container ocupa todo el alto del wrapper y la tarjeta
+   crece dentro de él, así que SIEMPRE termina a --ledson-footer-gap
+   del footer, sin importar cuánto contenido tenga el paso. Si el
+   contenido no cabe, la tarjeta crece más que el wrapper y el
+   scroll del wrapper termina exactamente en esa misma distancia.
+   ============================================================ */
+:root {
+  --ledson-footer-gap: 24px;
+}
+
+.ledson-wrap-container {
+  padding-bottom: var(--ledson-footer-gap);
+}
+
+/* Solo en los wrappers de alto fijo (Home / flujos de reserva): ahí el
+   Container es un item flex que estira, y la tarjeta es la que absorbe
+   el alto sobrante. En .ledson-bubbles-wrap (Mis Reservas) no hay una
+   tarjeta única que estirar, así que solo aplica el padding de arriba. */
+.ledson-home-wrap > .ledson-wrap-container,
+.ledson-booking-wrap > .ledson-wrap-container {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+/* flex-shrink: 0 en título/subtítulo/barra de pasos: si el paso no cabe
+   preferimos que el wrapper haga scroll, no que se compriman. */
+.ledson-home-wrap > .ledson-wrap-container > *,
+.ledson-booking-wrap > .ledson-wrap-container > * {
+  flex-shrink: 0;
+}
+/* flex: 1 0 auto — crece para llenar el sobrante, nunca se encoge por
+   debajo de su contenido. width: 100% porque con margin-inline auto
+   (el centrado de .ledson-card) un item flex se achicaría al ancho de
+   su contenido en vez de estirarse; el max-width sigue mandando. */
+.ledson-home-wrap > .ledson-wrap-container > .ledson-card,
+.ledson-booking-wrap > .ledson-wrap-container > .ledson-card {
+  flex: 1 0 auto;
+  width: 100%;
+}
+
+/* Mismos puntos de quiebre compactos que el resto del layout: si la
+   pantalla es chica/baja, el aire al footer también se achica. */
+@media (max-width: 400px) {
+  :root {
+    --ledson-footer-gap: 16px;
+  }
+}
+@media (max-height: 800px) {
+  :root {
+    --ledson-footer-gap: 16px;
+  }
+}
+@media (max-height: 560px) {
+  :root {
+    --ledson-footer-gap: 12px;
+  }
+}

@@ -92,7 +92,7 @@ export function Home() {
       </div>
 
       {/* Contenido principal */}
-      <Container size="md" py={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
+      <Container size="md" className="ledson-wrap-container" pt={containerPy} px={{ base: 'xs', sm: 'md' }} style={{ position: 'relative', zIndex: 2 }}>
         <Title order={1} ta="center" className="ledson-title">
           {t('homeTitle')}
         </Title>
