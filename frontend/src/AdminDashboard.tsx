@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Textarea, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect, CloseButton } from '@mantine/core';
-import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus } from '@tabler/icons-react';
+import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus, IconMail } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -32,6 +32,11 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([bytes], filename, { type: mime });
 }
 
+// Herramienta de QA para probar el correo de confirmación sin tener que
+// pasar por una reserva real. Cambiar a `false` (o borrar el bloque del tab
+// "Correos" más abajo) para ocultarla del panel cuando ya no haga falta.
+const SHOW_EMAIL_TEST_TOOL = true;
+
 export function AdminDashboard() {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<any[]>([]);
@@ -53,6 +58,10 @@ export function AdminDashboard() {
   const [screenBgUrl, setScreenBgUrl] = useState('');
   const [headerUrl, setHeaderUrl] = useState('');
   const [footerUrl, setFooterUrl] = useState('');
+  // Video que se reproduce en loop por defecto en la pantalla gigante cuando
+  // no hay proyección activa (reemplaza la tarjeta estática de bienvenida +
+  // QR que se mostraba antes como "nada que mostrar").
+  const [defaultVideoUrl, setDefaultVideoUrl] = useState('');
   // Los campos numéricos de abajo usan '' como estado intermedio válido
   // (campo vacío mientras se escribe). Forzar a un número en cada tecla (ej.
   // `Number(val) || 15`) rompe el cursor al borrar el campo: el valor salta
@@ -129,6 +138,14 @@ export function AdminDashboard() {
   const [bookingSystemType, setBookingSystemType] = useState('slots');
   const [paymentGateway, setPaymentGateway] = useState('wompi');
 
+  // Herramienta de QA (tab "Correos") — ver SHOW_EMAIL_TEST_TOOL.
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [testEmailLang, setTestEmailLang] = useState('es');
+  const [testEmailType, setTestEmailType] = useState('confirmation');
+  const [testEmailIsVideo, setTestEmailIsVideo] = useState(false);
+  const [testEmailSending, setTestEmailSending] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ ok: boolean; message: string } | null>(null);
+
   // Plan de uso
   const [planFiltersEnabled, setPlanFiltersEnabled] = useState(true);
   const [planAllowedFilterIds, setPlanAllowedFilterIds] = useState<string[]>([]);
@@ -164,6 +181,7 @@ export function AdminDashboard() {
         setScreenBgUrl(resScreen.data.backgroundUrl || '');
         setHeaderUrl(resScreen.data.headerUrl || '');
         setFooterUrl(resScreen.data.footerUrl || '');
+        setDefaultVideoUrl(resScreen.data.defaultVideoUrl || '');
         setProjectionDuration(resScreen.data.projectionDuration || 15);
         setVideoProjectionDuration(resScreen.data.videoProjectionDuration || 15);
         setGlobalGridStartTime(resScreen.data.globalGridStartTime || '08:00:00');
@@ -318,6 +336,7 @@ export function AdminDashboard() {
       backgroundUrl: screenBgUrl,
       headerUrl,
       footerUrl,
+      defaultVideoUrl,
       projectionDuration: Number(projectionDuration) || 15,
       videoProjectionDuration: Number(videoProjectionDuration) || 15,
       globalGridStartTime,
@@ -545,6 +564,29 @@ export function AdminDashboard() {
     }
   };
 
+  const handleSendTestEmail = async () => {
+    if (!testEmailTo.trim()) return;
+    setTestEmailSending(true);
+    setTestEmailResult(null);
+    try {
+      const endpoint = testEmailType === 'result' ? 'test-result' : 'test-booking-confirmation';
+      const res = await axios.post(`${API_BASE_URL}/api/email/${endpoint}`, {
+        to: testEmailTo.trim(),
+        lang: testEmailLang,
+        ...(testEmailType === 'result' ? { isVideo: testEmailIsVideo } : {}),
+      });
+      setTestEmailResult(
+        res.data?.success
+          ? { ok: true, message: `Enviado a ${testEmailTo.trim()}` }
+          : { ok: false, message: res.data?.error || 'Error enviando el correo' },
+      );
+    } catch (e: any) {
+      setTestEmailResult({ ok: false, message: e?.response?.data?.message || 'Error enviando el correo' });
+    } finally {
+      setTestEmailSending(false);
+    }
+  };
+
   const handleUpdatePlanSettings = async () => {
     try {
       await axios.put(`${API_BASE_URL}/api/plans/settings`, {
@@ -589,6 +631,9 @@ export function AdminDashboard() {
           <Tabs.Tab value="schedules" leftSection={<IconCalendar size={16} />}>Gestión de Horarios</Tabs.Tab>
           <Tabs.Tab value="screen" leftSection={<IconDeviceTv size={16} />}>Pantalla Gigante</Tabs.Tab>
           <Tabs.Tab value="policies" leftSection={<IconShieldLock size={16} />}>Políticas</Tabs.Tab>
+          {SHOW_EMAIL_TEST_TOOL && (
+            <Tabs.Tab value="emailTest" leftSection={<IconMail size={16} />}>Correos</Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="bookings">
@@ -987,6 +1032,67 @@ export function AdminDashboard() {
           </Box>
         </Tabs.Panel>
 
+        {SHOW_EMAIL_TEST_TOOL && (
+          <Tabs.Panel value="emailTest">
+            <Box mb="xl" p="md" style={{ border: '1px solid #eee', borderRadius: '8px', maxWidth: '500px' }}>
+              <Title order={4} mb="xs">Enviar correo de prueba</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                Manda un correo transaccional (con datos de ejemplo) a la dirección que escribas, para revisarlo en una bandeja real.
+              </Text>
+              <Radio.Group
+                label="Correo a probar"
+                value={testEmailType}
+                onChange={setTestEmailType}
+                mb="md"
+              >
+                <Group mt="xs">
+                  <Radio value="confirmation" label="1. Confirmación de reserva" />
+                  <Radio value="result" label="2. Recuerdo de la experiencia" />
+                </Group>
+              </Radio.Group>
+              <TextInput
+                label="Correo destino"
+                placeholder="tucorreo@email.com"
+                value={testEmailTo}
+                onChange={(e) => setTestEmailTo(e.currentTarget.value)}
+                mb="sm"
+              />
+              <Radio.Group
+                label="Idioma"
+                value={testEmailLang}
+                onChange={setTestEmailLang}
+                mb={testEmailType === 'result' ? 'sm' : 'md'}
+              >
+                <Group mt="xs">
+                  <Radio value="es" label="Español" />
+                  <Radio value="en" label="English" />
+                </Group>
+              </Radio.Group>
+              {testEmailType === 'result' && (
+                <Radio.Group
+                  label="Tipo de recuerdo"
+                  value={testEmailIsVideo ? 'video' : 'photo'}
+                  onChange={(val) => setTestEmailIsVideo(val === 'video')}
+                  mb="md"
+                >
+                  <Group mt="xs">
+                    <Radio value="photo" label="Foto" />
+                    <Radio value="video" label="Video" />
+                  </Group>
+                </Radio.Group>
+              )}
+              <Button onClick={handleSendTestEmail} loading={testEmailSending} disabled={!testEmailTo.trim()} color="blue">
+                Enviar correo de prueba
+              </Button>
+              {testEmailResult && (
+                <Text size="sm" mt="sm" c={testEmailResult.ok ? 'green' : 'red'}>
+                  {testEmailResult.message}
+                </Text>
+              )}
+            </Box>
+          </Tabs.Panel>
+        )}
+
         <Tabs.Panel value="schedules">
           <Box mb="xl" p="md" style={{ border: '1px solid #eee', borderRadius: '8px' }}>
             <Title order={4} mb="sm">Configuración General de Asignación</Title>
@@ -1210,6 +1316,26 @@ export function AdminDashboard() {
                         <CloseButton size="sm" title="Quitar imagen footer" onClick={() => setFooterUrl('')} />
                       )}
                       <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setFooterUrl })} accept="image/*">
+                        {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
+                      </FileButton>
+                    </Group>
+                  }
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <TextInput
+                  label="Videoloop por defecto"
+                  description="Se reproduce en loop siempre que no haya una proyección activa (reemplaza la tarjeta de bienvenida)."
+                  placeholder="URL o subir archivo..."
+                  value={defaultVideoUrl}
+                  onChange={e => setDefaultVideoUrl(e.currentTarget.value)}
+                  rightSectionWidth={defaultVideoUrl ? 68 : 36}
+                  rightSection={
+                    <Group gap={4} wrap="nowrap">
+                      {defaultVideoUrl && (
+                        <CloseButton size="sm" title="Quitar videoloop" onClick={() => setDefaultVideoUrl('')} />
+                      )}
+                      <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setDefaultVideoUrl })} accept="video/*">
                         {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
                       </FileButton>
                     </Group>

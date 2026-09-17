@@ -20,7 +20,7 @@ export class EmailService {
       'no-reply@ledsonrenacer.com';
     this.fromName =
       this.configService.get<string>('AWS_SES_EMAIL_FROM_NAME') ||
-      "Led's on Renacer Photobooth";
+      "LED'S ON";
   }
 
   /** Remueve espacios/control invisibles y normaliza Unicode */

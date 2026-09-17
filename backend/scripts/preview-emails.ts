@@ -5,9 +5,12 @@ import {
   renderResultEmail,
   renderAbandonedCartEmail,
   renderButton,
+  renderResultMediaImage,
 } from '../src/email/email.templates';
 
 const FRONTEND_URL = 'https://www.c13.myledson.com';
+const BACKEND_URL = 'https://api.c13.myledson.com';
+const SAMPLE_EMAIL = 'juan.fernando@example.com';
 const SAMPLE_IMAGE =
   'https://images.unsplash.com/photo-1520975916090-3105956dac38?w=800';
 
@@ -24,6 +27,8 @@ for (const lang of ['es', 'en'] as const) {
   const confirmation = renderBookingConfirmationEmail({
     lang,
     frontendUrl: FRONTEND_URL,
+    backendUrl: BACKEND_URL,
+    recipientEmail: SAMPLE_EMAIL,
     name: 'Juan Fernando',
     code: 'A3-F9-K2',
     statusLink: `${FRONTEND_URL}/my-bookings?code=A3-F9-K2`,
@@ -34,7 +39,7 @@ for (const lang of ['es', 'en'] as const) {
             'Vivirás tu experiencia en pantalla a las ~<strong>10:47</strong>',
           ]
         : [
-            "Your reserved time slot is <strong>10:45 - 11:00</strong>",
+            'Your reserved time slot is <strong>10:45 - 11:00</strong>',
             "You'll live your experience on screen at ~<strong>10:47</strong>",
           ],
   });
@@ -42,10 +47,12 @@ for (const lang of ['es', 'en'] as const) {
 
   // 2. Recuerdo (foto)
   const downloadUrl = `${FRONTEND_URL.replace('www.c13', 'api')}/api/bookings/download/A3-F9-K2`;
-  const mediaBlockPhoto = `<img src="${SAMPLE_IMAGE}" alt="foto" style="max-width: 100%; border-radius: 12px; margin: 0 0 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />${renderButton(lang === 'es' ? 'Descarga tu recuerdo' : 'Download your memory', downloadUrl)}`;
+  const mediaBlockPhoto = `${renderResultMediaImage(SAMPLE_IMAGE, 'foto')}${renderButton(lang === 'es' ? 'Descarga tu recuerdo' : 'Download your memory', downloadUrl)}`;
   const resultPhoto = renderResultEmail({
     lang,
     frontendUrl: FRONTEND_URL,
+    backendUrl: BACKEND_URL,
+    recipientEmail: SAMPLE_EMAIL,
     name: 'Juan Fernando',
     mediaBlockHtml: mediaBlockPhoto,
     isVideo: false,
@@ -60,6 +67,8 @@ for (const lang of ['es', 'en'] as const) {
   const resultVideo = renderResultEmail({
     lang,
     frontendUrl: FRONTEND_URL,
+    backendUrl: BACKEND_URL,
+    recipientEmail: SAMPLE_EMAIL,
     name: 'Juan Fernando',
     mediaBlockHtml: mediaBlockVideo,
     isVideo: true,
@@ -70,6 +79,8 @@ for (const lang of ['es', 'en'] as const) {
   const abandoned = renderAbandonedCartEmail({
     lang,
     frontendUrl: FRONTEND_URL,
+    backendUrl: BACKEND_URL,
+    recipientEmail: SAMPLE_EMAIL,
     name: 'Juan Fernando',
     savedLine:
       lang === 'es'

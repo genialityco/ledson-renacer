@@ -4,7 +4,7 @@
   top: 0;
   left: 0;
   width: 100%;
-  height: 100vh;
+  /*height: 100vh;*/
   overflow: hidden;
   pointer-events: none; /* Allows clicking through the images */
   z-index: 0;

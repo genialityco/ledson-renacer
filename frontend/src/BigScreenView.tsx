@@ -65,6 +65,7 @@ export function BigScreenView() {
     backgroundUrl: '',
     headerUrl: '',
     footerUrl: '',
+    defaultVideoUrl: '',
     carouselImages: [],
     contentGrid: [],
     restScreenIdleMinutes: 0,
@@ -375,11 +376,27 @@ export function BigScreenView() {
 
   const hasCustomBackground = !!settings.backgroundUrl;
 
+  // La pantalla real del venue es 576x1152 (vertical, relación 1:2) — mismos
+  // valores que cropWidth/cropHeight, que ya se usan para el recorte de fotos
+  // y videos. Si esta vista se abre en un monitor de otra proporción (para
+  // pruebas), el contenido antes se estiraba a 100vw/100vh completos, lo que
+  // hacía que cualquier video/imagen con object-fit:cover se recortara arriba
+  // y abajo (o a los lados) de forma distinta a como se ve en la pantalla
+  // real. Ahora el "lienzo" interior siempre mantiene esa proporción 1:2,
+  // con barras negras (letterbox) rellenando el resto del monitor de
+  // prueba — lo que se ve acá es una vista fiel de la pantalla real.
+  const screenWidth = settings.cropWidth || 576;
+  const screenHeight = settings.cropHeight || 1152;
+
   return (
+    <Box style={{ width: '100vw', height: '100vh', backgroundColor: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
     <Box
       style={{
-        width: '100vw',
-        height: '100vh',
+        width: '100%',
+        height: '100%',
+        maxWidth: `calc(100vh * ${screenWidth} / ${screenHeight})`,
+        maxHeight: `calc(100vw * ${screenHeight} / ${screenWidth})`,
+        aspectRatio: `${screenWidth} / ${screenHeight}`,
         backgroundColor: '#000',
         backgroundImage: hasCustomBackground ? `url(${settings.backgroundUrl})` : undefined,
         backgroundSize: hasCustomBackground ? 'cover' : undefined,
@@ -417,6 +434,26 @@ export function BigScreenView() {
                 transitionClass={currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass}
                 onEnded={handleVideoEnded}
               />
+            ) : settings.defaultVideoUrl ? (
+              // Videoloop por defecto: lo único que se muestra cuando no hay
+              // Parrilla/Reposo ni proyección activa — nunca se detiene solo
+              // ni tiene una duración fija, simplemente se repite en bucle.
+              // object-fit "contain" (no "cover") a propósito: este video no
+              // tiene un recorte/encuadre guardado como sí lo tienen las fotos
+              // y videos de clientes, así que "cover" lo recortaba arriba y
+              // abajo cuando su proporción no coincidía con la de la pantalla.
+              <CSSTransition key="default-videoloop" appear={true} nodeRef={fallbackNodeRef} timeout={1000} classNames="carousel-fade">
+                <Box ref={fallbackNodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1, backgroundColor: '#000' }}>
+                  <video
+                    src={settings.defaultVideoUrl}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                </Box>
+              </CSSTransition>
             ) : (
               <CSSTransition key="fallback-empty" appear={true} nodeRef={fallbackNodeRef} timeout={1000} classNames="carousel-fade">
                 <Box ref={fallbackNodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1 }}>
@@ -573,6 +610,7 @@ export function BigScreenView() {
           <img src={settings.footerUrl} alt="Footer" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
         </Box>
       )}
+    </Box>
     </Box>
   );
 }

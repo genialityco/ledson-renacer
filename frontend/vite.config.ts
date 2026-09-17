@@ -7,5 +7,6 @@ export default defineConfig({
   assetsInclude: ['**/*.obj'],
   server: {
     host: true,
+    allowedHosts: ['surround-aloof-expansion.ngrok-free.dev'],
   },
 })

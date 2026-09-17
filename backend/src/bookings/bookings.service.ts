@@ -12,6 +12,7 @@ import {
   renderResultEmail,
   renderAbandonedCartEmail,
   renderButton,
+  renderResultMediaImage,
 } from '../email/email.templates';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
@@ -97,25 +98,32 @@ export class BookingsService {
       ];
     } else {
       scheduleLines = [];
+      // white-space:nowrap en el <strong> — evita que un rango de horas
+      // ("10:45 - 11:00") se parta a mitad de línea en clientes de correo
+      // angostos, que es lo que confundía las horas.
       if (opts.timeSlot) {
         scheduleLines.push(
           lang === 'en'
-            ? `Your reserved time slot is <strong>${opts.timeSlot.replace('-', ' - ')}</strong>`
-            : `Tu horario reservado es <strong>${opts.timeSlot.replace('-', ' - ')}</strong>`,
+            ? `Your reserved time slot is <strong style="white-space: nowrap;">${opts.timeSlot.replace('-', ' - ')}</strong>`
+            : `Tu horario reservado es <strong style="white-space: nowrap;">${opts.timeSlot.replace('-', ' - ')}</strong>`,
         );
       }
       if (hasExactTime) {
         scheduleLines.push(
           lang === 'en'
-            ? `You'll live your experience on screen at ~<strong>${opts.exactTime}</strong>`
-            : `Vivirás tu experiencia en pantalla a las ~<strong>${opts.exactTime}</strong>`,
+            ? `You'll live your experience on screen at <strong style="white-space: nowrap;">~${opts.exactTime}</strong>`
+            : `Vivirás tu experiencia en pantalla a las <strong style="white-space: nowrap;">~${opts.exactTime}</strong>`,
         );
       }
     }
 
+    if (await this.isEmailSuppressed(booking.email)) return;
+
     const { html, subject } = renderBookingConfirmationEmail({
       lang,
       frontendUrl,
+      backendUrl: this.getBackendUrl(),
+      recipientEmail: booking.email,
       name: booking.name,
       code: opts.code,
       statusLink,
@@ -134,6 +142,43 @@ export class BookingsService {
 
   private getFrontendUrl(): string {
     return process.env.FRONTEND_URL || 'http://localhost:5173';
+  }
+
+  private getBackendUrl(): string {
+    return process.env.BACKEND_URL || 'http://localhost:5000';
+  }
+
+  private normalizeEmail(email: string): string {
+    return (email || '').trim().toLowerCase();
+  }
+
+  /** Los correos transaccionales (confirmación/recuerdo/carrito abandonado)
+   * respetan la baja: se consulta antes de cada envío en vez de una sola vez
+   * al arrancar, porque el usuario puede darse de baja entre un envío y otro. */
+  private async isEmailSuppressed(email: string): Promise<boolean> {
+    const normalized = this.normalizeEmail(email);
+    if (!normalized) return false;
+    const db = this.firebase.getFirestore();
+    const doc = await db
+      .collection('lr_unsubscribed_emails')
+      .doc(normalized)
+      .get();
+    return doc.exists;
+  }
+
+  /** Usado por el endpoint público de "Darse de baja" del footer de los
+   * correos. No requiere que el correo pertenezca a una reserva existente. */
+  async unsubscribeEmail(email: string): Promise<{ email: string }> {
+    const normalized = this.normalizeEmail(email);
+    if (!normalized || !normalized.includes('@')) {
+      throw new NotFoundException('Correo inválido');
+    }
+    const db = this.firebase.getFirestore();
+    await db.collection('lr_unsubscribed_emails').doc(normalized).set({
+      email: normalized,
+      unsubscribedAt: new Date(),
+    });
+    return { email: normalized };
   }
 
   private async findBookingByCode(
@@ -1346,6 +1391,7 @@ export class BookingsService {
           backgroundUrl: '',
           headerUrl: '',
           footerUrl: '',
+          defaultVideoUrl: '',
           carouselImages: [],
           carouselDuration: 5,
           projectionDuration: 15,
@@ -1644,6 +1690,7 @@ export class BookingsService {
 
   private buildResultEmail(
     name: string,
+    email: string,
     mediaBlockEs: string,
     mediaBlockEn: string,
     isVideo: boolean,
@@ -1653,6 +1700,8 @@ export class BookingsService {
     return renderResultEmail({
       lang,
       frontendUrl,
+      backendUrl: this.getBackendUrl(),
+      recipientEmail: email,
       name,
       mediaBlockHtml: lang === 'en' ? mediaBlockEn : mediaBlockEs,
       isVideo,
@@ -1688,13 +1737,16 @@ export class BookingsService {
     const mediaBlockEn = renderButton('Download your memory', downloadUrl);
     const { html, subject } = this.buildResultEmail(
       b.name,
+      b.email,
       mediaBlockEs,
       mediaBlockEn,
       true,
       lang as Lang,
     );
 
-    await this.emailService.sendEmail(b.email, subject, html);
+    if (!(await this.isEmailSuppressed(b.email))) {
+      await this.emailService.sendEmail(b.email, subject, html);
+    }
     const update: Record<string, any> = { emailSent: true };
     if (framedUrl) update.emailFramedVideoUrl = framedUrl;
     await bookingRef.update(update);
@@ -1784,13 +1836,14 @@ export class BookingsService {
         // se mantiene la imagen embebida y se agrega el botón debajo.
         const mediaBlockEs = isVideo
           ? renderButton('Descarga tu recuerdo', downloadUrl)
-          : `<img src="${emailImageUrl}" alt="Tu foto" style="max-width: 100%; border-radius: 12px; margin: 0 0 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />${renderButton('Descarga tu recuerdo', downloadUrl)}`;
+          : `${renderResultMediaImage(emailImageUrl, 'Tu foto')}${renderButton('Descarga tu recuerdo', downloadUrl)}`;
         const mediaBlockEn = isVideo
           ? renderButton('Download your memory', downloadUrl)
-          : `<img src="${emailImageUrl}" alt="Your photo" style="max-width: 100%; border-radius: 12px; margin: 0 0 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />${renderButton('Download your memory', downloadUrl)}`;
+          : `${renderResultMediaImage(emailImageUrl, 'Your photo')}${renderButton('Download your memory', downloadUrl)}`;
 
         const { html, subject } = this.buildResultEmail(
           b.name,
+          b.email,
           mediaBlockEs,
           mediaBlockEn,
           isVideo,
@@ -1798,7 +1851,9 @@ export class BookingsService {
         );
 
         try {
-          await this.emailService.sendEmail(b.email, subject, html);
+          if (!(await this.isEmailSuppressed(b.email))) {
+            await this.emailService.sendEmail(b.email, subject, html);
+          }
           const update: Record<string, any> = { emailSent: true };
           if (emailFramedImageUrl)
             update.emailFramedImageUrl = emailFramedImageUrl;
@@ -1913,12 +1968,16 @@ export class BookingsService {
           const { html, subject } = renderAbandonedCartEmail({
             lang: lang as Lang,
             frontendUrl,
+            backendUrl: this.getBackendUrl(),
+            recipientEmail: b.email,
             name: b.name,
             savedLine: lang === 'en' ? savedLineEn : savedLineEs,
           });
 
           try {
-            await this.emailService.sendEmail(b.email, subject, html);
+            if (!(await this.isEmailSuppressed(b.email))) {
+              await this.emailService.sendEmail(b.email, subject, html);
+            }
             await doc.ref.update({ abandonmentEmailSent: true });
           } catch (e: any) {
             console.error(
@@ -1958,7 +2017,10 @@ export class BookingsService {
         .collection('lr_settings')
         .doc('screen')
         .get();
-      if (screenSettingsDoc.exists && screenSettingsDoc.data()?.currentProjection) {
+      if (
+        screenSettingsDoc.exists &&
+        screenSettingsDoc.data()?.currentProjection
+      ) {
         return;
       }
 

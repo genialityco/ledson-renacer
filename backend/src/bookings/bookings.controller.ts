@@ -67,6 +67,53 @@ export class BookingsController {
     }
   }
 
+  // Enlace "Darse de baja" del footer de los correos transaccionales. Público
+  // (sin auth, se llega por link de correo) y devuelve HTML directo en vez de
+  // JSON porque quien lo abre es una persona en su navegador, no la app.
+  @Get('unsubscribe')
+  async unsubscribe(@Query('email') email: string, @Res() res: Response) {
+    const page = (title: string, message: string) => `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>${title}</title></head>
+<body style="margin: 0; padding: 64px 24px; background-color: #ffffff; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; text-align: center; color: #222222;">
+<h1 style="font-size: 22px; color: #0559A5; margin: 0 0 12px;">${title}</h1>
+<p style="font-size: 15px; color: #767676; max-width: 420px; margin: 0 auto;">${message}</p>
+</body></html>`;
+
+    if (!email) {
+      res
+        .status(400)
+        .send(
+          page(
+            'Falta el correo',
+            'No se indicó ninguna dirección de correo para dar de baja.',
+          ),
+        );
+      return;
+    }
+
+    try {
+      const { email: normalized } =
+        await this.bookingsService.unsubscribeEmail(email);
+      res
+        .status(200)
+        .send(
+          page(
+            'Listo, te diste de baja',
+            `No volverás a recibir correos de LED'S ON en <strong>${normalized}</strong>.`,
+          ),
+        );
+    } catch (e: any) {
+      res
+        .status(400)
+        .send(
+          page(
+            'Correo inválido',
+            e.message || 'No se pudo procesar la solicitud.',
+          ),
+        );
+    }
+  }
+
   @Put('screen-settings')
   async updateScreenSettings(@Body() data: any) {
     return this.bookingsService.updateScreenSettings(data);
