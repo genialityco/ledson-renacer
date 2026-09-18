@@ -47,7 +47,7 @@ for (const lang of ['es', 'en'] as const) {
 
   // 2. Recuerdo (foto)
   const downloadUrl = `${FRONTEND_URL.replace('www.c13', 'api')}/api/bookings/download/A3-F9-K2`;
-  const mediaBlockPhoto = `${renderResultMediaImage(SAMPLE_IMAGE, 'foto')}${renderButton(lang === 'es' ? 'Descarga tu recuerdo' : 'Download your memory', downloadUrl)}`;
+  const mediaBlockPhoto = `${renderResultMediaImage(SAMPLE_IMAGE, 'foto')}${renderButton(lang === 'es' ? 'Descarga tu recuerdo' : 'Download your memory', downloadUrl, { widthPercent: 85 })}`;
   const resultPhoto = renderResultEmail({
     lang,
     frontendUrl: FRONTEND_URL,
@@ -63,6 +63,7 @@ for (const lang of ['es', 'en'] as const) {
   const mediaBlockVideo = renderButton(
     lang === 'es' ? 'Descarga tu recuerdo' : 'Download your memory',
     downloadUrl,
+    { widthPercent: 85 },
   );
   const resultVideo = renderResultEmail({
     lang,

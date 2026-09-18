@@ -6,6 +6,8 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { FirebaseService } from '../firebase/firebase.service';
 import { EmailService } from '../email/email.service';
+import { WompiService } from '../wompi/wompi.service';
+import { DlocalgoService } from '../dlocalgo/dlocalgo.service';
 import {
   Lang,
   renderBookingConfirmationEmail,
@@ -23,6 +25,7 @@ import ffmpegPath from 'ffmpeg-static';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as ExcelJS from 'exceljs';
 
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -31,6 +34,8 @@ export class BookingsService {
   constructor(
     private firebase: FirebaseService,
     private emailService: EmailService,
+    private wompi: WompiService,
+    private dlocalgo: DlocalgoService,
   ) {}
 
   // Acepta "HH:MM" o "HH:MM:SS" (slotDuration puede ser fraccionario, ej. 0.5
@@ -53,15 +58,23 @@ export class BookingsService {
     return s > 0 ? `${base}:${String(s).padStart(2, '0')}` : base;
   }
 
-  // Código corto de reserva (ej: "A3-F9-K2"). Evita caracteres ambiguos
-  // (0/O, 1/I) porque el cliente puede necesitar transcribirlo a mano.
-  private generateBookingCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let raw = '';
-    for (let i = 0; i < 6; i++) {
-      raw += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return `${raw.slice(0, 2)}-${raw.slice(2, 4)}-${raw.slice(4, 6)}`;
+  // Código de reserva consecutivo (001, 002, ...). El contador vive en
+  // lr_settings/counters y se incrementa dentro de una transacción de
+  // Firestore, así dos reservas simultáneas nunca reciben el mismo número.
+  // Es el mismo número que se ve en pantalla durante la proyección, para que
+  // cada persona sepa en qué turno va. Se asigna al crear la reserva, por lo
+  // que una reserva abandonada sin pagar deja un número sin usar.
+  private async generateBookingCode(): Promise<string> {
+    const db = this.firebase.getFirestore();
+    const ref = db.collection('lr_settings').doc('counters');
+    const next = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const current = snap.exists ? Number(snap.data()?.bookingCode) || 0 : 0;
+      const value = current + 1;
+      tx.set(ref, { bookingCode: value }, { merge: true });
+      return value;
+    });
+    return String(next).padStart(3, '0');
   }
 
   // Correo de agradecimiento enviado al confirmar la foto (antes de que la
@@ -495,7 +508,7 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
-      code: this.generateBookingCode(),
+      code: await this.generateBookingCode(),
       timeSlot: finalTimeSlot,
       exactTime: 'Sin asignar', // Se asignará al confirmar el pago
       bookingDate: finalBookingDate,
@@ -528,6 +541,8 @@ export class BookingsService {
       frameX?: number;
       frameY?: number;
       frameZoom?: number;
+      gateway?: 'wompi' | 'dlocalgo';
+      transactionId?: string;
     },
   ) {
     const db = this.firebase.getFirestore();
@@ -541,6 +556,20 @@ export class BookingsService {
 
     if (booking.status !== 'PENDING') {
       return { success: true, message: 'La reserva ya fue procesada' };
+    }
+
+    // Monto realmente cobrado, consultado a la pasarela (no el que dice el
+    // navegador) y guardado como "valor pagado" de la reserva.
+    const payment = await this.verifyGatewayPayment(
+      id,
+      data?.gateway,
+      data?.transactionId,
+    );
+    if (payment.rejected) {
+      throw new ConflictException(payment.rejected);
+    }
+    if (payment.fields) {
+      await bookingRef.update(payment.fields);
     }
 
     const update: Record<string, any> = {};
@@ -568,6 +597,62 @@ export class BookingsService {
     }
 
     return { success: true };
+  }
+
+  // Consulta la transacción en Wompi o dLocal Go y devuelve lo que hay que
+  // guardar en la reserva: paidAmount (COP), id de la transacción y estado de
+  // la pasarela. Si la pasarela responde que el pago NO está aprobado, se
+  // rechaza la confirmación. Si no se puede consultar (sin id, sin llaves o
+  // pasarela caída) NO se bloquea al cliente que ya pagó: se registra
+  // paymentVerified=false para que el admin lo revise.
+  private async verifyGatewayPayment(
+    bookingId: string,
+    gateway?: 'wompi' | 'dlocalgo',
+    transactionId?: string,
+  ): Promise<{ fields?: Record<string, any>; rejected?: string }> {
+    if (!gateway || !transactionId) {
+      console.warn(
+        `[Pago] confirm-payment de ${bookingId} sin gateway/transactionId: no se puede registrar el valor pagado`,
+      );
+      return { fields: { paymentVerified: false } };
+    }
+    try {
+      if (gateway === 'wompi') {
+        const txn = (await this.wompi.getTransaction(transactionId)).data;
+        if (txn.status !== 'APPROVED') {
+          return { rejected: `Pago Wompi no aprobado (${txn.status})` };
+        }
+        if (txn.reference !== `booking-${bookingId}`) {
+          return { rejected: 'La transacción no corresponde a esta reserva' };
+        }
+        return {
+          fields: {
+            paidAmount: txn.amount_in_cents / 100,
+            paymentGateway: 'wompi',
+            paymentTransactionId: txn.id,
+            paymentStatus: txn.status,
+            paymentVerified: true,
+          },
+        };
+      }
+      const pay = await this.dlocalgo.getPaymentStatus(transactionId);
+      const status = String(pay?.status || '').toUpperCase();
+      if (!['PAID', 'APPROVED', 'COMPLETED', 'AUTHORIZED'].includes(status)) {
+        return { rejected: `Pago dLocal Go no aprobado (${status || 'sin estado'})` };
+      }
+      return {
+        fields: {
+          paidAmount: Number(pay.amount) || null,
+          paymentGateway: 'dlocalgo',
+          paymentTransactionId: pay.id || transactionId,
+          paymentStatus: status,
+          paymentVerified: true,
+        },
+      };
+    } catch (e: any) {
+      console.error(`[Pago] No se pudo verificar ${gateway}:`, e.message);
+      return { fields: { paymentVerified: false } };
+    }
   }
 
   async confirmPayment(
@@ -1048,7 +1133,7 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
-      code: this.generateBookingCode(),
+      code: await this.generateBookingCode(),
       timeSlot:
         bookingSystemType === 'queue'
           ? ''
@@ -1104,6 +1189,76 @@ export class BookingsService {
       .orderBy('createdAt', 'desc')
       .get();
     return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  }
+
+  // Exporta las reservas/ventas con TODOS sus campos como Excel (.xlsx). Una
+  // fila por reserva y una columna por cada campo que exista en cualquier
+  // reserva (las más usadas primero). Los Timestamps de Firestore salen como
+  // fecha-hora, y los objetos/arreglos anidados como JSON en la celda.
+  // Filtros opcionales por bookingDate (YYYY-MM-DD).
+  async exportBookingsExcel(from?: string, to?: string): Promise<Buffer> {
+    const bookings = (await this.getBookings()) as Record<string, any>[];
+    const filtered = bookings.filter((b) => {
+      const d = b.bookingDate as string | undefined;
+      if (from && (!d || d < from)) return false;
+      if (to && (!d || d > to)) return false;
+      return true;
+    });
+
+    const preferred = [
+      'id',
+      'code',
+      'createdAt',
+      'bookingDate',
+      'timeSlot',
+      'exactTime',
+      'status',
+      'name',
+      'docId',
+      'email',
+      'whatsapp',
+      'country',
+      'city',
+      'paymentMethod',
+      'paidAmount',
+      'requiresInvoice',
+    ];
+    const allKeys = new Set<string>();
+    filtered.forEach((b) => Object.keys(b).forEach((k) => allKeys.add(k)));
+    const columns = [
+      ...preferred.filter((k) => allKeys.has(k)),
+      ...[...allKeys].filter((k) => !preferred.includes(k)).sort(),
+    ];
+
+    const toCell = (v: any): string | number | boolean | Date | null => {
+      if (v === null || v === undefined) return null;
+      if (typeof v?.toDate === 'function') return v.toDate() as Date;
+      if (v instanceof Date) return v;
+      if (typeof v === 'object') return JSON.stringify(v);
+      return v as string | number | boolean;
+    };
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Ventas');
+    sheet.columns = columns.map((k) => ({
+      header: k,
+      key: k,
+      width: Math.min(40, Math.max(12, k.length + 4)),
+    }));
+    filtered.forEach((b) => {
+      const row: Record<string, any> = {};
+      columns.forEach((k) => (row[k] = toCell(b[k])));
+      sheet.addRow(row);
+    });
+    sheet.getRow(1).font = { bold: true };
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.eachRow((row) =>
+      row.eachCell((cell) => {
+        if (cell.value instanceof Date) cell.numFmt = 'yyyy-mm-dd hh:mm:ss';
+      }),
+    );
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   async searchBookings(query: string) {
@@ -1584,16 +1739,23 @@ export class BookingsService {
       const imageBuffer = Buffer.from(imageRes.data);
       const frameBuffer = Buffer.from(frameRes.data);
 
+      // El lienzo del correo usa la resolución real de la foto (hasta 2160px
+      // de ancho) en vez de la de la pantalla (cropWidth): así el recuerdo
+      // digital no pierde calidad. Nunca baja de cropWidth x cropHeight.
+      const meta = await sharp(imageBuffer).metadata();
+      const outWidth = Math.max(cropWidth, Math.min(meta.width || 0, 2160));
+      const outHeight = Math.round((outWidth * cropHeight) / cropWidth);
+
       const resizedImage = await sharp(imageBuffer)
-        .resize(cropWidth, cropHeight, { fit: 'cover' })
+        .resize(outWidth, outHeight, { fit: 'cover' })
         .toBuffer();
       const resizedFrame = await sharp(frameBuffer)
-        .resize(cropWidth, cropHeight, { fit: 'cover' })
+        .resize(outWidth, outHeight, { fit: 'cover' })
         .toBuffer();
 
       const composited = await sharp(resizedImage)
         .composite([{ input: resizedFrame }])
-        .jpeg({ quality: 90 })
+        .jpeg({ quality: 95 })
         .toBuffer();
 
       const storage = this.firebase.getStorage();
@@ -1733,8 +1895,8 @@ export class BookingsService {
     // El botón de descarga apunta siempre al endpoint de descarga (que resuelve
     // la versión con marco vía emailFramedVideoUrl si la composición tuvo éxito).
     const downloadUrl = this.getDownloadUrl(b.code);
-    const mediaBlockEs = renderButton('Descarga tu recuerdo', downloadUrl);
-    const mediaBlockEn = renderButton('Download your memory', downloadUrl);
+    const mediaBlockEs = renderButton('Descarga tu recuerdo', downloadUrl, { widthPercent: 85 });
+    const mediaBlockEn = renderButton('Download your memory', downloadUrl, { widthPercent: 85 });
     const { html, subject } = this.buildResultEmail(
       b.name,
       b.email,
@@ -1835,11 +1997,11 @@ export class BookingsService {
         // así que para video el botón de descarga es el único CTA. Para foto
         // se mantiene la imagen embebida y se agrega el botón debajo.
         const mediaBlockEs = isVideo
-          ? renderButton('Descarga tu recuerdo', downloadUrl)
-          : `${renderResultMediaImage(emailImageUrl, 'Tu foto')}${renderButton('Descarga tu recuerdo', downloadUrl)}`;
+          ? renderButton('Descarga tu recuerdo', downloadUrl, { widthPercent: 85 })
+          : `${renderResultMediaImage(emailImageUrl, 'Tu foto')}${renderButton('Descarga tu recuerdo', downloadUrl, { widthPercent: 85 })}`;
         const mediaBlockEn = isVideo
-          ? renderButton('Download your memory', downloadUrl)
-          : `${renderResultMediaImage(emailImageUrl, 'Your photo')}${renderButton('Download your memory', downloadUrl)}`;
+          ? renderButton('Download your memory', downloadUrl, { widthPercent: 85 })
+          : `${renderResultMediaImage(emailImageUrl, 'Your photo')}${renderButton('Download your memory', downloadUrl, { widthPercent: 85 })}`;
 
         const { html, subject } = this.buildResultEmail(
           b.name,

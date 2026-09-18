@@ -21,6 +21,26 @@ export class BookingsController {
     return this.bookingsService.getScreenSettings();
   }
 
+  // Exportación de ventas en Excel (botón del panel de Admin). Filtros
+  // opcionales ?from=YYYY-MM-DD&to=YYYY-MM-DD sobre la fecha de la reserva.
+  @Get('export/excel')
+  async exportExcel(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.bookingsService.exportBookingsExcel(from, to);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="ventas-ledson-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+    );
+    res.send(buffer);
+  }
+
   @Get('search/:query')
   async searchBookings(@Param('query') query: string) {
     return this.bookingsService.searchBookings(query);
@@ -166,6 +186,8 @@ export class BookingsController {
       frameX?: number;
       frameY?: number;
       frameZoom?: number;
+      gateway?: 'wompi' | 'dlocalgo';
+      transactionId?: string;
     },
   ) {
     return this.bookingsService.confirmPayment(id, data);

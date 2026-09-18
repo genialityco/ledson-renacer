@@ -79,7 +79,24 @@ const SOCIAL_LINKS: SocialLink[] = [
   },
 ];
 
-export function renderButton(text: string, url: string): string {
+export function renderButton(
+  text: string,
+  url: string,
+  opts: { widthPercent?: number } = {},
+): string {
+  // Con widthPercent el botón ocupa ese % del ancho disponible (centrado);
+  // sin él, se ajusta al texto como siempre.
+  if (opts.widthPercent) {
+    return `
+    <table role="presentation" width="${opts.widthPercent}%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto; width: ${opts.widthPercent}%;">
+      <tr>
+        <td align="center" style="background-color: ${EMAIL_COLORS.blue}; border-radius: 8px;">
+          <a href="${url}" style="display: block; padding: 16px 24px; font-family: ${EMAIL_FONT_STACK}; font-size: 16px; font-weight: 700; color: ${EMAIL_COLORS.white}; text-decoration: none; text-align: center;">${text}</a>
+        </td>
+      </tr>
+    </table>
+  `;
+  }
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
       <tr>
@@ -365,10 +382,10 @@ export function renderBookingConfirmationEmail(data: {
       <td style="padding: 0 24px 24px;">
         ${renderDivider()}
         <p style="font-family: ${EMAIL_FONT_STACK}; font-size: 15px; font-weight: 700; color: ${EMAIL_COLORS.black}; text-align: center; margin: 0 0 8px;">${t.remember}</p>
-        <p style="font-family: ${EMAIL_FONT_STACK}; font-size: 14px; color: ${EMAIL_COLORS.textGray}; text-align: center; margin: 0 auto; max-width: 340px; line-height: 1.55;">${t.rememberText}</p>
+        <p style="font-family: ${EMAIL_FONT_STACK}; font-size: 14px; font-weight: 600; color: ${EMAIL_COLORS.textGray}; text-align: center; margin: 0 auto; max-width: 340px; line-height: 1.55;">${t.rememberText}</p>
         ${renderDivider()}
         <p style="font-family: ${EMAIL_FONT_STACK}; font-size: 15px; font-weight: 700; color: ${EMAIL_COLORS.black}; text-align: center; margin: 0 0 18px;">${t.wantMore}</p>
-        <div style="text-align: center;">${renderButton(t.cta, bookingUrl)}</div>
+        <div style="text-align: center;">${renderButton(t.cta, bookingUrl, { widthPercent: 85 })}</div>
       </td>
     </tr>
   `;
@@ -454,7 +471,7 @@ export function renderResultEmail(data: {
     <tr>
       <td style="padding: 0 24px 24px;">
         <p style="font-family: ${EMAIL_FONT_STACK}; font-size: 15px; font-weight: 700; color: ${EMAIL_COLORS.black}; text-align: center; margin: 0 0 16px;">${t.wantMore}</p>
-        <div style="text-align: center;">${renderButton(t.cta, bookingUrl)}</div>
+        <div style="text-align: center;">${renderButton(t.cta, bookingUrl, { widthPercent: 85 })}</div>
       </td>
     </tr>
   `;

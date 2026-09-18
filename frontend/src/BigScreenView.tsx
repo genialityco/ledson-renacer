@@ -1,13 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Title, Box, Text, Transition as MantineTransition } from '@mantine/core';
+import { Box, Transition as MantineTransition } from '@mantine/core';
 import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import axios from 'axios';
 import './falling.css';
 import './graffiti.css';
 import './ledson-clean.css';
 import { SprayEffect } from './SprayEffect';
-import QRCode from 'react-qr-code';
-import { useLanguage } from './i18n';
 import { API_BASE_URL } from './config';
 
 const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: any) => {
@@ -82,7 +80,6 @@ export function BigScreenView() {
   const settingsRef = useRef<any>(settings);
   const fallbackNodeRef = useRef(null);
   const projectionVideoRef = useRef<HTMLVideoElement>(null);
-  const { t } = useLanguage();
 
   // Pantalla de Reposo: independiente de la Parrilla. Solo se activa tras N
   // minutos SIN proyección y SIN reservas pendientes (settings.hasPendingQueue),
@@ -356,7 +353,43 @@ export function BigScreenView() {
     return () => clearTimeout(fallback);
   }, [displayProjection?.id, displayProjection?.revealEffect]);
 
+  // Salida: al terminar una proyección con efecto "video-overlay", el video de
+  // transición se vuelve a reproducir encima de la foto (que sigue montada)
+  // y recién cuando termina se desmonta el contenedor, revelando lo de abajo.
+  const [exiting, setExiting] = useState(false);
+  // Se mantiene true hasta que entre una proyección nueva: así el <video> de
+  // salida conserva su key durante el fade-out final del contenedor y no se
+  // vuelve a montar (lo que lo reproducía otra vez).
+  // Id de la proyección cuya salida ya se reprodujo. La salida corre UNA sola
+  // vez por proyección: si el polling devuelve un instante una respuesta
+  // vieja con la misma proyección (o el estado parpadea), no se reinicia.
+  const [exitedId, setExitedId] = useState<string | null>(null);
+  const exitPlayed = !!displayProjection && exitedId === displayProjection.id;
+  const hadProjectionRef = useRef(false);
+  useEffect(() => {
+    const cp = settings.currentProjection;
+    const has = !!cp;
+    if (has) {
+      if (cp.id !== exitedId) {
+        setExiting(false);
+      }
+    } else if (
+      hadProjectionRef.current &&
+      displayProjection &&
+      exitedId !== displayProjection.id &&
+      displayProjection.revealEffect === 'video-overlay' &&
+      displayProjection.revealOverlayVideoUrl
+    ) {
+      setOverlayOpacity(1);
+      setExiting(true);
+      setExitedId(displayProjection.id);
+    }
+    hadProjectionRef.current = has;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.currentProjection]);
+
   const handleOverlayTimeUpdate = () => {
+    if (exiting) return;
     const v = overlayVideoRef.current;
     if (!v || !v.duration) return;
     const fadeSeconds = displayProjection?.revealOverlayFadeSeconds || 2;
@@ -454,28 +487,18 @@ export function BigScreenView() {
                   />
                 </Box>
               </CSSTransition>
-            ) : (
-              <CSSTransition key="fallback-empty" appear={true} nodeRef={fallbackNodeRef} timeout={1000} classNames="carousel-fade">
-                <Box ref={fallbackNodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1 }}>
-                  <Box className="ledson-screen-card">
-                    <Title order={1} className="ledson-screen-title">{t('welcomeTitle')}</Title>
-                    <Text className="ledson-screen-subtitle">{t('welcomeText1')}</Text>
-                    <Text className="ledson-screen-subtitle">{t('welcomeText2')}</Text>
-                    <Box className="ledson-screen-qr-box">
-                      <QRCode value={`${window.location.origin}/booking`} size={220} />
-                    </Box>
-                    <Text className="ledson-screen-qr-caption">{t('scanQR')}</Text>
-                  </Box>
-                </Box>
-              </CSSTransition>
-            )}
+            ) : null}
           </TransitionGroup>
         </Box>
 
         <MantineTransition 
-          mounted={!!settings.currentProjection} 
+          mounted={(!!settings.currentProjection && settings.currentProjection.id !== exitedId) || exiting}
           transition={currentTransition} 
-          duration={displayProjection?.transitionEffect === 'particles' ? 2000 : 1000} 
+          duration={displayProjection?.transitionEffect === 'particles' ? 2000 : 1000}
+          // Con video de transición la salida la resuelve ese video: al
+          // terminar, el contenedor se quita de golpe. Con fade de 1s la foto
+          // (que queda visible tras el video) se veía desvanecerse otra vez.
+          exitDuration={displayProjection?.revealEffect === 'video-overlay' && displayProjection?.revealOverlayVideoUrl ? 0 : undefined}
           timingFunction="ease"
         >
           {(styles) => (
@@ -560,17 +583,22 @@ export function BigScreenView() {
 
               {/* Overlay de Video: se superpone a la foto/video real (arriba)
                   y se desvanece en sus últimos segundos, revelándolo. */}
-              {displayProjection?.revealEffect === 'video-overlay' && displayProjection?.revealOverlayVideoUrl && (
+              {/* Una vez terminada la salida (exitPlayed && !exiting) el video
+                  ya no se renderiza: mientras el contenedor hace su fade-out
+                  final no puede volver a montarse ni reproducirse. */}
+              {displayProjection?.revealEffect === 'video-overlay' && displayProjection?.revealOverlayVideoUrl && !(exitPlayed && !exiting) && (
                 <Box style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 25, pointerEvents: 'none' }}>
                   <video
-                    key={displayProjection?.id}
+                    key={`${displayProjection?.id}${exitPlayed ? '-exit' : ''}`}
                     ref={overlayVideoRef}
                     src={displayProjection.revealOverlayVideoUrl}
                     autoPlay
                     muted
                     playsInline
+                    onPlay={() => console.debug('[overlay] play', exitPlayed ? 'salida' : 'entrada', displayProjection?.id)}
                     onPlaying={() => setOverlayReady(true)}
-                    onError={() => setOverlayReady(true)}
+                    onError={() => { setOverlayReady(true); setExiting(false); }}
+                    onEnded={() => { if (exiting) setExiting(false); }}
                     onTimeUpdate={handleOverlayTimeUpdate}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: overlayOpacity }}
                   />

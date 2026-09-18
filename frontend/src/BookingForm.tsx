@@ -12,7 +12,7 @@ import { VideoTrimModal } from './VideoTrimModal';
 import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
-import { API_BASE_URL, getLocalDateStr, getLegalLinks } from './config';
+import { API_BASE_URL, getLocalDateStr, getLegalLinks, PHOTO_QUALITY_SCALE, MAX_VIDEO_MB } from './config';
 import { trackGtagEvent } from './analytics';
 
 // Enlaces legales del formulario público (pago online): abren las páginas
@@ -120,7 +120,7 @@ export function BookingForm() {
       sessionStorage.removeItem('dlocal_booking_id');
       sessionStorage.removeItem('dlocal_payment_id');
       sessionStorage.removeItem('dlocal_link');
-      finalizeBooking(bookingIdParam);
+      finalizeBooking(bookingIdParam, dlocalPaymentId);
     } else if (dlocalBookingId && dlocalPaymentId) {
       setBookingId(dlocalBookingId);
       axios.get(`${API_BASE_URL}/api/dlocalgo/status/${dlocalPaymentId}`)
@@ -129,7 +129,7 @@ export function BookingForm() {
             sessionStorage.removeItem('dlocal_booking_id');
             sessionStorage.removeItem('dlocal_payment_id');
             sessionStorage.removeItem('dlocal_link');
-            finalizeBooking(dlocalBookingId);
+            finalizeBooking(dlocalBookingId, dlocalPaymentId);
           } else {
             // Pago aún no confirmado: se queda en el paso de foto y pago,
             // donde vive el botón "Ya realicé el pago" para reintentar.
@@ -264,7 +264,7 @@ export function BookingForm() {
     }
   };
 
-  const MAX_VIDEO_MB = 80;
+
 
   const handleFileChange = (file: File | null) => {
     if (file) {
@@ -373,9 +373,9 @@ export function BookingForm() {
   // mandó junto con esta misma llamada (ver handleUploadAndPay); para dLocal
   // Go ya quedó guardada de antes vía attach-media, porque el navegador
   // pierde el estado al salir a pagar y volver.
-  const finalizeBooking = async (id: string) => {
+  const finalizeBooking = async (id: string, dlocalPaymentId?: string | null) => {
     try {
-      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${id}/confirm-payment`, {});
+      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${id}/confirm-payment`, dlocalPaymentId ? { gateway: 'dlocalgo', transactionId: dlocalPaymentId } : {});
       setBookingId(id);
       setFinalResult(confirmRes.data);
       setPaymentStatus('APPROVED');
@@ -482,7 +482,7 @@ export function BookingForm() {
             if (transaction.status === 'APPROVED') {
               setIsUploadingPhoto(true);
               try {
-                const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, mediaPayload);
+                const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, { ...mediaPayload, gateway: 'wompi', transactionId: transaction.id });
                 setFinalResult(confirmRes.data);
                 // Excluye PII (nombre, cédula, correo, celular) del evento.
                 trackGtagEvent('purchase', {
@@ -855,7 +855,7 @@ export function BookingForm() {
                       const pid = paymentStatus.split('_')[1];
                       const res = await axios.get(`${API_BASE_URL}/api/dlocalgo/status/${pid}`);
                       if (res.data && res.data.status === 'PAID') {
-                        await finalizeBooking(bookingId as string);
+                        await finalizeBooking(bookingId as string, pid);
                       } else {
                         alert(t('paymentProcessing'));
                       }
@@ -1020,8 +1020,8 @@ export function BookingForm() {
           opened={imageCropModalOpened}
           imageSrc={rawImageForCrop}
           aspect={cropWidth / cropHeight}
-          outputWidth={cropWidth}
-          outputHeight={cropHeight}
+          outputWidth={cropWidth * PHOTO_QUALITY_SCALE}
+          outputHeight={cropHeight * PHOTO_QUALITY_SCALE}
           onCancel={handleImageCropCancel}
           onConfirm={handleImageCropConfirm}
         />

@@ -30,3 +30,13 @@ export const getLegalLinks = (source: LegalUtmSource) => ({
   terms: legalUrl('terminos-y-condiciones', source),
   privacy: legalUrl('politica-de-tratamiento-de-datos-personales', source),
 });
+
+// La foto del usuario se recorta a la proporción de la pantalla (cropWidth x
+// cropHeight) pero a este múltiplo de resolución: la pantalla la muestra a
+// 576x1152, mientras que el recuerdo digital por correo conserva el detalle.
+export const PHOTO_QUALITY_SCALE = 2;
+
+// Peso máximo de un video subido por el usuario. Debe ir de la mano del
+// límite del backend (MAX_UPLOAD_MB en main.ts, que además cuenta el +33% de
+// base64). Configurable con VITE_MAX_VIDEO_MB.
+export const MAX_VIDEO_MB = Number(import.meta.env.VITE_MAX_VIDEO_MB) || 200;

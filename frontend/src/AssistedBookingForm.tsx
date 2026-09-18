@@ -12,7 +12,7 @@ import { VideoTrimModal } from './VideoTrimModal';
 import { fetchCountries } from './countries';
 import './graffiti.css';
 import './ledson-clean.css';
-import { API_BASE_URL, getLocalDateStr, getLegalLinks } from './config';
+import { API_BASE_URL, getLocalDateStr, getLegalLinks, PHOTO_QUALITY_SCALE, MAX_VIDEO_MB } from './config';
 import { trackGtagEvent } from './analytics';
 
 // Enlaces legales del formulario del stand físico: mismas páginas que el
@@ -226,7 +226,7 @@ export function AssistedBookingForm() {
     }
   };
 
-  const MAX_VIDEO_MB = 80;
+
 
   const handleFileChange = (file: File | null) => {
     if (file) {
@@ -847,8 +847,8 @@ export function AssistedBookingForm() {
           opened={imageCropModalOpened}
           imageSrc={rawImageForCrop}
           aspect={cropWidth / cropHeight}
-          outputWidth={cropWidth}
-          outputHeight={cropHeight}
+          outputWidth={cropWidth * PHOTO_QUALITY_SCALE}
+          outputHeight={cropHeight * PHOTO_QUALITY_SCALE}
           onCancel={handleImageCropCancel}
           onConfirm={handleImageCropConfirm}
         />

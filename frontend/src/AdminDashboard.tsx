@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Textarea, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect, CloseButton } from '@mantine/core';
-import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus, IconMail } from '@tabler/icons-react';
+import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus, IconMail, IconDownload, IconHelp } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './config';
 import { ImageCropModal } from './ImageCropModal';
 import { VideoTrimModal } from './VideoTrimModal';
+import { AdminGuide } from './AdminGuide';
 
 // Proporción real de la pantalla de proyección — configurable desde este
 // panel (ver cropWidth/cropHeight) para que el recorte de fotos/videos del
@@ -564,6 +565,27 @@ export function AdminDashboard() {
     }
   };
 
+  // Descarga todas las ventas (todos los campos) en Excel; el rango de fechas
+  // es opcional y filtra por la fecha de la reserva.
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
+  const handleExportExcel = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/bookings/export/excel`, {
+        params: { from: exportFrom || undefined, to: exportTo || undefined },
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ventas-ledson-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Error exportando las ventas');
+    }
+  };
+
   const handleSendTestEmail = async () => {
     if (!testEmailTo.trim()) return;
     setTestEmailSending(true);
@@ -631,6 +653,7 @@ export function AdminDashboard() {
           <Tabs.Tab value="schedules" leftSection={<IconCalendar size={16} />}>Gestión de Horarios</Tabs.Tab>
           <Tabs.Tab value="screen" leftSection={<IconDeviceTv size={16} />}>Pantalla Gigante</Tabs.Tab>
           <Tabs.Tab value="policies" leftSection={<IconShieldLock size={16} />}>Políticas</Tabs.Tab>
+          <Tabs.Tab value="guide" leftSection={<IconHelp size={16} />}>Guía</Tabs.Tab>
           {SHOW_EMAIL_TEST_TOOL && (
             <Tabs.Tab value="emailTest" leftSection={<IconMail size={16} />}>Correos</Tabs.Tab>
           )}
@@ -639,9 +662,16 @@ export function AdminDashboard() {
         <Tabs.Panel value="bookings">
           <Group justify="space-between" mb="md" align="center">
             <Text fw={500} size="lg">Listado de Reservas</Text>
-            <Button leftSection={<IconCalendar size={16} />} onClick={() => navigate('/admin/bookings-calendar')} variant="light" color="indigo">
-              Ver Calendario de Reservas
-            </Button>
+            <Group gap="sm" align="flex-end">
+              <TextInput type="date" label="Desde" size="xs" value={exportFrom} onChange={(e) => setExportFrom(e.currentTarget.value)} />
+              <TextInput type="date" label="Hasta" size="xs" value={exportTo} onChange={(e) => setExportTo(e.currentTarget.value)} />
+              <Button leftSection={<IconDownload size={16} />} onClick={handleExportExcel} variant="light" color="teal">
+                Exportar ventas (Excel)
+              </Button>
+              <Button leftSection={<IconCalendar size={16} />} onClick={() => navigate('/admin/bookings-calendar')} variant="light" color="indigo">
+                Ver Calendario de Reservas
+              </Button>
+            </Group>
           </Group>
           <Box style={{ overflowX: 'auto' }}>
             <Table striped highlightOnHover>
@@ -1030,6 +1060,10 @@ export function AdminDashboard() {
             </Radio.Group>
             <Button onClick={handleUpdateScheduleSettings} color="blue">Guardar Políticas</Button>
           </Box>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="guide">
+          <AdminGuide />
         </Tabs.Panel>
 
         {SHOW_EMAIL_TEST_TOOL && (
@@ -1583,16 +1617,28 @@ export function AdminDashboard() {
 
             <Box mt="xl" pt="xl" style={{ borderTop: '1px solid #eee' }}>
               <Title order={4} mb="sm">Pantalla de Reposo (Salvapantallas por Inactividad)</Title>
+              <Text c="dimmed" size="sm" mb="xs">
+                Qué se ve en la pantalla gigante cuando no hay ninguna experiencia proyectándose, en orden de prioridad:
+              </Text>
+              <Text c="dimmed" size="sm" mb="xs">
+                1) <b>Pantalla de Reposo</b> (esta sección): si la pantalla lleva el tiempo de abajo sin ninguna
+                proyección Y sin ninguna reserva pagada por proyectar, reemplaza todo lo demás con su propio ciclo
+                de imágenes/videos. Se apaga sola en cuanto alguien paga o se proyecta una experiencia.
+              </Text>
+              <Text c="dimmed" size="sm" mb="xs">
+                2) <b>Parrilla de Contenidos</b> (sección de arriba): mientras el Reposo no esté activo, se muestran
+                los ítems de la Parrilla que cumplan sus reglas de horario, prioridad y repeticiones.
+              </Text>
               <Text c="dimmed" size="sm" mb="sm">
-                Independiente de la Parrilla de arriba. Solo se activa cuando la pantalla lleva el tiempo configurado
-                SIN proyecciones y SIN reservas pendientes por proyectar — mientras eso no pase, la Parrilla y la
-                tarjeta de bienvenida siguen funcionando exactamente igual que hoy.
+                3) <b>Videoloop por defecto</b> (campo en «Configuración de Pantalla (En Espera / Carrusel)», junto a Header y Footer): si la Parrilla no tiene ningún
+                ítem elegible, se reproduce este video en bucle. Si tampoco hay videoloop cargado, la pantalla queda en negro.
+                Cualquier experiencia en curso siempre pasa por encima de los tres.
               </Text>
               <Group align="flex-end" mb="md">
                 <NumberInput
-                  label="Activar tras (minutos de inactividad)"
+                  label="Activar tras (minutos sin proyecciones ni reservas por proyectar)"
                   description={
-                    `0 desactiva la pantalla de reposo. Admite segundos como decimales de minuto (ej. 0.5 = 30s)` +
+                    `Tiempo que la pantalla debe estar sin proyectar nada y sin clientes pagados en espera antes de entrar en reposo. 0 desactiva el Reposo (entonces se ve la Parrilla o el videoloop). Admite decimales (ej. 0.5 = 30s)` +
                     (typeof restScreenIdleMinutes === 'number' && restScreenIdleMinutes > 0 ? ` — equivale a ${Math.round(restScreenIdleMinutes * 60)}s` : '')
                   }
                   value={restScreenIdleMinutes}
@@ -1690,7 +1736,8 @@ export function AdminDashboard() {
                 <NumberInput label="Duración en pantalla (Segundos)" value={newRestItem.duration} onChange={(val) => setNewRestItem({ ...newRestItem, duration: Number(val) || 10 })} mb="sm" />
               )}
 
-              <Button fullWidth onClick={() => {
+              <Button fullWidth loading={isUploading} disabled={isUploading} onClick={() => {
+                if (isUploading) return;
                 if (!newRestItem.name || !newRestItem.url) return alert('Completa nombre y url');
 
                 let updatedItems;
@@ -1706,7 +1753,7 @@ export function AdminDashboard() {
                 setNewRestItem({ name: '', url: '', type: 'image', duration: 10 });
                 closeRestItemModal();
               }}>
-                {(newRestItem as any).id ? 'Guardar Cambios' : 'Añadir a Pantalla de Reposo'}
+                {isUploading ? 'Subiendo archivo…' : (newRestItem as any).id ? 'Guardar Cambios' : 'Añadir a Pantalla de Reposo'}
               </Button>
             </Modal>
 

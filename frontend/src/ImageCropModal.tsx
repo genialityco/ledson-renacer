@@ -41,7 +41,7 @@ async function getCroppedImageBase64(
     cropPixels.x, cropPixels.y, cropPixels.width, cropPixels.height,
     0, 0, outputWidth, outputHeight,
   );
-  return canvas.toDataURL('image/jpeg', 0.92);
+  return canvas.toDataURL('image/jpeg', 0.95);
 }
 
 // Recorte interactivo tipo Facebook/Instagram: el usuario arrastra y hace

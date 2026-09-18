@@ -69,8 +69,8 @@ export class EmailController {
     const downloadCta =
       lang === 'en' ? 'Download your memory' : 'Descarga tu recuerdo';
     const mediaBlockHtml = isVideo
-      ? renderButton(downloadCta, downloadUrl)
-      : `${renderResultMediaImage(SAMPLE_MEMORY_IMAGE, 'foto')}${renderButton(downloadCta, downloadUrl)}`;
+      ? renderButton(downloadCta, downloadUrl, { widthPercent: 85 })
+      : `${renderResultMediaImage(SAMPLE_MEMORY_IMAGE, 'foto')}${renderButton(downloadCta, downloadUrl, { widthPercent: 85 })}`;
     const { html, subject } = renderResultEmail({
       lang,
       frontendUrl,

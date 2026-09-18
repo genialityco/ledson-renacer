@@ -25,8 +25,13 @@ async function bootstrap() {
   // Los videos no se recomprimen del lado del cliente (a diferencia de las
   // fotos, que sí se redimensionan a 512x512 antes de enviarse), así que
   // viajan en su tamaño original + ~33% del overhead de base64.
-  app.use(json({ limit: '120mb' }));
-  app.use(urlencoded({ extended: true, limit: '120mb' }));
+  // MAX_VIDEO_MB (default 200) es el peso máximo del archivo; el límite de la
+  // petición sube ~40% para cubrir el overhead de base64. Debe coincidir con
+  // VITE_MAX_VIDEO_MB del frontend.
+  const maxVideoMb = Number(process.env.MAX_VIDEO_MB) || 200;
+  const requestLimit = `${Math.ceil(maxVideoMb * 1.4)}mb`;
+  app.use(json({ limit: requestLimit }));
+  app.use(urlencoded({ extended: true, limit: requestLimit }));
 
   const port = process.env.PORT ?? 5000;
   await app.listen(port);
