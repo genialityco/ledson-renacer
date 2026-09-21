@@ -585,7 +585,16 @@ export function BigScreenView() {
                   />
                 </Box>
               </CSSTransition>
-            ) : null}
+            ) : (
+              // Sin videoloop configurado: se muestra la imagen por defecto
+              // (la de Admin o, si no hay, el arte de la app) para que la
+              // pantalla nunca quede en negro.
+              <CSSTransition key="default-image" appear={true} nodeRef={fallbackNodeRef} timeout={1000} classNames="carousel-fade">
+                <Box ref={fallbackNodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1, backgroundColor: '#000' }}>
+                  <img src={defaultImageSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                </Box>
+              </CSSTransition>
+            )}
           </TransitionGroup>
         </Box>
 

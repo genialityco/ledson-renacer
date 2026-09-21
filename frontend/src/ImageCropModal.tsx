@@ -11,7 +11,7 @@ interface ImageCropModalProps {
   outputHeight: number;
   title?: string;
   onCancel: () => void;
-  onConfirm: (croppedBase64: string) => void;
+  onConfirm: (croppedBase64: string) => void | Promise<void>;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -76,8 +76,11 @@ export function ImageCropModal({ opened, imageSrc, aspect, outputWidth, outputHe
     setIsProcessing(true);
     try {
       const base64 = await getCroppedImageBase64(imageSrc, croppedAreaPixels, outputWidth, outputHeight);
+      // Se espera a onConfirm (ej. la moderación de contenido): mientras
+      // tanto el botón queda cargando, y si el padre rechaza la imagen el
+      // recorte se conserva para que el usuario elija otra.
+      await onConfirm(base64);
       reset();
-      onConfirm(base64);
     } finally {
       setIsProcessing(false);
     }

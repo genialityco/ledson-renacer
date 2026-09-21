@@ -2,12 +2,14 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { FirebaseService } from '../firebase/firebase.service';
 import { EmailService } from '../email/email.service';
 import { WompiService } from '../wompi/wompi.service';
 import { DlocalgoService } from '../dlocalgo/dlocalgo.service';
+import { ModerationService } from '../moderation/moderation.service';
 import {
   Lang,
   renderBookingConfirmationEmail,
@@ -36,6 +38,7 @@ export class BookingsService {
     private emailService: EmailService,
     private wompi: WompiService,
     private dlocalgo: DlocalgoService,
+    private moderation: ModerationService,
   ) {}
 
   // Acepta "HH:MM" o "HH:MM:SS" (slotDuration puede ser fraccionario, ej. 0.5
@@ -273,10 +276,17 @@ export class BookingsService {
   private async uploadMediaBase64(
     mediaBase64: string,
     folder = 'bookings',
+    // flagOnly: NO lanza si la moderación rechaza la imagen, solo lo informa
+    // (moderationBlocked) — se usa cuando el cliente ya pagó y no se le puede
+    // rechazar la reserva a estas alturas; la reserva queda marcada y no se
+    // proyecta. Por defecto se rechaza con 400 y la imagen ni se guarda.
+    opts: { flagOnly?: boolean } = {},
   ): Promise<{
     url: string;
     mediaType: 'image' | 'video';
     contentType: string;
+    moderationBlocked: boolean;
+    moderationReasons: string[];
   }> {
     const match = mediaBase64.match(/^data:([\w/+.-]+);base64,/);
     const contentType = match?.[1] || 'image/jpeg';
@@ -300,6 +310,23 @@ export class BookingsService {
     const base64Data = mediaBase64.replace(/^data:[\w/+.-]+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
+    let moderationBlocked = false;
+    let moderationReasons: string[] = [];
+    if (mediaType === 'image') {
+      const verdict = await this.moderation.checkImage(buffer, contentType);
+      if (verdict.blocked) {
+        if (!opts.flagOnly) {
+          throw new BadRequestException({
+            code: 'CONTENT_NOT_ALLOWED',
+            reasons: verdict.reasons,
+            message: 'La imagen contiene contenido no permitido.',
+          });
+        }
+        moderationBlocked = true;
+        moderationReasons = verdict.reasons;
+      }
+    }
+
     const storage = this.firebase.getStorage();
     const bucket = storage.bucket();
     const fileName = `${folder}/${uuidv4()}.${extension}`;
@@ -319,7 +346,13 @@ export class BookingsService {
       url = signedUrl;
     }
 
-    return { url, mediaType, contentType };
+    return {
+      url,
+      mediaType,
+      contentType,
+      moderationBlocked,
+      moderationReasons,
+    };
   }
 
   // Franja actual alineada al reloj (ej: 10:07 con franjas de 15 min -> "10:00-10:15")
@@ -724,9 +757,17 @@ export class BookingsService {
       const uploaded = await this.uploadMediaBase64(
         data.imageBase64,
         'bookings',
+        { flagOnly: true },
       );
       imageUrl = uploaded.url;
       mediaType = uploaded.mediaType;
+      if (uploaded.moderationBlocked) {
+        // Ya pagó: se acepta la reserva pero se marca y NO se proyecta.
+        await bookingRef.update({
+          moderationBlocked: true,
+          moderationReasons: uploaded.moderationReasons,
+        });
+      }
       trimStart = data.trimStart ?? null;
       trimEnd = data.trimEnd ?? null;
       frameX = data.frameX ?? null;
@@ -1354,6 +1395,14 @@ export class BookingsService {
     const booking = bookingDoc.data();
     if (!booking) throw new NotFoundException('Booking sin datos');
 
+    // Imagen rechazada por la moderación de contenido (llegó después del
+    // pago): no se genera ni se proyecta. Se marca BLOCKED para que salga de
+    // la cola y el admin la revise.
+    if (booking.moderationBlocked) {
+      await bookingRef.update({ status: 'BLOCKED' });
+      return { success: false, blocked: true };
+    }
+
     // Sin filtro seleccionado (política de filtros desactivada, o el cliente
     // reservó cuando estaba desactivada), o el archivo subido es un video (no
     // se edita ni se le aplica generación de IA, solo se proyecta tal cual):
@@ -1664,6 +1713,11 @@ export class BookingsService {
     const b = bookingDoc.data();
 
     if (!b) throw new NotFoundException('Booking sin datos');
+    if (b.moderationBlocked) {
+      throw new ConflictException(
+        'Esta reserva fue bloqueada por la moderación de contenido y no se puede proyectar',
+      );
+    }
 
     let frameUrl = '';
 

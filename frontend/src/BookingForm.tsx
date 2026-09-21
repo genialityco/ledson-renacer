@@ -302,7 +302,19 @@ export function BookingForm() {
   // La foto queda recortada exactamente por lo que el usuario eligió en
   // ImageCropModal (siempre cuadrada, 512x512 — la misma proporción que ya
   // recibía la IA externa, sin arriesgar su compatibilidad).
-  const handleImageCropConfirm = (croppedBase64: string) => {
+  const handleImageCropConfirm = async (croppedBase64: string) => {
+    // Moderación de contenido ANTES de pagar: si la imagen tiene contenido
+    // sexual, armas o drogas se rechaza acá y el recorte queda abierto. Si el
+    // servicio no responde, no se bloquea al usuario.
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/moderation/check`, { imageBase64: croppedBase64 });
+      if (res.data?.blocked) {
+        alert(t('moderationBlocked'));
+        return;
+      }
+    } catch (err) {
+      console.error('No se pudo moderar la imagen:', err);
+    }
     if (useWebcam) setCapturedImage(croppedBase64);
     else setFileImageBase64(croppedBase64);
     setImageCropModalOpened(false);

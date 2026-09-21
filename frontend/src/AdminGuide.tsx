@@ -76,7 +76,7 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
     intro: 'Aspecto y tiempos de la pantalla (576×1152, vertical). Se aplica con «Guardar Configuración de Standby»; la pantalla toma los cambios en unos 3 segundos.',
     items: [
       'Fondo Global, Header y Footer: imágenes fijas de fondo, franja superior y franja inferior (opcionales).',
-      'Videoloop por defecto: video en bucle que se ve siempre que no haya ninguna experiencia, ni contenido de Parrilla ni Reposo que mostrar. Si no hay videoloop, la pantalla queda en negro.',
+      'Videoloop por defecto: video en bucle que se ve siempre que no haya ninguna experiencia, ni contenido de Parrilla ni Reposo que mostrar. Si no hay videoloop, se muestra la imagen por defecto.',
       'Imagen por defecto (respaldo): se proyecta en lugar de la foto o video de un cliente si este no se puede cargar (por ejemplo, falla de internet). Si no hay una, se usa el arte de bienvenida de la app.',
       'Sin internet: la pantalla guarda una copia local del videoloop, del video de transición y de la imagen por defecto (la primera vez que los carga con conexión) y la última configuración recibida. Si se cae la conexión, el videoloop sigue y una experiencia que no pueda cargarse se reemplaza por la imagen por defecto. Al volver el internet todo se normaliza solo.',
       'Duración Proyección Foto / Video (seg): cuánto tiempo se muestra la experiencia de un cliente; un video más largo se corta y uno más corto se repite.',
@@ -105,7 +105,7 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
       'Se apaga solo en cuanto alguien paga o se proyecta una experiencia.',
       '0 desactiva el Reposo: entonces se ve la Parrilla y, si no hay, el videoloop por defecto.',
       'Al agregar o editar un contenido espera a que termine de subirse (el botón dice «Subiendo archivo…»). Un cambio se ve cuando el ciclo llega a ese contenido; si el Reposo no está activo en ese momento, no se ve.',
-      'Orden de prioridad de la pantalla: experiencia en curso > Reposo > Parrilla > videoloop por defecto > negro.',
+      'Orden de prioridad de la pantalla: experiencia en curso > Reposo > Parrilla > videoloop por defecto > imagen por defecto.',
     ],
   },
   {

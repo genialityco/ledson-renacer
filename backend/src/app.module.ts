@@ -13,6 +13,7 @@ import { DlocalgoModule } from './dlocalgo/dlocalgo.module';
 import { PlansModule } from './plans/plans.module';
 import { SellersModule } from './sellers/sellers.module';
 import { BenefitsModule } from './benefits/benefits.module';
+import { ModerationModule } from './moderation/moderation.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
     SellersModule,
     BenefitsModule,
     PaymentMethodsModule,
+    ModerationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

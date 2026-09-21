@@ -3,10 +3,11 @@ import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
 import { EmailModule } from '../email/email.module';
 import { WompiModule } from '../wompi/wompi.module';
+import { ModerationModule } from '../moderation/moderation.module';
 import { DlocalgoModule } from '../dlocalgo/dlocalgo.module';
 
 @Module({
-  imports: [EmailModule, WompiModule, DlocalgoModule],
+  imports: [EmailModule, WompiModule, DlocalgoModule, ModerationModule],
   controllers: [BookingsController],
   providers: [BookingsService],
 })

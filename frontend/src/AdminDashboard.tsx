@@ -1656,7 +1656,7 @@ export function AdminDashboard() {
               </Text>
               <Text c="dimmed" size="sm" mb="sm">
                 3) <b>Videoloop por defecto</b> (campo en «Configuración de Pantalla (En Espera / Carrusel)», junto a Header y Footer): si la Parrilla no tiene ningún
-                ítem elegible, se reproduce este video en bucle. Si tampoco hay videoloop cargado, la pantalla queda en negro.
+                ítem elegible, se reproduce este video en bucle. Si tampoco hay videoloop cargado, se muestra la imagen por defecto.
                 Cualquier experiencia en curso siempre pasa por encima de los tres.
               </Text>
               <Group align="flex-end" mb="md">
