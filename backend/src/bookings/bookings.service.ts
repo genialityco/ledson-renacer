@@ -58,23 +58,46 @@ export class BookingsService {
     return s > 0 ? `${base}:${String(s).padStart(2, '0')}` : base;
   }
 
-  // Código de reserva consecutivo (001, 002, ...). El contador vive en
-  // lr_settings/counters y se incrementa dentro de una transacción de
-  // Firestore, así dos reservas simultáneas nunca reciben el mismo número.
-  // Es el mismo número que se ve en pantalla durante la proyección, para que
-  // cada persona sepa en qué turno va. Se asigna al crear la reserva, por lo
-  // que una reserva abandonada sin pagar deja un número sin usar.
-  private async generateBookingCode(): Promise<string> {
+  // Código de reserva "MES-DÍA-NNN" (ej. AG-20-001 = agosto 20, reserva 1).
+  // El prefijo identifica el día de la reserva y el número es consecutivo
+  // DENTRO de ese día (empieza en 001 cada día). El contador de cada fecha vive
+  // en lr_settings/counters (daily.YYYY-MM-DD) y se incrementa en una
+  // transacción de Firestore, así dos reservas simultáneas nunca reciben el
+  // mismo número. Es el que se ve en pantalla durante la proyección. Se
+  // asigna al crear la reserva, por lo que una reserva abandonada sin pagar
+  // deja un número sin usar. Ojo: el mes-día se repite cada año.
+  private async generateBookingCode(bookingDate?: string): Promise<string> {
+    const dateKey =
+      bookingDate && /^\d{4}-\d{2}-\d{2}$/.test(bookingDate)
+        ? bookingDate
+        : this.todayStr();
+    const months = [
+      'EN',
+      'FE',
+      'MR',
+      'AB',
+      'MY',
+      'JN',
+      'JL',
+      'AG',
+      'SE',
+      'OC',
+      'NO',
+      'DI',
+    ];
+    const month = months[Number(dateKey.slice(5, 7)) - 1] || 'XX';
+    const day = dateKey.slice(8, 10);
+
     const db = this.firebase.getFirestore();
     const ref = db.collection('lr_settings').doc('counters');
     const next = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
-      const current = snap.exists ? Number(snap.data()?.bookingCode) || 0 : 0;
+      const current = Number(snap.data()?.daily?.[dateKey]) || 0;
       const value = current + 1;
-      tx.set(ref, { bookingCode: value }, { merge: true });
+      tx.set(ref, { daily: { [dateKey]: value } }, { merge: true });
       return value;
     });
-    return String(next).padStart(3, '0');
+    return `${month}-${day}-${String(next).padStart(3, '0')}`;
   }
 
   // Correo de agradecimiento enviado al confirmar la foto (antes de que la
@@ -508,7 +531,7 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
-      code: await this.generateBookingCode(),
+      code: await this.generateBookingCode(finalBookingDate),
       timeSlot: finalTimeSlot,
       exactTime: 'Sin asignar', // Se asignará al confirmar el pago
       bookingDate: finalBookingDate,
@@ -638,7 +661,9 @@ export class BookingsService {
       const pay = await this.dlocalgo.getPaymentStatus(transactionId);
       const status = String(pay?.status || '').toUpperCase();
       if (!['PAID', 'APPROVED', 'COMPLETED', 'AUTHORIZED'].includes(status)) {
-        return { rejected: `Pago dLocal Go no aprobado (${status || 'sin estado'})` };
+        return {
+          rejected: `Pago dLocal Go no aprobado (${status || 'sin estado'})`,
+        };
       }
       return {
         fields: {
@@ -1133,7 +1158,7 @@ export class BookingsService {
       country,
       city,
       selectedFilter,
-      code: await this.generateBookingCode(),
+      code: await this.generateBookingCode(finalBookingDate),
       timeSlot:
         bookingSystemType === 'queue'
           ? ''
@@ -1547,6 +1572,7 @@ export class BookingsService {
           headerUrl: '',
           footerUrl: '',
           defaultVideoUrl: '',
+          defaultImageUrl: '',
           carouselImages: [],
           carouselDuration: 5,
           projectionDuration: 15,
@@ -1895,8 +1921,12 @@ export class BookingsService {
     // El botón de descarga apunta siempre al endpoint de descarga (que resuelve
     // la versión con marco vía emailFramedVideoUrl si la composición tuvo éxito).
     const downloadUrl = this.getDownloadUrl(b.code);
-    const mediaBlockEs = renderButton('Descarga tu recuerdo', downloadUrl, { widthPercent: 85 });
-    const mediaBlockEn = renderButton('Download your memory', downloadUrl, { widthPercent: 85 });
+    const mediaBlockEs = renderButton('Descarga tu recuerdo', downloadUrl, {
+      widthPercent: 85,
+    });
+    const mediaBlockEn = renderButton('Download your memory', downloadUrl, {
+      widthPercent: 85,
+    });
     const { html, subject } = this.buildResultEmail(
       b.name,
       b.email,
@@ -1997,10 +2027,14 @@ export class BookingsService {
         // así que para video el botón de descarga es el único CTA. Para foto
         // se mantiene la imagen embebida y se agrega el botón debajo.
         const mediaBlockEs = isVideo
-          ? renderButton('Descarga tu recuerdo', downloadUrl, { widthPercent: 85 })
+          ? renderButton('Descarga tu recuerdo', downloadUrl, {
+              widthPercent: 85,
+            })
           : `${renderResultMediaImage(emailImageUrl, 'Tu foto')}${renderButton('Descarga tu recuerdo', downloadUrl, { widthPercent: 85 })}`;
         const mediaBlockEn = isVideo
-          ? renderButton('Download your memory', downloadUrl, { widthPercent: 85 })
+          ? renderButton('Download your memory', downloadUrl, {
+              widthPercent: 85,
+            })
           : `${renderResultMediaImage(emailImageUrl, 'Your photo')}${renderButton('Download your memory', downloadUrl, { widthPercent: 85 })}`;
 
         const { html, subject } = this.buildResultEmail(

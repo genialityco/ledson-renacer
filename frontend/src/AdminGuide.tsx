@@ -9,7 +9,7 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
     title: 'Reservas y Pagos',
     intro: 'Listado de todas las reservas (pagadas por web y creadas en el stand). Es solo consulta y acciones puntuales.',
     items: [
-      'Código: número consecutivo de la reserva (001, 002…). Es el mismo que se muestra en la pantalla gigante durante la proyección, para que cada persona sepa en qué turno va. Se asigna al crear la reserva, por lo que una reserva abandonada sin pagar deja un número sin usar.',
+      'Código: formato MES-DÍA-NÚMERO, por ejemplo AG-20-001 = agosto 20, reserva 1. El número es consecutivo dentro de cada día (001, 002…) y arranca de nuevo cada día. Es el mismo que se muestra en la pantalla gigante durante la proyección, para que cada persona sepa en qué turno va. Se asigna al crear la reserva, por lo que una reserva abandonada sin pagar deja un número sin usar. Meses: EN, FE, MR, AB, MY, JN, JL, AG, SE, OC, NO, DI.',
       'Estados: PENDING (creada, sin pagar) → APPROVED (pagada) → GENERATED (imagen lista) → SHOWN (proyectada) → COMPLETED (terminada, correo y WhatsApp enviados).',
       'Exportar ventas (Excel): descarga un archivo .xlsx con todas las reservas y TODOS sus campos, una fila por reserva. «Desde/Hasta» son opcionales y filtran por la fecha de la reserva; vacíos = todas.',
       'Ver Calendario de Reservas: vista de calendario con las reservas por día.',
@@ -77,6 +77,8 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
     items: [
       'Fondo Global, Header y Footer: imágenes fijas de fondo, franja superior y franja inferior (opcionales).',
       'Videoloop por defecto: video en bucle que se ve siempre que no haya ninguna experiencia, ni contenido de Parrilla ni Reposo que mostrar. Si no hay videoloop, la pantalla queda en negro.',
+      'Imagen por defecto (respaldo): se proyecta en lugar de la foto o video de un cliente si este no se puede cargar (por ejemplo, falla de internet). Si no hay una, se usa el arte de bienvenida de la app.',
+      'Sin internet: la pantalla guarda una copia local del videoloop, del video de transición y de la imagen por defecto (la primera vez que los carga con conexión) y la última configuración recibida. Si se cae la conexión, el videoloop sigue y una experiencia que no pueda cargarse se reemplaza por la imagen por defecto. Al volver el internet todo se normaliza solo.',
       'Duración Proyección Foto / Video (seg): cuánto tiempo se muestra la experiencia de un cliente; un video más largo se corta y uno más corto se repite.',
       'Ancho / Alto (px): resolución real de la pantalla; a esas proporciones se recortan las fotos y videos de los clientes.',
       'Efecto de Revelado: cómo aparece la foto (spray, fundido, video overlay o partículas). Con «Video Overlay» se reproduce un video de transición encima de la foto al entrar y al salir; «Duración del Fade» es cuántos segundos finales del video se desvanecen.',

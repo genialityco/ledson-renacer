@@ -63,6 +63,9 @@ export function AdminDashboard() {
   // no hay proyección activa (reemplaza la tarjeta estática de bienvenida +
   // QR que se mostraba antes como "nada que mostrar").
   const [defaultVideoUrl, setDefaultVideoUrl] = useState('');
+  // Imagen de respaldo: se proyecta en lugar de la foto/video de un cliente si
+  // este no se puede cargar (ej. sin internet).
+  const [defaultImageUrl, setDefaultImageUrl] = useState('');
   // Los campos numéricos de abajo usan '' como estado intermedio válido
   // (campo vacío mientras se escribe). Forzar a un número en cada tecla (ej.
   // `Number(val) || 15`) rompe el cursor al borrar el campo: el valor salta
@@ -183,6 +186,7 @@ export function AdminDashboard() {
         setHeaderUrl(resScreen.data.headerUrl || '');
         setFooterUrl(resScreen.data.footerUrl || '');
         setDefaultVideoUrl(resScreen.data.defaultVideoUrl || '');
+        setDefaultImageUrl(resScreen.data.defaultImageUrl || '');
         setProjectionDuration(resScreen.data.projectionDuration || 15);
         setVideoProjectionDuration(resScreen.data.videoProjectionDuration || 15);
         setGlobalGridStartTime(resScreen.data.globalGridStartTime || '08:00:00');
@@ -338,6 +342,7 @@ export function AdminDashboard() {
       headerUrl,
       footerUrl,
       defaultVideoUrl,
+      defaultImageUrl,
       projectionDuration: Number(projectionDuration) || 15,
       videoProjectionDuration: Number(videoProjectionDuration) || 15,
       globalGridStartTime,
@@ -1370,6 +1375,26 @@ export function AdminDashboard() {
                         <CloseButton size="sm" title="Quitar videoloop" onClick={() => setDefaultVideoUrl('')} />
                       )}
                       <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setDefaultVideoUrl })} accept="video/*">
+                        {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
+                      </FileButton>
+                    </Group>
+                  }
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <TextInput
+                  label="Imagen por defecto (respaldo)"
+                  description="Se proyecta si la foto o video de un cliente no carga (ej. falla de internet). Si se deja vacía, se usa el arte de bienvenida de la app."
+                  placeholder="URL o subir archivo..."
+                  value={defaultImageUrl}
+                  onChange={e => setDefaultImageUrl(e.currentTarget.value)}
+                  rightSectionWidth={defaultImageUrl ? 68 : 36}
+                  rightSection={
+                    <Group gap={4} wrap="nowrap">
+                      {defaultImageUrl && (
+                        <CloseButton size="sm" title="Quitar imagen por defecto" onClick={() => setDefaultImageUrl('')} />
+                      )}
+                      <FileButton onChange={(f) => handleScreenAssetSelect(f, { setUrlCallback: setDefaultImageUrl })} accept="image/*">
                         {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16}/></ActionIcon>}
                       </FileButton>
                     </Group>

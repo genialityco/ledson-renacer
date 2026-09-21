@@ -334,6 +334,7 @@ body {
   border: 1.5px solid var(--ledson-blue) !important;
   border-radius: 10px !important;
   transition: background 0.15s ease !important;
+  padding: 12px 16px !important;
 }
 .ledson-btn-outline:hover {
   background: var(--ledson-blue-soft) !important;

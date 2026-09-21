@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Box, Transition as MantineTransition } from '@mantine/core';
 import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import axios from 'axios';
@@ -7,6 +7,23 @@ import './graffiti.css';
 import './ledson-clean.css';
 import { SprayEffect } from './SprayEffect';
 import { API_BASE_URL } from './config';
+import { useCachedAsset } from './useCachedAsset';
+
+const SETTINGS_STORAGE_KEY = 'ledson-screen-settings';
+
+// Última configuración recibida del backend, guardada en el navegador: si la
+// pantalla se recarga o arranca SIN internet, sigue con la misma configuración
+// (videoloop, fondo, header/footer, etc.) en vez de quedar vacía. Nunca se
+// restaura una proyección en curso ni la cola: eso lo decide siempre el backend.
+const loadStoredSettings = (): any | null => {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    return { ...JSON.parse(raw), currentProjection: null, hasPendingQueue: false };
+  } catch {
+    return null;
+  }
+};
 
 const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: any) => {
   const nodeRef = useRef(null);
@@ -59,11 +76,12 @@ const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: 
 };
 
 export function BigScreenView() {
-  const [settings, setSettings] = useState<any>({
+  const [rawSettings, setRawSettings] = useState<any>(() => loadStoredSettings() || {
     backgroundUrl: '',
     headerUrl: '',
     footerUrl: '',
     defaultVideoUrl: '',
+    defaultImageUrl: '',
     carouselImages: [],
     contentGrid: [],
     restScreenIdleMinutes: 0,
@@ -71,6 +89,17 @@ export function BigScreenView() {
     hasPendingQueue: false,
     currentProjection: null
   });
+  // Proyección que ya cumplió su tiempo pero cuyo aviso de "completada" no
+  // llegó al backend (sin internet): se oculta localmente para que la pantalla
+  // no se quede congelada en ella, y se sigue reintentando avisar.
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
+  const settings = useMemo(
+    () =>
+      rawSettings.currentProjection && rawSettings.currentProjection.id === dismissedId
+        ? { ...rawSettings, currentProjection: null }
+        : rawSettings,
+    [rawSettings, dismissedId],
+  );
   const [, setCurrentTimeString] = useState('');
   
   const [currentItem, setCurrentItem] = useState<any>(null);
@@ -163,7 +192,10 @@ export function BigScreenView() {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/bookings/screen-settings`);
       if (res.data) {
-        setSettings(res.data);
+        setRawSettings(res.data);
+        try {
+          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(res.data));
+        } catch { /* almacenamiento lleno o bloqueado: se ignora */ }
       }
     } catch (e) {
       console.error('Error fetching projections:', e);
@@ -299,13 +331,16 @@ export function BigScreenView() {
         ((isVideoProjection ? settings.videoProjectionDuration : settings.projectionDuration) || 15) * 1000;
       const timeRemaining = PROJECTION_DURATION - timeElapsed;
       
+      const projectionId = settings.currentProjection.id;
+      const complete = () =>
+        axios
+          .post(`${API_BASE_URL}/api/bookings/${projectionId}/complete`)
+          .catch(() => setDismissedId(projectionId));
       if (timeRemaining > 0) {
-        const timer = setTimeout(() => {
-          axios.post(`${API_BASE_URL}/api/bookings/${settings.currentProjection.id}/complete`);
-        }, timeRemaining);
+        const timer = setTimeout(complete, timeRemaining);
         return () => clearTimeout(timer);
       } else {
-        axios.post(`${API_BASE_URL}/api/bookings/${settings.currentProjection.id}/complete`);
+        complete();
       }
     } else if (!settings.currentProjection) {
       // Cuando la proyección se acaba, forzamos al carrusel a avanzar al siguiente contenido 
@@ -313,6 +348,19 @@ export function BigScreenView() {
       advanceCarousel();
     }
   }, [settings.currentProjection]);
+
+  // Reintenta avisar la finalización de una proyección ocultada por falta de
+  // conexión, hasta que el backend responda.
+  useEffect(() => {
+    if (!dismissedId) return;
+    const t = setInterval(() => {
+      axios
+        .post(`${API_BASE_URL}/api/bookings/${dismissedId}/complete`)
+        .then(() => clearInterval(t))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(t);
+  }, [dismissedId]);
 
   const handleVideoEnded = () => {
     // Si hay una proyección activa, no cambiamos el fondo
@@ -325,12 +373,44 @@ export function BigScreenView() {
   const getTransitionName = (t: string) => t?.startsWith('carousel-') ? t : `carousel-${t}`;
 
   // Guardar la última proyección para que la animación de salida sepa qué renderizar
-  const [displayProjection, setDisplayProjection] = useState<any>(null);
+  const [rawDisplayProjection, setDisplayProjection] = useState<any>(null);
   useEffect(() => {
     if (settings.currentProjection) {
       setDisplayProjection(settings.currentProjection);
     }
   }, [settings.currentProjection]);
+
+  // Respaldo de proyección: si la foto/video del cliente no se puede cargar
+  // (sin internet, archivo caído), en su lugar se muestra la imagen por
+  // defecto (configurable en Admin; si no hay, el arte de bienvenida de la
+  // app) para que la pantalla nunca quede en negro ni con un ícono roto.
+  const defaultImageSrc = useCachedAsset(settings.defaultImageUrl || '/imagenes/inicioc13.png');
+  const [projectionFailed, setProjectionFailed] = useState(false);
+  useEffect(() => {
+    setProjectionFailed(false);
+    const p = rawDisplayProjection;
+    if (!p || p.mediaType === 'video' || !p.imageUrl) return;
+    let done = false;
+    const img = new Image();
+    img.onload = () => { done = true; };
+    img.onerror = () => { done = true; setProjectionFailed(true); };
+    img.src = p.imageUrl;
+    const timeout = setTimeout(() => { if (!done) setProjectionFailed(true); }, 8000);
+    return () => { clearTimeout(timeout); img.onload = null; img.onerror = null; };
+  }, [rawDisplayProjection?.id]);
+  const displayProjection = useMemo(
+    () =>
+      projectionFailed && rawDisplayProjection
+        ? { ...rawDisplayProjection, mediaType: 'image', imageUrl: defaultImageSrc, frameUrl: '' }
+        : rawDisplayProjection,
+    [projectionFailed, rawDisplayProjection, defaultImageSrc],
+  );
+
+  // Copias locales de los videos clave (ver useCachedAsset): siguen
+  // reproduciéndose aunque se caiga el internet.
+  const defaultVideoSrc = useCachedAsset(settings.defaultVideoUrl);
+  const overlayVideoSrc = useCachedAsset(displayProjection?.revealOverlayVideoUrl);
+  const [standbyKey, setStandbyKey] = useState(0);
 
   // Efecto de revelado "Overlay de Video": un video se reproduce encima de la
   // foto/video real (que ya está debajo, visible desde el inicio) y en sus
@@ -387,6 +467,19 @@ export function BigScreenView() {
     hadProjectionRef.current = has;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.currentProjection]);
+
+  // Salvavidas del video de transición: si se traba (red caída a mitad de la
+  // reproducción) no debe dejar la pantalla tapada ni la salida sin terminar.
+  useEffect(() => {
+    if (!exiting) return;
+    const t = setTimeout(() => setExiting(false), 6000);
+    return () => clearTimeout(t);
+  }, [exiting]);
+  useEffect(() => {
+    if (!overlayReady || exiting) return;
+    const t = setTimeout(() => setOverlayOpacity(0), 15000);
+    return () => clearTimeout(t);
+  }, [overlayReady, exiting, displayProjection?.id]);
 
   const handleOverlayTimeUpdate = () => {
     if (exiting) return;
@@ -478,11 +571,16 @@ export function BigScreenView() {
               <CSSTransition key="default-videoloop" appear={true} nodeRef={fallbackNodeRef} timeout={1000} classNames="carousel-fade">
                 <Box ref={fallbackNodeRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1, backgroundColor: '#000' }}>
                   <video
-                    src={settings.defaultVideoUrl}
+                    // key: si el video falla o se corta por la red, se vuelve a
+                    // montar a los 3s (con la copia local cuando ya existe).
+                    key={standbyKey}
+                    src={defaultVideoSrc}
                     autoPlay
                     muted
                     loop
                     playsInline
+                    onError={() => setTimeout(() => setStandbyKey((k) => k + 1), 3000)}
+                    onStalled={(e) => { const v = e.currentTarget; setTimeout(() => { if (v.paused || v.readyState < 3) setStandbyKey((k) => k + 1); }, 8000); }}
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   />
                 </Box>
@@ -529,6 +627,7 @@ export function BigScreenView() {
                     // loop nativo de siempre.
                     loop={!displayProjection?.trimEnd}
                     playsInline
+                    onError={() => setProjectionFailed(true)}
                     onLoadedMetadata={() => {
                       if (projectionVideoRef.current && displayProjection?.trimStart) {
                         projectionVideoRef.current.currentTime = displayProjection.trimStart;
@@ -591,7 +690,7 @@ export function BigScreenView() {
                   <video
                     key={`${displayProjection?.id}${exitPlayed ? '-exit' : ''}`}
                     ref={overlayVideoRef}
-                    src={displayProjection.revealOverlayVideoUrl}
+                    src={overlayVideoSrc}
                     autoPlay
                     muted
                     playsInline
