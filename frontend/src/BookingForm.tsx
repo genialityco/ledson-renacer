@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Text, Grid, Modal, Checkbox, Card, Image, Badge, UnstyledButton, ActionIcon, Input, Loader, Center } from '@mantine/core';
 import { IconCamera, IconCreditCard, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo, IconLock } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
+import { CameraView } from './CameraView';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
@@ -85,6 +86,9 @@ export function BookingForm() {
   // null = "aún no se sabe" (settings sin cargar); evita que el paso de
   // filtros aparezca y desaparezca de golpe mientras llega la respuesta.
   const [filtersEnabled, setFiltersEnabled] = useState<boolean | null>(null);
+  // true si no se pudieron cargar los ajustes del plan (backend inalcanzable):
+  // evita dejar el loader girando para siempre sin decir nada.
+  const [settingsLoadError, setSettingsLoadError] = useState(false);
   const [servicePrice, setServicePrice] = useState(15000);
 
   const [activeStep, setActiveStep] = useState(0);
@@ -166,7 +170,10 @@ export function BookingForm() {
         setFiltersEnabled(res.data?.filtersEnabled ?? true);
         setServicePrice(res.data?.price ?? 15000);
       })
-      .catch((err) => console.error("Error fetching plan settings", err));
+      .catch((err) => {
+        console.error("Error fetching plan settings", err);
+        setSettingsLoadError(true);
+      });
 
     axios.get(`${API_BASE_URL}/api/bookings/screen-settings`)
       .then((res) => {
@@ -600,7 +607,14 @@ export function BookingForm() {
         {filtersEnabled === null && activeStep === 0 && (
           <Box className="ledson-card">
             <Center py="xl">
-              <Loader color="blue" />
+              {settingsLoadError ? (
+                <Box ta="center">
+                  <Text mb="md">{t('connectionError')}</Text>
+                  <Button className="ledson-btn-primary" onClick={() => window.location.reload()}>{t('retry')}</Button>
+                </Box>
+              ) : (
+                <Loader color="blue" />
+              )}
             </Center>
           </Box>
         )}
@@ -1008,7 +1022,7 @@ export function BookingForm() {
         >
           <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <Box style={{ width: '100%', maxWidth: '600px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000' }}>
-              <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={{ facingMode: 'user', height: 720 }} style={{ width: '100%', height: '60vh', objectFit: 'cover', display: 'block' }} />
+              <CameraView webcamRef={webcamRef} />
             </Box>
             <Button className="ledson-btn-primary" mt="xl" onClick={capture} leftSection={<IconCamera size={20} />}>
               {t('capture')}

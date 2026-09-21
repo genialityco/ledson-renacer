@@ -958,3 +958,12 @@ body {
     --ledson-footer-gap: 12px;
   }
 }
+
+/* En el flujo de reserva el botón "Continuar/Pagar" debe medir lo mismo que
+   el botón "Atrás" (54px, fijo) también en celular: los bloques compactos por
+   altura le bajaban el padding vertical (40px / 34px) pero al "Atrás" no.
+   La especificidad mayor (.ledson-booking-wrap) gana a esos bloques. */
+.ledson-booking-wrap .ledson-btn-primary {
+  min-height: 54px !important;
+  padding: 12px 16px !important;
+}
