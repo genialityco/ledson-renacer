@@ -515,7 +515,7 @@ export function BigScreenView() {
   const screenHeight = settings.cropHeight || 1152;
 
   return (
-    <Box style={{ width: '100vw', height: '100vh', backgroundColor: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+    <Box style={{ width: '100vw', height: '100vh', backgroundColor: '#000', display: 'flex', justifyContent: 'flex-start', alignItems: 'center', overflow: 'hidden' }}>
     <Box
       style={{
         width: '100%',
