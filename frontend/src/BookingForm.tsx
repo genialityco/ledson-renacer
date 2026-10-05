@@ -63,6 +63,10 @@ export function BookingForm() {
   const [videoTrimModalOpened, setVideoTrimModalOpened] = useState(false);
   const [rawVideoFile, setRawVideoFile] = useState<File | null>(null);
   const [videoTrim, setVideoTrim] = useState<{ trimStart: number; trimEnd: number; frameX?: number; frameY?: number; frameZoom?: number } | null>(null);
+  // Moderación de video corre ANTES de pagar (igual que la foto), al confirmar
+  // el tramo elegido — puede tardar varios segundos (recorte + Sightengine),
+  // así que el modal se queda abierto con un loading mientras se resuelve.
+  const [isCheckingVideoModeration, setIsCheckingVideoModeration] = useState(false);
 
   const [name, setName] = useState('');
   const [docType, setDocType] = useState<string | null>(null);
@@ -333,13 +337,30 @@ export function BookingForm() {
   const handleVideoTrimConfirm = (trim: { trimStart: number; trimEnd: number; frameX?: number; frameY?: number; frameZoom?: number }) => {
     if (!rawVideoFile) return;
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setFileImageBase64(reader.result as string);
+    reader.onloadend = async () => {
+      const videoBase64 = reader.result as string;
+      setIsCheckingVideoModeration(true);
+      try {
+        const res = await axios.post(`${API_BASE_URL}/api/moderation/check-video`, {
+          videoBase64,
+          trimStart: trim.trimStart,
+          trimEnd: trim.trimEnd,
+        });
+        if (res.data?.blocked) {
+          alert(t('moderationBlockedVideo'));
+          return;
+        }
+      } catch (err) {
+        console.error('No se pudo moderar el video:', err);
+      } finally {
+        setIsCheckingVideoModeration(false);
+      }
+      setFileImageBase64(videoBase64);
       setVideoTrim(trim);
+      setVideoTrimModalOpened(false);
+      setRawVideoFile(null);
     };
     reader.readAsDataURL(rawVideoFile);
-    setVideoTrimModalOpened(false);
-    setRawVideoFile(null);
   };
 
   const handleVideoTrimCancel = () => {
@@ -1056,6 +1077,8 @@ export function BookingForm() {
           file={rawVideoFile}
           maxSeconds={15}
           aspect={cropWidth / cropHeight}
+          confirming={isCheckingVideoModeration}
+          confirmingLabel={t('moderationCheckingVideo')}
           onCancel={handleVideoTrimCancel}
           onConfirm={handleVideoTrimConfirm}
         />

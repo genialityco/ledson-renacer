@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Box, Text, Button, Group, RangeSlider, Slider } from '@mantine/core';
+import { Modal, Box, Text, Button, Group, RangeSlider, Slider, Loader } from '@mantine/core';
 import { IconPlayerPlay, IconPlayerPause } from '@tabler/icons-react';
 import { useLanguage } from './i18n';
 
@@ -12,6 +12,11 @@ interface VideoTrimModalProps {
   // (arrastrar + zoom); si se omite, el modal se comporta como antes (solo
   // selector de tramo, sin encuadre espacial).
   aspect?: number;
+  // Mientras es true, el botón "Confirmar" queda deshabilitado y muestra un
+  // spinner (ej. durante la moderación de contenido, que puede tardar varios
+  // segundos). El modal sigue abierto — lo cierra el caller al terminar.
+  confirming?: boolean;
+  confirmingLabel?: string;
   onCancel: () => void;
   onConfirm: (trim: { trimStart: number; trimEnd: number; frameX?: number; frameY?: number; frameZoom?: number }) => void;
 }
@@ -32,7 +37,7 @@ const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(mi
 // (posición, en % relativo al centro) y frameZoom, y la pantalla aplica
 // exactamente el mismo transform al reproducir — así el encuadre que ve el
 // usuario aquí es el mismo que se proyecta.
-export function VideoTrimModal({ opened, file, maxSeconds, aspect, onCancel, onConfirm }: VideoTrimModalProps) {
+export function VideoTrimModal({ opened, file, maxSeconds, aspect, confirming, confirmingLabel, onCancel, onConfirm }: VideoTrimModalProps) {
   // Sin maxSeconds no hay límite de duración del tramo (ej. contenido de la
   // pantalla de reposo, que puede durar lo que sea) — solo se acota si el
   // caller pasa un valor explícito (ej. 15 para el video del photobooth).
@@ -134,7 +139,7 @@ export function VideoTrimModal({ opened, file, maxSeconds, aspect, onCancel, onC
   };
 
   return (
-    <Modal opened={opened} onClose={onCancel} size="md" title={t('trimModalTitle')} centered>
+    <Modal opened={opened} onClose={confirming ? () => {} : onCancel} closeOnClickOutside={!confirming} closeOnEscape={!confirming} withCloseButton={!confirming} size="md" title={t('trimModalTitle')} centered>
       <Box
         ref={containerRef}
         onPointerDown={handlePointerDown}
@@ -218,11 +223,18 @@ export function VideoTrimModal({ opened, file, maxSeconds, aspect, onCancel, onC
           />
         </>
       )}
+      {confirming && (
+        <Group gap="xs" mt="sm" justify="center">
+          <Loader size="xs" />
+          <Text size="sm" c="dimmed">{confirmingLabel}</Text>
+        </Group>
+      )}
       <Group justify="space-between" mt="lg">
-        <Button variant="default" onClick={onCancel}>{t('trimCancel')}</Button>
+        <Button variant="default" onClick={onCancel} disabled={confirming}>{t('trimCancel')}</Button>
         <Button
           color="blue"
-          disabled={duration === 0}
+          disabled={duration === 0 || confirming}
+          loading={confirming}
           onClick={() => onConfirm({
             trimStart: range[0],
             trimEnd: range[1],

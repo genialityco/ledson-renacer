@@ -276,11 +276,19 @@ export class BookingsService {
   private async uploadMediaBase64(
     mediaBase64: string,
     folder = 'bookings',
-    // flagOnly: NO lanza si la moderación rechaza la imagen, solo lo informa
+    // flagOnly: NO lanza si la moderación rechaza el archivo, solo lo informa
     // (moderationBlocked) — se usa cuando el cliente ya pagó y no se le puede
     // rechazar la reserva a estas alturas; la reserva queda marcada y no se
-    // proyecta. Por defecto se rechaza con 400 y la imagen ni se guarda.
-    opts: { flagOnly?: boolean } = {},
+    // proyecta. Por defecto se rechaza con 400 y el archivo ni se guarda.
+    // trimStart/trimEnd: tramo que el cliente eligió mostrar del video (ver
+    // VideoTrimModal) — si ya se conoce en el momento de subir, la moderación
+    // de video revisa ESE tramo; si no (ej. se sube antes de elegir tramo),
+    // revisa los primeros 15s.
+    opts: {
+      flagOnly?: boolean;
+      trimStart?: number;
+      trimEnd?: number;
+    } = {},
   ): Promise<{
     url: string;
     mediaType: 'image' | 'video';
@@ -310,6 +318,10 @@ export class BookingsService {
     const base64Data = mediaBase64.replace(/^data:[\w/+.-]+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
+    // Moderación ANTES de subir a Storage (para foto y video por igual): si
+    // se rechaza, el archivo nunca se guarda. checkVideo ya no necesita una
+    // URL pública — recorta el tramo elegido (trimStart/trimEnd) directamente
+    // sobre el buffer en memoria.
     let moderationBlocked = false;
     let moderationReasons: string[] = [];
     if (mediaType === 'image') {
@@ -320,6 +332,23 @@ export class BookingsService {
             code: 'CONTENT_NOT_ALLOWED',
             reasons: verdict.reasons,
             message: 'La imagen contiene contenido no permitido.',
+          });
+        }
+        moderationBlocked = true;
+        moderationReasons = verdict.reasons;
+      }
+    } else {
+      const verdict = await this.moderation.checkVideo(
+        buffer,
+        opts.trimStart || 0,
+        opts.trimEnd,
+      );
+      if (verdict.blocked) {
+        if (!opts.flagOnly) {
+          throw new BadRequestException({
+            code: 'CONTENT_NOT_ALLOWED',
+            reasons: verdict.reasons,
+            message: 'El video contiene contenido no permitido.',
           });
         }
         moderationBlocked = true;
@@ -634,6 +663,7 @@ export class BookingsService {
       const uploaded = await this.uploadMediaBase64(
         data.imageBase64,
         'bookings',
+        { trimStart: data.trimStart, trimEnd: data.trimEnd },
       );
       update.imageUrl = uploaded.url;
       update.mediaType = uploaded.mediaType;
@@ -757,7 +787,7 @@ export class BookingsService {
       const uploaded = await this.uploadMediaBase64(
         data.imageBase64,
         'bookings',
-        { flagOnly: true },
+        { flagOnly: true, trimStart: data.trimStart, trimEnd: data.trimEnd },
       );
       imageUrl = uploaded.url;
       mediaType = uploaded.mediaType;
@@ -1043,7 +1073,10 @@ export class BookingsService {
 
     // Si se envía una foto o video en base64, se sube a Firebase Storage
     if (imageBase64) {
-      const uploaded = await this.uploadMediaBase64(imageBase64, 'bookings');
+      const uploaded = await this.uploadMediaBase64(imageBase64, 'bookings', {
+        trimStart,
+        trimEnd,
+      });
       imageUrl = uploaded.url;
       mediaType = uploaded.mediaType;
     }
@@ -1409,6 +1442,9 @@ export class BookingsService {
     // no hay nada que generar, se respeta el horario agendado (igual que
     // cualquier booking GENERATED, vía el cron de autoProjectBookings).
     if (!booking.selectedFilter || booking.mediaType === 'video') {
+      // El video ya se moderó de forma síncrona al subirlo (ver
+      // uploadMediaBase64) — si se rechazó, booking.moderationBlocked ya lo
+      // atrapó arriba. Acá no queda nada más que hacer que con una foto.
       await bookingRef.update({
         generatedImageUrl: booking.imageUrl,
         status: 'GENERATED',
