@@ -99,6 +99,10 @@ export function AssistedBookingForm() {
   const [availableSlots, setAvailableSlots] = useState<{ value: string; label: string }[]>([]);
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
   const [currentFranja, setCurrentFranja] = useState<string | null>(null);
+  // true apenas el vendedor elige una franja distinta a la actual en el paso
+  // de la foto/video — evita que el refresco automático (cada 20s) le pise
+  // la selección manual con la franja "actual" de ese momento.
+  const [userPickedFranja, setUserPickedFranja] = useState(false);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [sellerId, setSellerId] = useState<string | null>(null);
   const [benefits, setBenefits] = useState<BenefitOption[]>([]);
@@ -188,20 +192,22 @@ export function AssistedBookingForm() {
     }
   }, [bookingDate]);
 
-  // En modo "franjas" el backend auto-asigna la primera franja con cupo al
-  // crear la reserva (sin pedirle selección al admin, ver createBooking en
-  // el backend) — acá solo mostramos, a modo informativo para el staff, cuál
-  // es la franja actual mientras se toma/carga la foto. Por eso no hay
-  // selector para cambiarla, a diferencia de BookingForm (que sí permite
-  // elegir porque ahí el usuario paga por adelantado).
+  // En modo "franjas" el backend auto-asigna la primera franja con cupo si no
+  // se manda timeSlot al crear la reserva — acá, igual que en BookingForm, se
+  // deja elegir al vendedor una franja distinta mientras toma/carga la foto,
+  // mostrando cupos disponibles.
   useEffect(() => {
     if (bookingSystemType !== 'franjas' || activeStep !== 2) return;
 
     const fetchFranjas = () => {
       axios.get(`${API_BASE_URL}/api/bookings/franjas`)
         .then((res) => {
+          setFranjasAvailability(res.data);
           const current = (res.data?.franjas || []).find((f: any) => f.isCurrent);
-          if (current) setCurrentFranja(current.timeSlot);
+          if (current) {
+            setCurrentFranja(current.timeSlot);
+            if (!userPickedFranja) setTimeSlot(current.timeSlot);
+          }
         })
         .catch((err) => console.error('Error fetching franjas', err));
     };
@@ -209,7 +215,7 @@ export function AssistedBookingForm() {
     fetchFranjas();
     const interval = setInterval(fetchFranjas, 20000);
     return () => clearInterval(interval);
-  }, [bookingSystemType, activeStep]);
+  }, [bookingSystemType, activeStep, userPickedFranja]);
 
   const handleCountryChange = (selectedCountry: string | null) => {
     setCountry(selectedCountry);
@@ -736,12 +742,27 @@ export function AssistedBookingForm() {
             )}
 
             {bookingSystemType === 'franjas' && (
-              <Text size="sm" mb="md" style={{ color: '#33363b' }}>
-                Horario aproximado de publicación:{' '}
-                <Text span fw={700} style={{ color: '#0559A5' }}>
-                  {currentFranja ? currentFranja.replace('-', ' - ') : '...'}
+              <Box my="lg">
+                <Text size="sm" mb={16}>
+                  Horario aproximado de publicación:{' '}
+                  <Text span fw={700} style={{ color: '#0559A5' }}>
+                    {timeSlot ? timeSlot.replace('-', ' - ') : (currentFranja ? currentFranja.replace('-', ' - ') : '...')}
+                  </Text>
                 </Text>
-              </Text>
+                <Select
+                  label="Cambiar franja"
+                  placeholder="Selecciona otra franja"
+                  data={(franjasAvailability?.franjas || [])
+                    .filter((f: any) => f.available)
+                    .map((f: any) => ({
+                      value: f.timeSlot,
+                      label: `${f.timeSlot.replace('-', ' - ')}${f.isCurrent ? ' (actual)' : ''} — ${f.spotsLeft} cupos`,
+                    }))}
+                  value={timeSlot}
+                  onChange={(val) => { setTimeSlot(val); setUserPickedFranja(true); }}
+                  disabled={!franjasAvailability}
+                />
+              </Box>
             )}
 
             <Text size="sm" fw={500} mb="md" style={{ color: '#0559A5' }}>

@@ -1110,24 +1110,42 @@ export class BookingsService {
     }
 
     if (bookingSystemType === 'franjas') {
-      // Flujo asistido: se asigna automáticamente la primera franja con cupo
-      // empezando por la actual (sin pedirle selección al admin).
+      // Flujo asistido: se respeta la franja que el vendedor eligió en el
+      // paso de la foto (timeSlot, ver el selector en AssistedBookingForm,
+      // igual que en confirmPayment para /booking). Si no eligió ninguna, o
+      // esa ya se llenó, se cae al barrido automático desde la franja actual
+      // (comportamiento previo).
       const now = new Date();
       const nowMins = now.getHours() * 60 + now.getMinutes();
-      const currentStart = nowMins - (nowMins % franjaDuration);
 
-      for (let start = currentStart; start < 24 * 60; start += franjaDuration) {
-        const slot = `${this.toTimeStr(start)}-${this.toTimeStr(start + franjaDuration)}`;
+      if (timeSlot) {
         const free = await this.findFreeMinuteInFranja(
           finalBookingDate,
-          slot,
+          timeSlot,
           slotDuration,
           nowMins,
         );
         if (free) {
           exactTime = free;
-          assignedFranjaSlot = slot;
-          break;
+          assignedFranjaSlot = timeSlot;
+        }
+      }
+
+      if (exactTime === 'Sin asignar') {
+        const currentStart = nowMins - (nowMins % franjaDuration);
+        for (let start = currentStart; start < 24 * 60; start += franjaDuration) {
+          const slot = `${this.toTimeStr(start)}-${this.toTimeStr(start + franjaDuration)}`;
+          const free = await this.findFreeMinuteInFranja(
+            finalBookingDate,
+            slot,
+            slotDuration,
+            nowMins,
+          );
+          if (free) {
+            exactTime = free;
+            assignedFranjaSlot = slot;
+            break;
+          }
         }
       }
 
