@@ -43,6 +43,12 @@ export class ModerationService {
   // acotado a 15s (ver checkVideo), un valor de 1 son ~15 fotogramas por clip.
   private readonly videoFrameInterval =
     Number(process.env.SIGHTENGINE_VIDEO_FRAME_INTERVAL) || 1;
+  // Tiempo máximo total (recorte + Sightengine) para moderar un video. El
+  // balanceador de DigitalOcean App Platform corta las peticiones a los ~100s
+  // con un 504, así que hay que responder antes; si se pasa, se deja pasar
+  // (fail-open) igual que cualquier otro fallo de moderación.
+  private readonly videoBudgetMs =
+    Number(process.env.MODERATION_VIDEO_BUDGET_MS) || 75000;
   // Umbrales (0 a 1): a partir de esta probabilidad se bloquea.
   private readonly sexualThreshold =
     Number(process.env.MODERATION_SEXUAL_THRESHOLD) || 0.5;
@@ -160,24 +166,61 @@ export class ModerationService {
       os.tmpdir(),
       `moderation-clip-${Date.now()}-${uuidv4()}.mp4`,
     );
+    const startedAt = Date.now();
     try {
       fs.writeFileSync(inputPath, buffer);
       this.logger.log(
         `Recortando tramo ${start}s-${start + clipDuration}s (entrada: ${buffer.length} bytes) para moderar`,
       );
+      // El clip solo se usa para moderar, así que se baja a máx. 480px y a
+      // pocos fotogramas por segundo con el preset más rápido de x264. Recodificar
+      // a resolución original (1080p/4K de celular) con el preset por defecto
+      // tardaba minutos en la CPU compartida de DigitalOcean y disparaba el 504.
+      const fps = Math.max(2, Math.ceil(1 / this.videoFrameInterval));
       await new Promise<void>((resolve, reject) => {
-        ffmpeg(inputPath)
+        const command = ffmpeg(inputPath)
           .setStartTime(start)
           .duration(clipDuration)
           .noAudio()
+          .videoFilters([
+            `fps=${fps}`,
+            "scale=w='min(480,iw)':h='min(480,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+          ])
+          .outputOptions([
+            '-c:v libx264',
+            '-preset ultrafast',
+            '-crf 30',
+            '-pix_fmt yuv420p',
+          ])
           .output(clipPath)
-          .on('end', () => resolve())
-          .on('error', (err: Error) => reject(err))
-          .run();
+          .on('end', () => {
+            clearTimeout(timer);
+            resolve();
+          })
+          .on('error', (err: Error) => {
+            clearTimeout(timer);
+            reject(err);
+          });
+        const timer = setTimeout(() => {
+          command.kill('SIGKILL');
+          reject(
+            new Error(`ffmpeg superó el tiempo máximo (${this.videoBudgetMs}ms)`),
+          );
+        }, this.videoBudgetMs);
+        command.run();
       });
       const clipBuffer = fs.readFileSync(clipPath);
-      this.logger.log(`Clip recortado: ${clipBuffer.length} bytes`);
-      return await this.checkVideoBuffer(clipBuffer);
+      const remainingMs = this.videoBudgetMs - (Date.now() - startedAt);
+      this.logger.log(
+        `Clip recortado: ${clipBuffer.length} bytes en ${Date.now() - startedAt}ms`,
+      );
+      if (remainingMs < 5000) {
+        this.logger.warn(
+          'Moderación de video OMITIDA: el recorte consumió casi todo el tiempo disponible',
+        );
+        return { blocked: false, reasons: [], checked: false };
+      }
+      return await this.checkVideoBuffer(clipBuffer, remainingMs);
     } catch (e: any) {
       this.logger.error(
         `No se pudo recortar el video con ffmpeg (se permite, no se llegó a llamar a Sightengine): ${e?.message}`,
@@ -189,7 +232,10 @@ export class ModerationService {
     }
   }
 
-  private async checkVideoBuffer(buffer: Buffer): Promise<ModerationResult> {
+  private async checkVideoBuffer(
+    buffer: Buffer,
+    timeoutMs = 60000,
+  ): Promise<ModerationResult> {
     try {
       const form = new FormData();
       form.append('media', buffer, {
@@ -207,7 +253,7 @@ export class ModerationService {
       const res = await axios.post(
         'https://api.sightengine.com/1.0/video/check-sync.json',
         form,
-        { headers: form.getHeaders(), timeout: 60000, maxBodyLength: Infinity },
+        { headers: form.getHeaders(), timeout: timeoutMs, maxBodyLength: Infinity },
       );
       const data = res.data;
       this.logger.log(
