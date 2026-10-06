@@ -7,6 +7,7 @@ import { join } from 'path';
 export class FirebaseService implements OnModuleInit {
   private firestore: admin.firestore.Firestore;
   private storage: admin.storage.Storage;
+  private auth: admin.auth.Auth | undefined;
 
   onModuleInit() {
     let serviceAccount: any;
@@ -52,6 +53,7 @@ export class FirebaseService implements OnModuleInit {
 
     this.firestore = admin.firestore();
     this.storage = admin.storage();
+    this.auth = admin.auth();
     console.log('✅ Firebase Admin SDK inicializado');
   }
 
@@ -61,5 +63,10 @@ export class FirebaseService implements OnModuleInit {
 
   getStorage() {
     return this.storage;
+  }
+
+  // undefined si Firebase Admin no se pudo inicializar (sin cuenta de servicio).
+  getAuth() {
+    return this.auth;
   }
 }

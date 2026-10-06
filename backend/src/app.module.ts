@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -15,6 +16,7 @@ import { SellersModule } from './sellers/sellers.module';
 import { BenefitsModule } from './benefits/benefits.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
+import { AuthGuard } from './auth/auth.guard';
 
 @Module({
   imports: [
@@ -34,6 +36,6 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
     ModerationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

@@ -14,6 +14,7 @@ import {
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ImagesService } from './images.service';
+import { Roles } from '../auth/roles.decorator';
 
 const MAX_UPLOAD_BYTES = 300 * 1024 * 1024; // 300MB — cubre videos largos de la pantalla de reposo/parrilla
 
@@ -43,21 +44,25 @@ export class ImagesController {
     return this.imagesService.findAll();
   }
 
+  @Roles('admin')
   @Get('admin')
   async findAllAdmin() {
     return this.imagesService.findAllAdmin();
   }
 
+  @Roles('admin')
   @Post('seed')
   async seed() {
     return this.imagesService.forceSeed();
   }
 
+  @Roles('admin')
   @Post('upload-base64')
   async uploadBase64(@Body() data: { imageBase64: string; folder?: string }) {
     return this.imagesService.uploadImageBase64(data);
   }
 
+  @Roles('admin')
   @Post('upload-file')
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }),
@@ -66,16 +71,19 @@ export class ImagesController {
     return this.imagesService.uploadImageFile(file, folder);
   }
 
+  @Roles('admin')
   @Post()
   async create(@Body() data: any) {
     return this.imagesService.createFilter(data);
   }
 
+  @Roles('admin')
   @Put(':id')
   async update(@Param('id') id: string, @Body() data: any) {
     return this.imagesService.updateFilter(id, data);
   }
 
+  @Roles('admin')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.imagesService.updateFilter(id, { active: false }); // Soft delete

@@ -17,6 +17,9 @@ const GridCalendarView = lazy(() => import('./GridCalendarView').then((m) => ({ 
 const BookingsCalendarView = lazy(() => import('./BookingsCalendarView').then((m) => ({ default: m.BookingsCalendarView })));
 const BigScreenView = lazy(() => import('./BigScreenView').then((m) => ({ default: m.BigScreenView })));
 const UserBookingsView = lazy(() => import('./UserBookingsView').then((m) => ({ default: m.UserBookingsView })));
+const Login = lazy(() => import('./Login').then((m) => ({ default: m.Login })));
+// Firebase Auth solo se descarga al entrar a una ruta protegida o al login.
+const RequireRole = lazy(() => import('./auth').then((m) => ({ default: m.RequireRole })));
 
 function AppContent() {
   const navigate = useNavigate();
@@ -73,11 +76,12 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/booking" element={<BookingForm />} />
-            <Route path="/assisted-booking" element={<AssistedBookingForm />} />
+            <Route path="/assisted-booking" element={<RequireRole roles={['vendedor']}><AssistedBookingForm /></RequireRole>} />
             <Route path="/my-bookings" element={<UserBookingsView />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/grid" element={<GridCalendarView />} />
-            <Route path="/admin/bookings-calendar" element={<BookingsCalendarView />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/admin" element={<RequireRole roles={['admin']}><AdminDashboard /></RequireRole>} />
+            <Route path="/admin/grid" element={<RequireRole roles={['admin']}><GridCalendarView /></RequireRole>} />
+            <Route path="/admin/bookings-calendar" element={<RequireRole roles={['admin']}><BookingsCalendarView /></RequireRole>} />
           </Routes>
         </Suspense>
       </AppShell.Main>

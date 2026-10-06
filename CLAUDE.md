@@ -84,6 +84,14 @@ Note: the exact-time assignment logic is duplicated across `initBooking`, `confi
 - **dLocal Go** (`dlocalgo/`): backend creates a redirect payment link and polls status. Currently hardcoded to the sandbox base URL.
 - Active gateway is chosen by `lr_settings/schedules.paymentGateway`.
 
+### Auth
+
+Firebase Auth (email/password) with a `role` custom claim: `admin` (everything) or `vendedor` (assisted booking only). Set roles with `npx ts-node scripts/set-user-role.ts <email> <admin|vendedor|ninguno> [password]` from `backend/`.
+
+- Backend: global `AuthGuard` (`backend/src/auth/`) only enforces endpoints decorated with `@Roles(...)`; **undecorated endpoints are public**, so new admin endpoints must add `@Roles('admin')`. `admin` always passes.
+- The big screen doesn't log in: `/complete` and `grid-item-shown` use `@Roles('screen')`, satisfied by header `X-Screen-Key` = `SCREEN_KEY` env. Open the screen as `/screen?key=<SCREEN_KEY>` (remembered in localStorage).
+- Frontend: `firebaseAuth.ts` registers a global axios interceptor that adds the ID token to requests to `API_BASE_URL`. `RequireRole` (`auth.tsx`, lazy-loaded so Firebase stays out of public bundles) guards `/admin/*` and `/assisted-booking`; login at `/login`.
+
 ### Frontend structure
 
 Flat `src/` — one file per view, no folders. Routes are defined in `App.tsx`: `/` (Home), `/booking` (self-service), `/assisted-booking`, `/my-bookings`, `/admin` + `/admin/grid` + `/admin/bookings-calendar`, `/screen`. i18n is a hand-rolled ES/EN context in `i18n.tsx` (`useLanguage()` / `t()`).

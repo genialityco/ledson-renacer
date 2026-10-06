@@ -9,6 +9,21 @@ import { SprayEffect } from './SprayEffect';
 import { API_BASE_URL } from './config';
 import { useCachedAsset } from './useCachedAsset';
 
+// Llave de la pantalla (= SCREEN_KEY del backend) para los endpoints que solo
+// ella puede llamar (/complete y grid-item-shown). Se abre como
+// /screen?key=... y queda guardada en el navegador, por si después se abre
+// /screen sin el parámetro.
+const SCREEN_KEY = (() => {
+  const fromUrl = new URLSearchParams(window.location.search).get('key');
+  try {
+    if (fromUrl) localStorage.setItem('ledson_screen_key', fromUrl);
+    return fromUrl || localStorage.getItem('ledson_screen_key') || '';
+  } catch {
+    return fromUrl || '';
+  }
+})();
+const screenAuth = { headers: { 'X-Screen-Key': SCREEN_KEY } };
+
 const SETTINGS_STORAGE_KEY = 'ledson-screen-settings';
 
 // Última configuración recibida del backend, guardada en el navegador: si la
@@ -281,7 +296,7 @@ export function BigScreenView() {
       };
       
       lastGridItemIdRef.current = selected.id;
-      axios.post(`${API_BASE_URL}/api/bookings/screen-settings/grid-item-shown/${selected.id}`).catch(console.error);
+      axios.post(`${API_BASE_URL}/api/bookings/screen-settings/grid-item-shown/${selected.id}`, null, screenAuth).catch(console.error);
     } else {
       nextItem = null;
     }
@@ -334,7 +349,7 @@ export function BigScreenView() {
       const projectionId = settings.currentProjection.id;
       const complete = () =>
         axios
-          .post(`${API_BASE_URL}/api/bookings/${projectionId}/complete`)
+          .post(`${API_BASE_URL}/api/bookings/${projectionId}/complete`, null, screenAuth)
           .catch(() => setDismissedId(projectionId));
       if (timeRemaining > 0) {
         const timer = setTimeout(complete, timeRemaining);
@@ -355,7 +370,7 @@ export function BigScreenView() {
     if (!dismissedId) return;
     const t = setInterval(() => {
       axios
-        .post(`${API_BASE_URL}/api/bookings/${dismissedId}/complete`)
+        .post(`${API_BASE_URL}/api/bookings/${dismissedId}/complete`, null, screenAuth)
         .then(() => clearInterval(t))
         .catch(() => {});
     }, 5000);

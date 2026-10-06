@@ -7,10 +7,12 @@ import {
   renderButton,
   Lang,
 } from './email.templates';
+import { Roles } from '../auth/roles.decorator';
 
 const SAMPLE_MEMORY_IMAGE =
   'https://images.unsplash.com/photo-1520975916090-3105956dac38?w=800';
 
+@Roles('admin')
 @Controller('api/email')
 export class EmailController {
   constructor(private readonly emailService: EmailService) {}

@@ -11,6 +11,7 @@ import {
 import type { Response } from 'express';
 import axios from 'axios';
 import { BookingsService } from './bookings.service';
+import { Roles } from '../auth/roles.decorator';
 
 @Controller('api/bookings')
 export class BookingsController {
@@ -23,6 +24,7 @@ export class BookingsController {
 
   // Exportación de ventas en Excel (botón del panel de Admin). Filtros
   // opcionales ?from=YYYY-MM-DD&to=YYYY-MM-DD sobre la fecha de la reserva.
+  @Roles('admin')
   @Get('export/excel')
   async exportExcel(
     @Query('from') from: string,
@@ -134,19 +136,23 @@ export class BookingsController {
     }
   }
 
+  @Roles('admin')
   @Put('screen-settings')
   async updateScreenSettings(@Body() data: any) {
     return this.bookingsService.updateScreenSettings(data);
   }
 
+  @Roles('admin')
   @Post('screen-settings/clear')
   async clearProjection() {
     return this.bookingsService.clearProjection();
   }
+  @Roles('screen')
   @Post('screen-settings/grid-item-shown/:id')
   async recordGridItemAppearance(@Param('id') id: string) {
     return this.bookingsService.recordGridItemAppearance(id);
   }
+  @Roles('admin')
   @Get()
   async getAll() {
     return this.bookingsService.getBookings();
@@ -206,26 +212,31 @@ export class BookingsController {
     return this.bookingsService.assignFranja(id, timeSlot);
   }
 
+  @Roles('vendedor')
   @Post()
   async createBooking(@Body() data: any) {
     return this.bookingsService.createBooking(data);
   }
 
+  @Roles('admin')
   @Post(':id/generate')
   async generateImage(@Param('id') id: string) {
     return this.bookingsService.generateImage(id);
   }
 
+  @Roles('admin')
   @Post(':id/project')
   async projectBooking(@Param('id') id: string) {
     return this.bookingsService.projectBooking(id);
   }
 
+  @Roles('screen')
   @Post(':id/complete')
   async completeProjection(@Param('id') id: string) {
     return this.bookingsService.completeProjection(id);
   }
 
+  @Roles('admin')
   @Put(':id/status')
   async updateStatus(@Param('id') id: string, @Body('status') status: string) {
     return this.bookingsService.updateBookingStatus(id, status);

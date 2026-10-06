@@ -9,11 +9,13 @@ import {
   Query,
 } from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
+import { Roles } from '../auth/roles.decorator';
 
 @Controller('api/schedules')
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
+  @Roles('admin')
   @Get('templates')
   async getTemplates() {
     return this.schedulesService.getTemplates();
@@ -24,16 +26,19 @@ export class SchedulesController {
     return this.schedulesService.getScheduleSettings();
   }
 
+  @Roles('admin')
   @Put('settings')
   async updateScheduleSettings(@Body() data: any) {
     return this.schedulesService.updateScheduleSettings(data);
   }
 
+  @Roles('admin')
   @Post('templates')
   async saveTemplate(@Body() data: any) {
     return this.schedulesService.saveTemplate(data);
   }
 
+  @Roles('admin')
   @Delete('templates/:id')
   async deleteTemplate(@Param('id') id: string) {
     return this.schedulesService.deleteTemplate(id);
@@ -44,6 +49,7 @@ export class SchedulesController {
     return this.schedulesService.getScheduleForDate(dateStr);
   }
 
+  @Roles('admin')
   @Post('daily')
   async saveDailySchedule(
     @Body() data: { date: string; slots: any[]; deadTimes: any[] },
@@ -54,6 +60,7 @@ export class SchedulesController {
     });
   }
 
+  @Roles('admin')
   @Post('apply-template')
   async applyTemplate(@Body() data: { templateId: string; dates: string[] }) {
     return this.schedulesService.applyTemplateToDates(
