@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Container, Title, Tabs, Table, Button, Badge, Group, Text, Image, Box, TextInput, Textarea, Modal, Grid, FileButton, ActionIcon, Loader, Select, NumberInput, Radio, Switch, MultiSelect, CloseButton } from '@mantine/core';
-import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus, IconMail, IconDownload, IconHelp } from '@tabler/icons-react';
+import { IconUsers, IconFilter, IconDeviceTv, IconCheck, IconLink, IconExternalLink, IconUpload, IconCalendar, IconShieldLock, IconCoin, IconUserPlus, IconMail, IconDownload, IconHelp, IconUserShield } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { API_BASE_URL } from './config';
 import { ImageCropModal } from './ImageCropModal';
 import { VideoTrimModal } from './VideoTrimModal';
 import { AdminGuide } from './AdminGuide';
+import { UsersAdmin } from './UsersAdmin';
 
 // Proporción real de la pantalla de proyección — configurable desde este
 // panel (ver cropWidth/cropHeight) para que el recorte de fotos/videos del
@@ -651,6 +652,7 @@ export function AdminDashboard() {
         <Tabs.List mb="md">
           <Tabs.Tab value="bookings" leftSection={<IconUsers size={16} />}>Reservas y Pagos</Tabs.Tab>
           <Tabs.Tab value="sellers" leftSection={<IconUserPlus size={16} />}>Vendedores</Tabs.Tab>
+          <Tabs.Tab value="users" leftSection={<IconUserShield size={16} />}>Usuarios</Tabs.Tab>
           <Tabs.Tab value="benefits" leftSection={<IconCoin size={16} />}>Beneficios/Promoción</Tabs.Tab>
           <Tabs.Tab value="paymentMethods" leftSection={<IconCoin size={16} />}>Métodos de Pago</Tabs.Tab>
           <Tabs.Tab value="filters" leftSection={<IconFilter size={16} />}>Gestión de Filtros</Tabs.Tab>
@@ -1065,6 +1067,10 @@ export function AdminDashboard() {
             </Radio.Group>
             <Button onClick={handleUpdateScheduleSettings} color="blue">Guardar Políticas</Button>
           </Box>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="users">
+          <UsersAdmin />
         </Tabs.Panel>
 
         <Tabs.Panel value="guide">

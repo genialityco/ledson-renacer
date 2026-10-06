@@ -27,6 +27,18 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
     ],
   },
   {
+    id: 'users',
+    title: 'Usuarios',
+    intro: 'Cuentas que pueden iniciar sesión. No confundir con «Vendedores», que es solo la lista del campo «Vendedor» del formulario del stand.',
+    items: [
+      'Roles: Administrador ve todo el panel; Vendedor solo puede entrar a la Reserva Asistida.',
+      'Añadir Usuario: escribe el correo y el rol. A la persona le llega un correo para crear su propia contraseña (nadie más la conoce). Si no lo ve, que revise spam.',
+      'Olvidó su contraseña: botón «Enviar enlace de contraseña», o la misma persona puede usar «¿Olvidaste tu contraseña?» en la pantalla de inicio de sesión.',
+      'Editar: cambia el correo con el que inicia sesión o su rol. Al cambiar el rol se cierra su sesión y debe volver a entrar.',
+      'Desactivar: le quita el acceso de inmediato (se cierra su sesión) sin borrar la cuenta; se puede volver a activar. No puedes desactivarte ni quitarte el rol de administrador a ti mismo.',
+    ],
+  },
+  {
     id: 'filters',
     title: 'Gestión de Filtros',
     intro: 'Estilos artísticos de IA que el cliente puede elegir (solo si los filtros están activados en «Planes de Uso»).',

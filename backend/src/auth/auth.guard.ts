@@ -8,9 +8,15 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import type { DecodedIdToken } from 'firebase-admin/auth';
 import { createHash, timingSafeEqual } from 'crypto';
 import { FirebaseService } from '../firebase/firebase.service';
 import { ROLES_KEY, Role } from './roles.decorator';
+
+// Request de un endpoint con @Roles autenticado con Firebase: el guard deja
+// acá el token verificado (uid, email, role) para que el controlador sepa
+// quién hace la acción. No existe cuando entró la pantalla con su llave.
+export type AuthedRequest = Request & { user?: DecodedIdToken };
 
 const sameSecret = (a: string, b: string): boolean =>
   timingSafeEqual(
@@ -45,7 +51,7 @@ export class AuthGuard implements CanActivate {
     );
     if (!roles?.length) return true;
 
-    const req = context.switchToHttp().getRequest<Request>();
+    const req = context.switchToHttp().getRequest<AuthedRequest>();
 
     if (roles.includes('screen') && this.screenKey) {
       const key = req.header('x-screen-key');
@@ -64,15 +70,21 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('No se pudo verificar la sesión');
     }
 
-    let role: unknown;
+    // checkRevoked = true: rechaza también tokens de usuarios desactivados o
+    // cuyas sesiones se revocaron (al cambiarles el rol desde la pestaña
+    // Usuarios), en vez de seguir aceptándolos hasta que expiren (1 hora).
+    let decoded: DecodedIdToken;
     try {
-      const decoded = await auth.verifyIdToken(token);
-      role = decoded.role;
+      decoded = await auth.verifyIdToken(token, true);
     } catch {
       throw new UnauthorizedException('Sesión inválida o expirada');
     }
 
-    if (role === 'admin' || roles.includes(role as Role)) return true;
+    const role: unknown = decoded.role;
+    if (role === 'admin' || roles.includes(role as Role)) {
+      req.user = decoded;
+      return true;
+    }
     throw new ForbiddenException('No tienes permiso para esta acción');
   }
 }

@@ -17,6 +17,7 @@ import { BenefitsModule } from './benefits/benefits.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { AuthGuard } from './auth/auth.guard';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AuthGuard } from './auth/auth.guard';
     BenefitsModule,
     PaymentMethodsModule,
     ModerationModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: AuthGuard }],

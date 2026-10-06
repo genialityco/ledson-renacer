@@ -14,6 +14,8 @@ const firebaseApp = initializeApp({
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:702599304678:web:e6974c1f7784aed1fe3227',
 });
 export const auth = getAuth(firebaseApp);
+// Idioma de los correos que envía Firebase (recuperar contraseña).
+auth.languageCode = 'es';
 
 export type Role = 'admin' | 'vendedor';
 

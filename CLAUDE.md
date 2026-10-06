@@ -86,7 +86,7 @@ Note: the exact-time assignment logic is duplicated across `initBooking`, `confi
 
 ### Auth
 
-Firebase Auth (email/password) with a `role` custom claim: `admin` (everything) or `vendedor` (assisted booking only). Set roles with `npx ts-node scripts/set-user-role.ts <email> <admin|vendedor|ninguno> [password]` from `backend/`.
+Firebase Auth (email/password) with a `role` custom claim: `admin` (everything) or `vendedor` (assisted booking only). Accounts are managed from the admin "Usuarios" tab (`UsersAdmin.tsx` → `backend/src/users/`, `@Roles('admin')`); passwords are never set there — Firebase's password-reset email is used both for new users and "forgot password". The first admin is bootstrapped with `npx ts-node scripts/set-user-role.ts <email> admin [password]` from `backend/`. The guard verifies tokens with `checkRevoked`, so disabling a user or changing their role (which revokes sessions) takes effect immediately.
 
 - Backend: global `AuthGuard` (`backend/src/auth/`) only enforces endpoints decorated with `@Roles(...)`; **undecorated endpoints are public**, so new admin endpoints must add `@Roles('admin')`. `admin` always passes.
 - The big screen doesn't log in: `/complete` and `grid-item-shown` use `@Roles('screen')`, satisfied by header `X-Screen-Key` = `SCREEN_KEY` env. Open the screen as `/screen?key=<SCREEN_KEY>` (remembered in localStorage).
