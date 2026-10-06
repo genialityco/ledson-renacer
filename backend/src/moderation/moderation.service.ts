@@ -7,17 +7,10 @@ import { v4 as uuidv4 } from 'uuid';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { ModerationResult } from './moderation.types';
+import { GoogleVisionModerationService } from './google-vision-moderation.service';
 
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
-
-export interface ModerationResult {
-  /** true si el archivo NO debe usarse (contenido sexual, armas o drogas). */
-  blocked: boolean;
-  /** Categorías que dispararon el bloqueo: 'sexual' | 'weapon' | 'drugs'. */
-  reasons: string[];
-  /** false si no se pudo consultar (sin llaves, sin red, error de la API). */
-  checked: boolean;
-}
 
 const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
 
@@ -26,9 +19,17 @@ const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
 // la moderación queda desactivada (no bloquea nada). Si la API falla, no hay
 // internet, o la respuesta no tiene la forma esperada, NO se bloquea al
 // cliente ("fail-open"): se registra en el log y se deja pasar.
+//
+// Con MODERATION_PROVIDER=vision se usa Google Cloud Vision en su lugar (ver
+// GoogleVisionModerationService); el resto del sistema no cambia.
 @Injectable()
 export class ModerationService {
   private readonly logger = new Logger(ModerationService.name);
+
+  private readonly provider: 'sightengine' | 'vision' =
+    (process.env.MODERATION_PROVIDER || '').toLowerCase() === 'vision'
+      ? 'vision'
+      : 'sightengine';
 
   private readonly apiUser = process.env.SIGHTENGINE_API_USER;
   private readonly apiSecret = process.env.SIGHTENGINE_API_SECRET;
@@ -36,14 +37,19 @@ export class ModerationService {
     process.env.SIGHTENGINE_MODELS ||
     'nudity-2.1,weapon,alcohol,recreational_drug,medical';
   // Desactiva solo la moderación de video (ej. mientras se confirma el costo
-  // por minuto en el panel de Sightengine) sin tocar la de fotos.
+  // por minuto en el panel del proveedor) sin tocar la de fotos. Se aceptan
+  // también los nombres viejos SIGHTENGINE_VIDEO_*.
   private readonly videoEnabled =
-    process.env.SIGHTENGINE_VIDEO_ENABLED !== 'false';
+    (process.env.MODERATION_VIDEO_ENABLED ??
+      process.env.SIGHTENGINE_VIDEO_ENABLED) !== 'false';
   // Cada cuántos segundos se analiza un fotograma del video. Con el tramo
   // acotado a 15s (ver checkVideo), un valor de 1 son ~15 fotogramas por clip.
   private readonly videoFrameInterval =
-    Number(process.env.SIGHTENGINE_VIDEO_FRAME_INTERVAL) || 1;
-  // Tiempo máximo total (recorte + Sightengine) para moderar un video. El
+    Number(
+      process.env.MODERATION_VIDEO_FRAME_INTERVAL ??
+        process.env.SIGHTENGINE_VIDEO_FRAME_INTERVAL,
+    ) || 1;
+  // Tiempo máximo total (recorte + proveedor) para moderar un video. El
   // balanceador de DigitalOcean App Platform corta las peticiones a los ~100s
   // con un 504, así que hay que responder antes; si se pasa, se deja pasar
   // (fail-open) igual que cualquier otro fallo de moderación.
@@ -56,6 +62,10 @@ export class ModerationService {
     Number(process.env.MODERATION_WEAPON_THRESHOLD) || 0.6;
   private readonly drugThreshold =
     Number(process.env.MODERATION_DRUG_THRESHOLD) || 0.6;
+
+  constructor(private readonly vision: GoogleVisionModerationService) {
+    this.logger.log(`Proveedor de moderación: ${this.provider}`);
+  }
 
   get enabled(): boolean {
     return !!(this.apiUser && this.apiSecret);
@@ -74,6 +84,7 @@ export class ModerationService {
     buffer: Buffer,
     contentType = 'image/jpeg',
   ): Promise<ModerationResult> {
+    if (this.provider === 'vision') return this.vision.checkImage(buffer);
     if (!this.enabled) {
       this.logger.warn(
         `Moderación de imagen OMITIDA: faltan SIGHTENGINE_API_USER/SIGHTENGINE_API_SECRET en .env (${this.maskedCreds})`,
@@ -137,7 +148,7 @@ export class ModerationService {
     trimStart = 0,
     trimEnd?: number,
   ): Promise<ModerationResult> {
-    if (!this.enabled) {
+    if (this.provider === 'sightengine' && !this.enabled) {
       this.logger.warn(
         `Moderación de video OMITIDA: faltan SIGHTENGINE_API_USER/SIGHTENGINE_API_SECRET en .env (${this.maskedCreds})`,
       );
@@ -145,7 +156,7 @@ export class ModerationService {
     }
     if (!this.videoEnabled) {
       this.logger.log(
-        'Moderación de video OMITIDA: SIGHTENGINE_VIDEO_ENABLED=false',
+        'Moderación de video OMITIDA: MODERATION_VIDEO_ENABLED=false',
       );
       return { blocked: false, reasons: [], checked: false };
     }
@@ -156,6 +167,12 @@ export class ModerationService {
         `Moderación de video OMITIDA: tramo inválido (trimStart=${trimStart}, trimEnd=${trimEnd})`,
       );
       return { blocked: false, reasons: [], checked: false };
+    }
+    if (this.provider === 'vision') {
+      return this.vision.checkVideo(buffer, start, clipDuration, {
+        frameInterval: this.videoFrameInterval,
+        budgetMs: this.videoBudgetMs,
+      });
     }
 
     const inputPath = path.join(
