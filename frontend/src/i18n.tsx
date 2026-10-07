@@ -109,6 +109,11 @@ const translations = {
     takeOrUploadAlert: "Por favor, tómate una foto o sube un archivo.",
     uploadErrorAlert: "Hubo un error subiendo tu foto.",
     paymentErrorAlert: "Error al iniciar el pago.",
+    paidUploadErrorAlert: "Tu pago fue recibido, pero no pudimos cargar tu foto/video, así que tu reserva AÚN NO está completa. Revisa tu foto/video y pulsa \"Reintentar\": no se te cobrará de nuevo.",
+    paidRetryTitle: "Pago recibido — falta cargar tu foto/video",
+    paidRetryNotice: "Tu reserva aún no está completa. Puedes cambiar la foto/video si lo necesitas y pulsar \"Reintentar\". No se te volverá a cobrar.",
+    paidRetryBtn: "Reintentar (sin nuevo cobro)",
+    paymentDeclinedAlert: "El pago no fue aprobado y no se realizó ningún cobro. Puedes intentarlo de nuevo.",
     bookingCreateErrorAlert: "Hubo un error guardando tus datos. Intenta de nuevo.",
 
     // ImageCropModal / VideoTrimModal
@@ -252,6 +257,11 @@ const translations = {
     takeOrUploadAlert: "Please take a photo or upload a file.",
     uploadErrorAlert: "There was an error uploading your photo.",
     paymentErrorAlert: "Error initiating payment.",
+    paidUploadErrorAlert: "Your payment was received, but we couldn't upload your photo/video, so your booking is NOT complete yet. Check your photo/video and tap \"Retry\": you won't be charged again.",
+    paidRetryTitle: "Payment received — your photo/video is still missing",
+    paidRetryNotice: "Your booking is not complete yet. You can change the photo/video if needed and tap \"Retry\". You won't be charged again.",
+    paidRetryBtn: "Retry (no new charge)",
+    paymentDeclinedAlert: "The payment was not approved and you were not charged. You can try again.",
     bookingCreateErrorAlert: "There was an error saving your details. Please try again.",
 
     // ImageCropModal / VideoTrimModal

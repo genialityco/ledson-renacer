@@ -103,6 +103,11 @@ export function BookingForm() {
   const [selectedFranja, setSelectedFranja] = useState<string | null>(null);
   const [isAssigningFranja, setIsAssigningFranja] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  // El pago ya se aprobó pero falló la confirmación (subida de la foto/video,
+  // red): la reserva sigue PENDING en el backend. Se queda en el paso de la
+  // foto con todo lo diligenciado y el botón pasa a "Reintentar" con la
+  // MISMA transacción, sin volver a cobrar.
+  const [paidRetry, setPaidRetry] = useState<{ gateway: 'wompi' | 'dlocalgo'; transactionId: string | null } | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [cropWidth, setCropWidth] = useState(576);
   const [cropHeight, setCropHeight] = useState(1152);
@@ -425,10 +430,14 @@ export function BookingForm() {
       setBookingId(id);
       setFinalResult(confirmRes.data);
       setPaymentStatus('APPROVED');
+      setPaidRetry(null);
       setActiveStep(3);
     } catch (err) {
       console.error('Error confirmando la reserva:', err);
-      alert(t('uploadErrorAlert'));
+      setBookingId(id);
+      setPaidRetry({ gateway: 'dlocalgo', transactionId: dlocalPaymentId ?? null });
+      setActiveStep(2);
+      alert(t('paidUploadErrorAlert'));
     }
   };
 
@@ -460,11 +469,13 @@ export function BookingForm() {
   // del pago. dLocal Go sí redirige a una página externa (se pierde el
   // estado del navegador), así que la foto se guarda primero en el backend
   // (attach-media) y luego se redirige a pagar.
-  const handleUploadAndPay = async () => {
+  // Foto/video elegido + tramo/encuadre + franja, tal como se manda al
+  // backend. null si todavía no hay foto/video.
+  const buildMediaPayload = () => {
     const finalImage = useWebcam ? capturedImage : fileImageBase64;
-    if (!finalImage || !bookingId) { alert(t('takeOrUploadAlert')); return; }
+    if (!finalImage) return null;
     const isVideo = !useWebcam && fileMediaType === 'video';
-    const mediaPayload = {
+    return {
       imageBase64: finalImage,
       ...(isVideo && videoTrim ? {
         trimStart: videoTrim.trimStart,
@@ -475,6 +486,68 @@ export function BookingForm() {
       } : {}),
       ...(bookingSystemType === 'franjas' && timeSlot ? { timeSlot } : {}),
     };
+  };
+
+  // Confirma con el backend una transacción de Wompi YA aprobada, mandando la
+  // foto/video. Si falla, NO se muestra "reserva completada": se vuelve al
+  // paso de la foto con los datos intactos para reintentar sin pagar de nuevo.
+  const confirmWompiPayment = async (transactionId: string) => {
+    if (!bookingId) return;
+    setIsUploadingPhoto(true);
+    try {
+      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, { ...buildMediaPayload(), gateway: 'wompi', transactionId });
+      setFinalResult(confirmRes.data);
+      setPaymentStatus('APPROVED');
+      setPaidRetry(null);
+      setActiveStep(3);
+      // Excluye PII (nombre, cédula, correo, celular) del evento.
+      trackGtagEvent('purchase', {
+        transaction_id: confirmRes.data.code,
+        value: servicePrice,
+        currency: 'COP',
+        nationality: country,
+        city,
+        items: [{
+          item_id: selectedFilter || 'ledson-renacer-sin-filtro',
+          item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
+          quantity: 1,
+        }],
+      });
+    } catch (err) {
+      console.error('Error confirmando la reserva pagada:', err);
+      setPaidRetry({ gateway: 'wompi', transactionId });
+      setActiveStep(2);
+      alert(t('paidUploadErrorAlert'));
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  // "Reintentar" tras un pago aprobado cuya confirmación falló.
+  const handleRetryPaid = async () => {
+    if (!paidRetry || !bookingId) return;
+    if (paidRetry.gateway === 'wompi') {
+      if (paidRetry.transactionId) await confirmWompiPayment(paidRetry.transactionId);
+      return;
+    }
+    // dLocal Go: la foto/video ya quedó guardada (attach-media) antes de ir a
+    // pagar; si eligió otra al reintentar, se reemplaza primero.
+    setIsUploadingPhoto(true);
+    try {
+      const media = buildMediaPayload();
+      if (media) await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/attach-media`, media);
+      await finalizeBooking(bookingId, paidRetry.transactionId);
+    } catch (err) {
+      console.error('Error reintentando la reserva pagada:', err);
+      alert(t('paidUploadErrorAlert'));
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleUploadAndPay = async () => {
+    const mediaPayload = buildMediaPayload();
+    if (!mediaPayload || !bookingId) { alert(t('takeOrUploadAlert')); return; }
 
     setIsUploadingPhoto(true);
     try {
@@ -528,34 +601,17 @@ export function BookingForm() {
         checkout.open(async (result: any) => {
           const transaction = result?.transaction;
           console.log('Transaction result: ', transaction);
-          if (transaction) {
+          if (!transaction) return;
+          if (transaction.status === 'APPROVED') {
+            await confirmWompiPayment(transaction.id);
+          } else if (transaction.status === 'PENDING') {
+            // Aún sin respuesta del banco: pantalla de "pago en proceso".
             setPaymentStatus(transaction.status);
-            if (transaction.status === 'APPROVED') {
-              setIsUploadingPhoto(true);
-              try {
-                const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, { ...mediaPayload, gateway: 'wompi', transactionId: transaction.id });
-                setFinalResult(confirmRes.data);
-                // Excluye PII (nombre, cédula, correo, celular) del evento.
-                trackGtagEvent('purchase', {
-                  transaction_id: confirmRes.data.code,
-                  value: servicePrice,
-                  currency: 'COP',
-                  nationality: country,
-                  city,
-                  items: [{
-                    item_id: selectedFilter || 'ledson-renacer-sin-filtro',
-                    item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
-                    quantity: 1,
-                  }],
-                });
-              } catch (err) {
-                console.error(err);
-                alert(t('uploadErrorAlert'));
-              } finally {
-                setIsUploadingPhoto(false);
-              }
-            }
             setActiveStep(3);
+          } else {
+            // DECLINED / VOIDED / ERROR: no se cobró. Se queda en este paso
+            // para que pueda volver a intentar el pago.
+            alert(t('paymentDeclinedAlert'));
           }
         });
         return;
@@ -601,6 +657,7 @@ export function BookingForm() {
     setPaymentStatus(null);
     setFinalResult(null);
     setSelectedFranja(null);
+    setPaidRetry(null);
     setDlocalgoLink('');
     sessionStorage.removeItem('dlocal_booking_id');
     sessionStorage.removeItem('dlocal_payment_id');
@@ -641,7 +698,7 @@ export function BookingForm() {
           filtersEnabled={filtersEnabled ?? true}
           labelsWithFilter={FILTER_STEP_LABELS}
           labelsWithoutFilter={NO_FILTER_STEP_LABELS}
-          onStepClick={setActiveStep}
+          onStepClick={(step) => { if (!paidRetry) setActiveStep(step); }}
           onHomeClick={() => navigate('/')}
         />
 
@@ -900,11 +957,32 @@ export function BookingForm() {
             <Text size="sm" fw={500} mb="md" style={{ color: '#0559A5' }}>
               {isVideoSelected ? t('videoReady') : t('magicReady')}
             </Text>
+            {paidRetry && (
+              <Box mb="md" p="sm" style={{ borderRadius: 10, backgroundColor: '#fff7ed', border: '1px solid #fdba74' }}>
+                <Text size="sm" fw={600} style={{ color: '#9a3412' }}>{t('paidRetryTitle')}</Text>
+                <Text size="sm" style={{ color: '#9a3412' }}>{t('paidRetryNotice')}</Text>
+              </Box>
+            )}
             <Group gap={10}>
-              <Button className="ledson-btn-outline ledson-btn-back" onClick={() => setActiveStep(1)} aria-label={t('back')}>
-                <IconArrowLeft size={18} />
-              </Button>
-              {paymentGateway === 'dlocalgo' && dlocalgoLink && paymentStatus?.startsWith('PENDING_') ? (
+              {/* Ya pagó: volver a "Datos" crearía una reserva nueva sin pago. */}
+              {!paidRetry && (
+                <Button className="ledson-btn-outline ledson-btn-back" onClick={() => setActiveStep(1)} aria-label={t('back')}>
+                  <IconArrowLeft size={18} />
+                </Button>
+              )}
+              {paidRetry ? (
+                <Button
+                  className="ledson-btn-primary"
+                  style={{ flex: 1 }}
+                  loading={isUploadingPhoto}
+                  onClick={handleRetryPaid}
+                  // Wompi necesita volver a mandar la foto/video; dLocal Go ya
+                  // la tiene guardada desde antes del pago.
+                  disabled={isUploadingPhoto || (paidRetry.gateway === 'wompi' && !buildMediaPayload())}
+                >
+                  {t('paidRetryBtn')}
+                </Button>
+              ) : paymentGateway === 'dlocalgo' && dlocalgoLink && paymentStatus?.startsWith('PENDING_') ? (
                 <Button
                   className="ledson-btn-primary"
                   style={{ flex: 1 }}

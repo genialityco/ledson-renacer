@@ -62,6 +62,35 @@ const loadStoredSettings = (): any | null => {
   }
 };
 
+// ¿El cuadro actual del video de transición tapa toda la pantalla? Se dibuja
+// reducido en un canvas de 8x16 y se revisa el alfa de cada punto. Devuelve
+// null si el navegador no deja leer los píxeles (video de otro origen sin
+// CORS).
+let alphaCanvas: HTMLCanvasElement | null = null;
+const isOverlayOpaque = (video: HTMLVideoElement): boolean | null => {
+  try {
+    alphaCanvas ||= document.createElement('canvas');
+    alphaCanvas.width = 8;
+    alphaCanvas.height = 16;
+    const ctx = alphaCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, 8, 16);
+    ctx.drawImage(video, 0, 0, 8, 16);
+    const data = ctx.getImageData(0, 0, 8, 16).data;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 250) return false;
+    }
+    return true;
+  } catch {
+    return null;
+  }
+};
+
+// Identifica UNA proyección concreta: la misma reserva proyectada otra vez a
+// mano trae otro timestamp, así que cuenta como una proyección nueva.
+const projectionKey = (p: { id?: string; timestamp?: number } | null | undefined): string | null =>
+  p?.id ? `${p.id}:${p.timestamp ?? ''}` : null;
+
 const CarouselItem = ({ item, transitionClass, onEnded, classNames, ...props }: any) => {
   const nodeRef = useRef(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -129,12 +158,15 @@ export function BigScreenView() {
   // Proyección que ya cumplió su tiempo pero cuyo aviso de "completada" no
   // llegó al backend (sin internet): se oculta localmente para que la pantalla
   // no se quede congelada en ella, y se sigue reintentando avisar.
-  const [dismissedId, setDismissedId] = useState<string | null>(null);  const settings = useMemo(
+  // Se guarda la clave de ESA proyección (id + hora), no solo el id: si la
+  // misma reserva se vuelve a proyectar a mano, es otra proyección y se muestra.
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const settings = useMemo(
     () =>
-      rawSettings.currentProjection && rawSettings.currentProjection.id === dismissedId
+      rawSettings.currentProjection && projectionKey(rawSettings.currentProjection) === dismissedKey
         ? { ...rawSettings, currentProjection: null }
         : rawSettings,
-    [rawSettings, dismissedId],
+    [rawSettings, dismissedKey],
   );
   const [, setCurrentTimeString] = useState('');
   
@@ -379,10 +411,15 @@ export function BigScreenView() {
       const timeRemaining = PROJECTION_DURATION - timeElapsed;
       
       const projectionId = settings.currentProjection.id;
+      const key = projectionKey(settings.currentProjection);
       const complete = () =>
         axios
           .post(`${API_BASE_URL}/api/bookings/${projectionId}/complete`, null, screenAuth)
-          .catch(() => setDismissedId(projectionId));
+          .catch((err) => {
+            // 401/403 = la pantalla no tiene la llave correcta (/screen?key=...).
+            console.error('No se pudo completar la proyección', projectionId, err?.response?.status, err?.response?.data?.message);
+            setDismissedKey(key);
+          });
       if (timeRemaining > 0) {
         const timer = setTimeout(complete, timeRemaining);
         return () => clearTimeout(timer);
@@ -397,17 +434,21 @@ export function BigScreenView() {
   }, [settings.currentProjection]);
 
   // Reintenta avisar la finalización de una proyección ocultada por falta de
-  // conexión, hasta que el backend responda.
+  // conexión, hasta que el backend responda. Solo mientras el backend siga
+  // teniendo ESA proyección: si ya la cerró (o se reemplazó, aunque sea por
+  // la misma reserva proyectada otra vez), reintentar cerraría la nueva.
+  const backendProjectionKey = projectionKey(rawSettings.currentProjection);
   useEffect(() => {
-    if (!dismissedId) return;
+    if (!dismissedKey || backendProjectionKey !== dismissedKey) return;
+    const bookingId = dismissedKey.split(':')[0];
     const t = setInterval(() => {
       axios
-        .post(`${API_BASE_URL}/api/bookings/${dismissedId}/complete`, null, screenAuth)
+        .post(`${API_BASE_URL}/api/bookings/${bookingId}/complete`, null, screenAuth)
         .then(() => clearInterval(t))
         .catch(() => {});
     }, 5000);
     return () => clearInterval(t);
-  }, [dismissedId]);
+  }, [dismissedKey, backendProjectionKey]);
 
   const handleVideoEnded = () => {
     // Si hay una proyección activa, no cambiamos el fondo
@@ -421,6 +462,7 @@ export function BigScreenView() {
 
   // Guardar la última proyección para que la animación de salida sepa qué renderizar
   const [rawDisplayProjection, setDisplayProjection] = useState<any>(null);
+  const displayKey = projectionKey(rawDisplayProjection);
   useEffect(() => {
     if (settings.currentProjection) {
       setDisplayProjection(settings.currentProjection);
@@ -444,7 +486,7 @@ export function BigScreenView() {
     img.src = p.imageUrl;
     const timeout = setTimeout(() => { if (!done) setProjectionFailed(true); }, 8000);
     return () => { clearTimeout(timeout); img.onload = null; img.onerror = null; };
-  }, [rawDisplayProjection?.id]);
+  }, [displayKey]);
   const displayProjection = useMemo(
     () =>
       projectionFailed && rawDisplayProjection
@@ -456,29 +498,45 @@ export function BigScreenView() {
   // Copias locales de los videos clave (ver useCachedAsset): siguen
   // reproduciéndose aunque se caiga el internet.
   const defaultVideoSrc = useCachedAsset(settings.defaultVideoUrl);
-  const overlayVideoSrc = useCachedAsset(displayProjection?.revealOverlayVideoUrl);
+  // Se precarga desde la configuración (no solo al llegar una proyección): así
+  // la primera proyección ya usa la copia local, que además es del mismo
+  // origen y permite leer la transparencia del video (ver isOverlayOpaque).
+  const overlayVideoSrc = useCachedAsset(displayProjection?.revealOverlayVideoUrl || settings.revealOverlayVideoUrl);
   const [standbyKey, setStandbyKey] = useState(0);
 
-  // Efecto de revelado "Overlay de Video": un video se reproduce encima de la
-  // foto/video real (que ya está debajo, visible desde el inicio) y en sus
-  // últimos `revealOverlayFadeSeconds` se desvanece (opacidad 1→0) revelándolo.
-  const [overlayOpacity, setOverlayOpacity] = useState(1);
-  // La foto/video real no debe verse ni un instante antes de que el overlay
-  // ya esté pintando frames encima — si no, hay un flash de la foto real
-  // antes de que el video de transición alcance a cubrirla. Se mantiene
-  // oculta (pantalla negra) hasta que el overlay confirma que ya se ve.
-  const [overlayReady, setOverlayReady] = useState(false);
+  // Efecto de revelado "Overlay de Video": un video de transición se
+  // reproduce encima de la foto/video real.
+  // - Video CON transparencia (webm VP9 con alfa): se respeta tal cual. Sus
+  //   partes transparentes dejan ver lo que haya debajo (la Parrilla/videoloop
+  //   al entrar, la foto al revelar) y él mismo hace su entrada y salida.
+  // - Video SIN transparencia (mp4): se desvanece por CSS en sus últimos
+  //   `revealOverlayFadeSeconds`, revelando la foto (comportamiento anterior).
+  // `overlayCovered` indica que el video ya tapa toda la pantalla: recién
+  // entonces se cambia lo de abajo (aparece la foto al entrar, se quita al
+  // salir), para que el cambio nunca se vea.
+  const [overlayCovered, setOverlayCovered] = useState(false);
   const overlayVideoRef = useRef<HTMLVideoElement>(null);
+  const isOverlayMode =
+    displayProjection?.revealEffect === 'video-overlay' && !!displayProjection?.revealOverlayVideoUrl;
+
+  const overlayStartedRef = useRef(false);
 
   useEffect(() => {
-    setOverlayOpacity(1);
-    setOverlayReady(false);
+    setOverlayCovered(false);
+    overlayStartedRef.current = false;
     if (displayProjection?.revealEffect !== 'video-overlay') return;
     // Salvavidas: si el overlay no arranca pronto (error de red, url rota),
-    // no dejamos la pantalla negra para siempre.
-    const fallback = setTimeout(() => setOverlayReady(true), 1500);
-    return () => clearTimeout(fallback);
-  }, [displayProjection?.id, displayProjection?.revealEffect]);
+    // se muestra la foto igual en vez de dejar la pantalla sin ella.
+    // Y si arrancó pero se trabó antes de tapar la pantalla, a los 6s igual.
+    const fallback = setTimeout(() => {
+      if (!overlayStartedRef.current) setOverlayCovered(true);
+    }, 1500);
+    const stalled = setTimeout(() => setOverlayCovered(true), 6000);
+    return () => {
+      clearTimeout(fallback);
+      clearTimeout(stalled);
+    };
+  }, [displayKey, displayProjection?.revealEffect]);
 
   // Salida: al terminar una proyección con efecto "video-overlay", el video de
   // transición se vuelve a reproducir encima de la foto (que sigue montada)
@@ -487,29 +545,29 @@ export function BigScreenView() {
   // Se mantiene true hasta que entre una proyección nueva: así el <video> de
   // salida conserva su key durante el fade-out final del contenedor y no se
   // vuelve a montar (lo que lo reproducía otra vez).
-  // Id de la proyección cuya salida ya se reprodujo. La salida corre UNA sola
+  // Clave (id + hora) de la proyección cuya salida ya se reprodujo. Corre UNA sola
   // vez por proyección: si el polling devuelve un instante una respuesta
   // vieja con la misma proyección (o el estado parpadea), no se reinicia.
-  const [exitedId, setExitedId] = useState<string | null>(null);
-  const exitPlayed = !!displayProjection && exitedId === displayProjection.id;
+  const [exitedKey, setExitedKey] = useState<string | null>(null);
+  const exitPlayed = !!displayKey && exitedKey === displayKey;
   const hadProjectionRef = useRef(false);
   useEffect(() => {
     const cp = settings.currentProjection;
     const has = !!cp;
     if (has) {
-      if (cp.id !== exitedId) {
+      if (projectionKey(cp) !== exitedKey) {
         setExiting(false);
       }
     } else if (
       hadProjectionRef.current &&
       displayProjection &&
-      exitedId !== displayProjection.id &&
+      exitedKey !== displayKey &&
       displayProjection.revealEffect === 'video-overlay' &&
       displayProjection.revealOverlayVideoUrl
     ) {
-      setOverlayOpacity(1);
+      setOverlayCovered(false);
       setExiting(true);
-      setExitedId(displayProjection.id);
+      setExitedKey(displayKey);
     }
     hadProjectionRef.current = has;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -522,20 +580,58 @@ export function BigScreenView() {
     const t = setTimeout(() => setExiting(false), 6000);
     return () => clearTimeout(t);
   }, [exiting]);
+  // Animación del overlay, cuadro a cuadro (requestAnimationFrame, no
+  // onTimeUpdate que solo dispara ~4 veces por segundo y hacía el
+  // desvanecimiento a saltos). La opacidad se aplica directo al <video> para
+  // no re-renderizar toda la pantalla 60 veces por segundo.
+  const overlayFadeSeconds = displayProjection?.revealOverlayFadeSeconds || 2;
   useEffect(() => {
-    if (!overlayReady || exiting) return;
-    const t = setTimeout(() => setOverlayOpacity(0), 15000);
-    return () => clearTimeout(t);
-  }, [overlayReady, exiting, displayProjection?.id]);
+    if (!isOverlayMode) return;
+    let raf = 0;
+    let covered = false;
+    let hasAlpha = false;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const v = overlayVideoRef.current;
+      if (!v || !v.duration || v.readyState < 2) return;
+      if (!covered) {
+        // null = no se pudo leer (video de otro origen sin CORS): se asume
+        // opaco, como antes de detectar transparencia.
+        // Un video con transparencia que nunca llega a tapar toda la
+        // pantalla: la foto aparece al terminar.
+        const opaque = v.ended || isOverlayOpaque(v);
+        if (opaque === false) {
+          hasAlpha = true;
+        } else {
+          covered = true;
+          setOverlayCovered(true);
+        }
+      }
+      if (hasAlpha) {
+        v.style.opacity = '1';
+      } else {
+        const remaining = v.duration - v.currentTime;
+        v.style.opacity = String(remaining <= overlayFadeSeconds ? Math.max(0, remaining / overlayFadeSeconds) : 1);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [isOverlayMode, displayKey, exiting, overlayFadeSeconds]);
 
-  const handleOverlayTimeUpdate = () => {
-    if (exiting) return;
-    const v = overlayVideoRef.current;
-    if (!v || !v.duration) return;
-    const fadeSeconds = displayProjection?.revealOverlayFadeSeconds || 2;
-    const remaining = v.duration - v.currentTime;
-    setOverlayOpacity(remaining <= fadeSeconds ? Math.max(0, remaining / fadeSeconds) : 1);
-  };
+  // Salvavidas: si el overlay se traba sin terminar, que no tape la foto.
+  useEffect(() => {
+    if (!overlayCovered || exiting) return;
+    const t = setTimeout(() => {
+      if (overlayVideoRef.current) overlayVideoRef.current.style.opacity = '0';
+    }, 15000);
+    return () => clearTimeout(t);
+  }, [overlayCovered, exiting, displayKey]);
+
+  // Al entrar, la foto queda oculta hasta que el overlay tapa la pantalla; al
+  // salir, se quita en cuanto la tapa, y el final del overlay revela lo de
+  // abajo (Parrilla/videoloop). Mientras está oculta, el contenedor es
+  // transparente para que se vea a través de las partes transparentes.
+  const projectionHidden = isOverlayMode && (exiting ? overlayCovered : !overlayCovered);
 
   const particleTransition = {
     in: { opacity: 1, WebkitMaskSize: '200px 200px', transform: 'scale(1)', filter: 'blur(0px)' },
@@ -592,12 +688,24 @@ export function BigScreenView() {
         
         {/* El carrusel siempre está renderizado debajo */}
         <Box style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', overflow: 'hidden', zIndex: 10 }}>
-          <TransitionGroup style={{ width: '100%', height: '100%', position: 'relative' }} childFactory={(child) => React.cloneElement(child as React.ReactElement<any>, { classNames: currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass })}>
+          <TransitionGroup
+            style={{ width: '100%', height: '100%', position: 'relative' }}
+            childFactory={(child) => {
+              const el = child as React.ReactElement<any>;
+              // El videoloop, la imagen por defecto y la Pantalla de Reposo
+              // conservan su propio fade: la transición de la Parrilla (por
+              // defecto slide a la derecha) solo aplica a los ítems de la
+              // Parrilla. TransitionGroup antepone ".$" a las keys.
+              if (/default-(videoloop|image)$|\$rest-/.test(String(el.key))) return el;
+              return React.cloneElement(el, { classNames: currentItem?.transition ? getTransitionName(currentItem.transition) : transitionClass });
+            }}
+          >
             {restScreenActive && restCurrentItem ? (
               <CarouselItem
                 key={restCurrentItem.renderKey}
                 item={restCurrentItem}
                 transitionClass={transitionClass}
+                classNames="carousel-fade"
                 onEnded={advanceRestScreen}
               />
             ) : hasCarousel ? (
@@ -646,13 +754,14 @@ export function BigScreenView() {
         </Box>
 
         <MantineTransition 
-          mounted={(!!settings.currentProjection && settings.currentProjection.id !== exitedId) || exiting}
-          transition={currentTransition} 
-          duration={displayProjection?.transitionEffect === 'particles' ? 2000 : 1000}
-          // Con video de transición la salida la resuelve ese video: al
-          // terminar, el contenedor se quita de golpe. Con fade de 1s la foto
-          // (que queda visible tras el video) se veía desvanecerse otra vez.
-          exitDuration={displayProjection?.revealEffect === 'video-overlay' && displayProjection?.revealOverlayVideoUrl ? 0 : undefined}
+          mounted={(!!settings.currentProjection && projectionKey(settings.currentProjection) !== exitedKey) || exiting}
+          transition={currentTransition}
+          // Con video de transición, la entrada y la salida las resuelve ese
+          // video: el contenedor aparece y se quita de golpe. Si no, su
+          // fade de 1s se sumaba al video (que dura ~1s) y este se veía
+          // semitransparente durante toda la entrada.
+          duration={isOverlayMode ? 0 : displayProjection?.transitionEffect === 'particles' ? 2000 : 1000}
+          exitDuration={isOverlayMode ? 0 : undefined}
           timingFunction="ease"
         >
           {(styles) => (
@@ -660,9 +769,11 @@ export function BigScreenView() {
             // todavía no cubre toda la imagen, o mientras el contenedor se
             // desvanece hacia adentro, se alcanza a ver la Parrilla o la
             // Pantalla de Reposo por detrás (quedan debajo en zIndex 10).
-            <div style={{ ...styles, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, zIndex: 20, backgroundColor: '#000' }}>
-              {displayProjection?.revealEffect === 'video-overlay' && !overlayReady ? (
-                <Box style={{ width: '100%', height: '100%', backgroundColor: '#000' }} />
+            // Excepción: mientras el video de transición aún no tapa la
+            // pantalla, es transparente a propósito (ver projectionHidden).
+            <div style={{ ...styles, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', top: 0, left: 0, zIndex: 20, backgroundColor: projectionHidden ? 'transparent' : '#000' }}>
+              {projectionHidden ? (
+                <Box style={{ width: '100%', height: '100%' }} />
               ) : displayProjection?.mediaType === 'video' ? (
                 // El video se proyecta tal cual, sin el efecto de spray (que es
                 // un canvas pensado solo para revelar una imagen estática).
@@ -671,7 +782,7 @@ export function BigScreenView() {
                 // videos de la parrilla de contenidos en este mismo componente.
                 <Box style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', backgroundColor: '#000' }}>
                   <video
-                    key={displayProjection?.id}
+                    key={displayKey ?? undefined}
                     ref={projectionVideoRef}
                     src={displayProjection?.imageUrl}
                     autoPlay
@@ -744,25 +855,25 @@ export function BigScreenView() {
               {displayProjection?.revealEffect === 'video-overlay' && displayProjection?.revealOverlayVideoUrl && !(exitPlayed && !exiting) && (
                 <Box style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 25, pointerEvents: 'none' }}>
                   <video
-                    key={`${displayProjection?.id}${exitPlayed ? '-exit' : ''}`}
+                    key={`${displayKey}${exitPlayed ? '-exit' : ''}`}
                     ref={overlayVideoRef}
                     src={overlayVideoSrc}
                     autoPlay
                     muted
                     playsInline
                     onPlay={() => console.debug('[overlay] play', exitPlayed ? 'salida' : 'entrada', displayProjection?.id)}
-                    onPlaying={() => setOverlayReady(true)}
-                    onError={() => { setOverlayReady(true); setExiting(false); }}
+                    onPlaying={() => { overlayStartedRef.current = true; }}
+                    onError={() => { setOverlayCovered(true); setExiting(false); }}
                     onEnded={() => { if (exiting) setExiting(false); }}
-                    onTimeUpdate={handleOverlayTimeUpdate}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: overlayOpacity }}
+                    // La opacidad la maneja el efecto de animación del overlay.
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 </Box>
               )}
 
               {/* Código de reserva de la proyección activa, superpuesto sobre la
                   imagen/video para que quien la ve pueda identificar su turno. */}
-              {displayProjection?.code && (
+              {displayProjection?.code && !projectionHidden && (
                 <Box style={{
                   position: 'absolute',
                   top: 12,

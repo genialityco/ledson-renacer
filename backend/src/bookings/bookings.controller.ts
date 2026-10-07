@@ -163,6 +163,9 @@ export class BookingsController {
     return this.bookingsService.initBooking(data);
   }
 
+  // Guarda la foto/video ANTES de salir a pagar con dLocal Go (que redirige y
+  // hace perder el estado del navegador). El pago se verifica después, en
+  // confirm-payment.
   @Post(':id/attach-media')
   async attachMedia(
     @Param('id') id: string,

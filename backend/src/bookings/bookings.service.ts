@@ -626,8 +626,6 @@ export class BookingsService {
       frameX?: number;
       frameY?: number;
       frameZoom?: number;
-      gateway?: 'wompi' | 'dlocalgo';
-      transactionId?: string;
     },
   ) {
     const db = this.firebase.getFirestore();
@@ -641,20 +639,6 @@ export class BookingsService {
 
     if (booking.status !== 'PENDING') {
       return { success: true, message: 'La reserva ya fue procesada' };
-    }
-
-    // Monto realmente cobrado, consultado a la pasarela (no el que dice el
-    // navegador) y guardado como "valor pagado" de la reserva.
-    const payment = await this.verifyGatewayPayment(
-      id,
-      data?.gateway,
-      data?.transactionId,
-    );
-    if (payment.rejected) {
-      throw new ConflictException(payment.rejected);
-    }
-    if (payment.fields) {
-      await bookingRef.update(payment.fields);
     }
 
     const update: Record<string, any> = {};
@@ -753,6 +737,8 @@ export class BookingsService {
       frameX?: number;
       frameY?: number;
       frameZoom?: number;
+      gateway?: 'wompi' | 'dlocalgo';
+      transactionId?: string;
     },
   ) {
     const db = this.firebase.getFirestore();
@@ -764,8 +750,36 @@ export class BookingsService {
     const booking = bookingDoc.data();
     if (!booking) throw new NotFoundException('Booking sin datos');
 
+    // Ya confirmada (p. ej. un reintento del frontend cuando la respuesta
+    // anterior se perdió): se devuelven sus datos reales para que el cliente
+    // vea su código y hora, en vez de una confirmación vacía.
     if (booking.status !== 'PENDING') {
-      return { success: true, message: 'La reserva ya fue procesada' };
+      return {
+        success: true,
+        message: 'La reserva ya fue procesada',
+        code: booking.code,
+        exactTime: booking.exactTime,
+        timeSlot: booking.timeSlot,
+        queuePosition: booking.queuePosition,
+      };
+    }
+
+    // Monto realmente cobrado, consultado a la pasarela (no el que dice el
+    // navegador) y guardado como "valor pagado" de la reserva. Va antes de
+    // subir la foto/video: un pago rechazado no debe aprobar la reserva.
+    // Si falla algo después (p. ej. la subida), la reserva sigue PENDING y el
+    // frontend reintenta esta misma llamada con la misma transacción, sin
+    // volver a cobrar.
+    const payment = await this.verifyGatewayPayment(
+      id,
+      data?.gateway,
+      data?.transactionId,
+    );
+    if (payment.rejected) {
+      throw new ConflictException(payment.rejected);
+    }
+    if (payment.fields) {
+      await bookingRef.update(payment.fields);
     }
 
     let imageUrl = booking.imageUrl;
@@ -1764,8 +1778,8 @@ export class BookingsService {
   // currentProjection se queda en el backend aunque la pantalla ya la haya
   // ocultado, bloqueando la proyección manual y la automática. Se considera
   // caducada cuando ya pasó su duración (misma regla que BigScreenView) más
-  // un margen para transiciones y reintentos de red.
-  private static readonly STALE_PROJECTION_GRACE_MS = 2 * 60 * 1000;
+  // un margen para el video de transición de salida y reintentos de red.
+  private static readonly STALE_PROJECTION_GRACE_MS = 30 * 1000;
 
   private isProjectionStale(cp: any, screenSettings: any): boolean {
     if (!cp?.timestamp) return true;
@@ -2127,9 +2141,13 @@ export class BookingsService {
     const b = bookingDoc.data();
     if (!b) return { success: true };
 
-    // 3. Evitar doble envío
-    if (b.waSend)
+    // 3. Evitar doble envío (p. ej. una reserva ya completada que se volvió a
+    // proyectar a mano): no se reenvía nada, pero sí vuelve a COMPLETED
+    // (projectBooking la había pasado a SHOWN).
+    if (b.waSend) {
+      await bookingRef.update({ status: 'COMPLETED' });
       return { success: true, message: 'Notificación de WhatsApp ya enviada' };
+    }
 
     // 4. Enviar el correo electrónico
     if (b.email && !b.emailSent) {
@@ -2316,6 +2334,9 @@ export class BookingsService {
 
       for (const doc of snapshot.docs) {
         const b = doc.data();
+        // Pagó pero falló la carga de la foto/video (sigue PENDING): no es un
+        // carrito abandonado, no se le pide que "complete su compra".
+        if (b.paymentVerified && b.paymentStatus) continue;
         if (b.email) {
           // El horario puede no estar elegido todavía (en modo franjas se elige
           // recién en el paso de la foto, después del pago).
