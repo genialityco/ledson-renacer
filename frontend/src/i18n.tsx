@@ -91,7 +91,7 @@ const translations = {
     franjaNowFull: "Ese horario acaba de llenarse. Por favor elige otro.",
     selectFranjaAlert: "Debes seleccionar un horario.",
     assignFranjaError: "Hubo un error asignando el horario. Intenta de nuevo.",
-    approxFranjaLabel: "Tu reserva se mostrará en pantalla entre:",
+    approxFranjaLabel: "Se mostrará en pantalla entre:",
     changeFranjaLabel: "¿Prefieres otro horario?",
     currentFranjaTag: "actual",
     bookingCodeLabel: "Tu código de reserva",

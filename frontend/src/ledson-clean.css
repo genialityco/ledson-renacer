@@ -968,3 +968,63 @@ body {
   min-height: 54px !important;
   padding: 12px 16px !important;
 }
+
+/* ============================================================
+   CORRECCIÓN PARA SCROLL DEL WIDGET WOMPI EN DISPOSITIVOS MÓVILES
+   ============================================================ */
+/* Cuando el modal de Wompi está abierto, evitamos que el fondo
+   de la aplicación interactúe o cree scroll-chaining. */
+body:has(> .waybox-modal:not([hidden])) #root,
+#root[aria-hidden="true"] {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+body:has(> .waybox-modal:not([hidden])) .ledson-booking-wrap,
+#root[aria-hidden="true"] .ledson-booking-wrap {
+  overflow-y: hidden !important;
+  pointer-events: none !important;
+}
+
+/* El backdrop de Wompi es solo fondo oscuro estético; no debe tener scroll */
+.waybox-backdrop {
+  overflow: hidden !important;
+}
+
+.waybox-preload-wrapper {
+  pointer-events: none !important;
+}
+
+/* En móviles, convertimos .waybox-modal en un modal fijo centrado con su
+   propio contenedor de scroll nativo táctil. Esto resuelve el problema
+   donde el iframe requería dos toques para activar el scroll en el body
+   o se quedaba atascado en la parte superior. */
+@media (max-width: 768px) {
+  .waybox-modal {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 2147483647 !important;
+    width: 95% !important;
+    max-width: 440px !important;
+    height: 88dvh !important;
+    max-height: 88dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    padding-bottom: 3rem !important;
+    box-sizing: border-box !important;
+  }
+
+  .waybox-modal iframe,
+  .waybox-modal .waybox-iframe {
+    width: 100% !important;
+    min-height: 950px !important;
+    height: auto !important;
+    display: block !important;
+    border: none !important;
+  }
+}
+

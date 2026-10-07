@@ -23,8 +23,30 @@ const SCREEN_KEY = (() => {
   }
 })();
 const screenAuth = { headers: { 'X-Screen-Key': SCREEN_KEY } };
-
 const SETTINGS_STORAGE_KEY = 'ledson-screen-settings';
+
+// Service worker (public/screen-sw.js) que guarda la app para que /screen
+// vuelva a abrir aunque se recargue sin internet. Solo se registra aquí: los
+// celulares de los clientes nunca lo instalan. En la primera visita la página
+// cargó antes de que el service worker existiera, así que se le pasa la lista
+// de archivos ya descargados para que también los guarde.
+const registerScreenServiceWorker = () => {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker
+    .register('/screen-sw.js')
+    .then(() => navigator.serviceWorker.ready)
+    .then((reg) => {
+      const urls = [
+        window.location.href,
+        ...performance
+          .getEntriesByType('resource')
+          .map((e) => e.name)
+          .filter((u) => u.startsWith(window.location.origin)),
+      ];
+      reg.active?.postMessage({ type: 'cache-urls', urls });
+    })
+    .catch((e) => console.error('No se pudo registrar el service worker de la pantalla:', e));
+};
 
 // Última configuración recibida del backend, guardada en el navegador: si la
 // pantalla se recarga o arranca SIN internet, sigue con la misma configuración
@@ -107,8 +129,7 @@ export function BigScreenView() {
   // Proyección que ya cumplió su tiempo pero cuyo aviso de "completada" no
   // llegó al backend (sin internet): se oculta localmente para que la pantalla
   // no se quede congelada en ella, y se sigue reintentando avisar.
-  const [dismissedId, setDismissedId] = useState<string | null>(null);
-  const settings = useMemo(
+  const [dismissedId, setDismissedId] = useState<string | null>(null);  const settings = useMemo(
     () =>
       rawSettings.currentProjection && rawSettings.currentProjection.id === dismissedId
         ? { ...rawSettings, currentProjection: null }
@@ -216,6 +237,10 @@ export function BigScreenView() {
       console.error('Error fetching projections:', e);
     }
   };
+
+  useEffect(() => {
+    registerScreenServiceWorker();
+  }, []);
 
   useEffect(() => {
     fetchSettings();
@@ -334,16 +359,23 @@ export function BigScreenView() {
     }
   }, [currentItem, settings.currentProjection, settings.contentGrid?.length, restScreenActive]);
 
-  // Lógica de expiración de la proyección. El video usa su propia duración
-  // configurable (videoProjectionDuration) en vez de la de fotos — si el
-  // video dura menos, se repite (loop) hasta completar el tiempo; si dura
-  // más, se corta.
+  // Lógica de expiración de la proyección. Si es video, se toma el tiempo total
+  // del recorte (trimEnd - trimStart) para que se muestre exactamente una vez completo.
+  // Si no tiene recorte o es foto, usa la duración global configurada.
   useEffect(() => {
     if (settings.currentProjection && settings.currentProjection.timestamp) {
       const timeElapsed = Date.now() - settings.currentProjection.timestamp;
       const isVideoProjection = settings.currentProjection.mediaType === 'video';
-      const PROJECTION_DURATION =
-        ((isVideoProjection ? settings.videoProjectionDuration : settings.projectionDuration) || 15) * 1000;
+      
+      let PROJECTION_DURATION;
+      if (isVideoProjection && settings.currentProjection.trimEnd) {
+        const trimStart = settings.currentProjection.trimStart || 0;
+        const trimEnd = settings.currentProjection.trimEnd;
+        PROJECTION_DURATION = (trimEnd - trimStart) * 1000;
+      } else {
+        PROJECTION_DURATION = ((isVideoProjection ? settings.videoProjectionDuration : settings.projectionDuration) || 15) * 1000;
+      }
+      
       const timeRemaining = PROJECTION_DURATION - timeElapsed;
       
       const projectionId = settings.currentProjection.id;

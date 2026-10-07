@@ -1759,6 +1759,29 @@ export class BookingsService {
     return { success: true };
   }
 
+  // Una proyección queda "colgada" si la pantalla nunca llegó a llamar a
+  // /complete (llave X-Screen-Key inválida, pantalla cerrada o sin internet):
+  // currentProjection se queda en el backend aunque la pantalla ya la haya
+  // ocultado, bloqueando la proyección manual y la automática. Se considera
+  // caducada cuando ya pasó su duración (misma regla que BigScreenView) más
+  // un margen para transiciones y reintentos de red.
+  private static readonly STALE_PROJECTION_GRACE_MS = 2 * 60 * 1000;
+
+  private isProjectionStale(cp: any, screenSettings: any): boolean {
+    if (!cp?.timestamp) return true;
+    const isVideo = cp.mediaType === 'video';
+    const durationMs =
+      isVideo && cp.trimEnd
+        ? (cp.trimEnd - (cp.trimStart || 0)) * 1000
+        : ((isVideo
+            ? screenSettings.videoProjectionDuration
+            : screenSettings.projectionDuration) || 15) * 1000;
+    return (
+      Date.now() - cp.timestamp >
+      durationMs + BookingsService.STALE_PROJECTION_GRACE_MS
+    );
+  }
+
   async projectBooking(bookingId: string) {
     const db = this.firebase.getFirestore();
     const bookingDoc = await db.collection('lr_bookings').doc(bookingId).get();
@@ -1804,12 +1827,24 @@ export class BookingsService {
     // completarse (su timer de /complete en el frontend se cancela al
     // cambiar currentProjection, así que ni siquiera le llegaría el correo).
     // Hay que esperar a que termine o despejar la pantalla manualmente.
-    if (
-      screenSettings.currentProjection &&
-      screenSettings.currentProjection.id !== bookingId
-    ) {
-      throw new ConflictException(
-        'Ya hay una proyección activa. Espera a que termine o despeja la pantalla.',
+    // Si está caducada (nadie la completó), se reemplaza sin más.
+    const activeProjection = screenSettings.currentProjection;
+    if (activeProjection && activeProjection.id !== bookingId) {
+      if (!this.isProjectionStale(activeProjection, screenSettings)) {
+        throw new ConflictException(
+          'Ya hay una proyección activa. Espera a que termine o despeja la pantalla.',
+        );
+      }
+      console.warn(
+        `Reemplazando proyección caducada ${activeProjection.id} (${activeProjection.code || ''}): la pantalla nunca llamó a /complete.`,
+      );
+      // La completa el backend para que ese cliente igual reciba su correo
+      // (con marco) y WhatsApp. En segundo plano: no frena la nueva proyección.
+      this.completeProjection(activeProjection.id).catch((e: any) =>
+        console.error(
+          `Error completando proyección caducada ${activeProjection.id}:`,
+          e.message,
+        ),
       );
     }
 
@@ -1883,8 +1918,12 @@ export class BookingsService {
       const resizedImage = await sharp(imageBuffer)
         .resize(outWidth, outHeight, { fit: 'cover' })
         .toBuffer();
+      // El marco debe ajustarse al lienzo sin recortar sus bordes (fit: 'fill').
+      // Con fit: 'cover', si la relación de aspecto del marco difiere de
+      // cropWidth / cropHeight (ej. 9:16 vs 1:2), sharp recortaba los laterales
+      // del marco perdiéndose el diseño o marco a los lados.
       const resizedFrame = await sharp(frameBuffer)
-        .resize(outWidth, outHeight, { fit: 'cover' })
+        .resize(outWidth, outHeight, { fit: 'fill' })
         .toBuffer();
 
       const composited = await sharp(resizedImage)
@@ -1924,9 +1963,8 @@ export class BookingsService {
   // El video original NUNCA se recorta al subirlo (solo se guarda
   // frameX/frameY/frameZoom como metadatos para el CSS de la pantalla), así
   // que aquí se lleva a la Proporción de Recorte configurada (cropWidth x
-  // cropHeight) con un recorte tipo "cover" (igual que object-fit: cover en
-  // pantalla) antes de superponer el marco, también recortado a "cover" sobre
-  // ese mismo tamaño para no dejar huecos.
+  // cropHeight) con un recorte tipo "cover" antes de superponer el marco,
+  // el cual se escala exactamente a ese tamaño sin recortar sus bordes.
   private async compositeEmailFrameVideo(
     videoUrl: string,
     frameUrl: string,
@@ -1946,7 +1984,7 @@ export class BookingsService {
           .input(frameUrl)
           .complexFilter([
             `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[base]`,
-            `[1:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},format=rgba[ovr]`,
+            `[1:v]scale=${w}:${h},format=rgba[ovr]`,
             '[base][ovr]overlay=0:0:format=auto[outv]',
           ])
           .outputOptions(['-map', '[outv]', '-map', '0:a?', '-c:a', 'copy'])
@@ -2052,13 +2090,33 @@ export class BookingsService {
     await bookingRef.update(update);
   }
 
-  async completeProjection(bookingId: string) {
+  // /complete puede llegar a la vez desde la pantalla (o sus reintentos) y
+  // desde el propio backend al cerrar una proyección caducada: se comparte la
+  // misma ejecución para no mandar el correo/WhatsApp dos veces.
+  private readonly completingProjections = new Map<string, Promise<any>>();
+
+  completeProjection(bookingId: string) {
+    const running = this.completingProjections.get(bookingId);
+    if (running) return running;
+    const run = this.runCompleteProjection(bookingId).finally(() =>
+      this.completingProjections.delete(bookingId),
+    );
+    this.completingProjections.set(bookingId, run);
+    return run;
+  }
+
+  private async runCompleteProjection(bookingId: string) {
     const db = this.firebase.getFirestore();
-    // 1. Limpiar pantalla
-    await db
-      .collection('lr_settings')
-      .doc('screen')
-      .set({ currentProjection: null }, { merge: true });
+    // 1. Limpiar pantalla — solo si la proyección activa sigue siendo ESTA
+    // reserva: un /complete atrasado (reintento de la pantalla tras volver la
+    // conexión) no debe borrar una proyección nueva que ya la reemplazó.
+    const screenRef = db.collection('lr_settings').doc('screen');
+    await db.runTransaction(async (tx) => {
+      const screenDoc = await tx.get(screenRef);
+      if (screenDoc.data()?.currentProjection?.id === bookingId) {
+        tx.set(screenRef, { currentProjection: null }, { merge: true });
+      }
+    });
 
     // 2. Obtener reserva
     const bookingRef = db.collection('lr_bookings').doc(bookingId);
@@ -2321,11 +2379,17 @@ export class BookingsService {
         .collection('lr_settings')
         .doc('screen')
         .get();
-      if (
-        screenSettingsDoc.exists &&
-        screenSettingsDoc.data()?.currentProjection
-      ) {
-        return;
+      // Una proyección caducada (la pantalla nunca llamó a /complete: llave
+      // inválida, pantalla cerrada o sin internet) la completa el backend, así
+      // el cliente igual recibe su correo con marco y WhatsApp, y la cola sigue.
+      const screenData = screenSettingsDoc.data();
+      const cp = screenData?.currentProjection;
+      if (cp) {
+        if (!this.isProjectionStale(cp, screenData)) return;
+        console.warn(
+          `Completando proyección caducada ${cp.id} (${cp.code || ''}): la pantalla nunca llamó a /complete.`,
+        );
+        await this.completeProjection(cp.id);
       }
 
       const snapshot = await db

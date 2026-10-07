@@ -9,10 +9,21 @@ import { IconCameraRotate } from '@tabler/icons-react';
 // dispositivo. forceScreenshotSourceSize hace que la foto salga a la
 // resolución real de la cámara y no al tamaño en pantalla del video, y la
 // calidad JPEG va al máximo.
-export function CameraView({ webcamRef }: { webcamRef: RefObject<Webcam | null> }) {
+//
+// Con `aspect` (por ahora solo en celular), la vista previa se muestra con la
+// proporción de la pantalla gigante (cropWidth / cropHeight) y la foto se
+// captura con captureAtAspect (captureAtAspect.ts): lo que ve la persona es
+// justo lo que se proyecta. Sin `aspect` se mantiene la vista previa de siempre.
+export function CameraView({ webcamRef, aspect }: { webcamRef: RefObject<Webcam | null>; aspect?: number }) {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   return (
-    <Box style={{ position: 'relative', width: '100%' }}>
+    <Box
+      style={
+        aspect
+          ? { position: 'relative', height: '65vh', maxWidth: '100%', aspectRatio: String(aspect), margin: '0 auto' }
+          : { position: 'relative', width: '100%' }
+      }
+    >
       <Webcam
         key={facingMode}
         audio={false}
@@ -25,7 +36,7 @@ export function CameraView({ webcamRef }: { webcamRef: RefObject<Webcam | null> 
           width: { ideal: 4096 },
           height: { ideal: 2160 },
         }}
-        style={{ width: '100%', height: '60vh', objectFit: 'cover', display: 'block' }}
+        style={{ width: '100%', height: aspect ? '100%' : '60vh', objectFit: 'cover', display: 'block' }}
       />
       <ActionIcon
         variant="filled"

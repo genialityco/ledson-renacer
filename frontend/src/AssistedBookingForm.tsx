@@ -3,6 +3,7 @@ import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Tex
 import { IconCamera, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import { CameraView } from './CameraView';
+import { captureAtAspect } from './captureAtAspect';
 import axios from 'axios';
 import QRCode from 'react-qr-code';
 import { useNavigate } from 'react-router-dom';
@@ -86,6 +87,7 @@ export function AssistedBookingForm() {
   const [isCheckingVideoModeration, setIsCheckingVideoModeration] = useState(false);
   const [cropWidth, setCropWidth] = useState(576);
   const [cropHeight, setCropHeight] = useState(1152);
+  const [videoProjectionDuration, setVideoProjectionDuration] = useState(15);
 
   const [name, setName] = useState('');
   const [docType, setDocType] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export function AssistedBookingForm() {
     axios.get(`${API_BASE_URL}/api/bookings/screen-settings`).then((res) => {
       setCropWidth(res.data?.cropWidth || 576);
       setCropHeight(res.data?.cropHeight || 1152);
+      setVideoProjectionDuration(res.data?.videoProjectionDuration || 15);
     });
   }, []);
 
@@ -229,7 +232,10 @@ export function AssistedBookingForm() {
   };
 
   const capture = () => {
-    const imageSrc = webcamRef.current?.getScreenshot();
+    // En celular la foto sale ya con la proporción de la pantalla gigante.
+    const imageSrc = isMobile
+      ? captureAtAspect(webcamRef.current, cropWidth / cropHeight)
+      : webcamRef.current?.getScreenshot();
     if (imageSrc) {
       closeCameraModal();
       setRawImageForCrop(imageSrc);
@@ -890,7 +896,7 @@ export function AssistedBookingForm() {
         >
           <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <Box style={{ width: '100%', maxWidth: '600px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000' }}>
-              <CameraView webcamRef={webcamRef} />
+              <CameraView webcamRef={webcamRef} aspect={isMobile ? cropWidth / cropHeight : undefined} />
             </Box>
             <Button className="ledson-btn-primary" mt="xl" onClick={capture} leftSection={<IconCamera size={20} />}>
               Capturar
@@ -910,7 +916,7 @@ export function AssistedBookingForm() {
         <VideoTrimModal
           opened={videoTrimModalOpened}
           file={rawVideoFile}
-          maxSeconds={15}
+          maxSeconds={videoProjectionDuration}
           aspect={cropWidth / cropHeight}
           confirming={isCheckingVideoModeration}
           confirmingLabel="Revisando el contenido del video..."

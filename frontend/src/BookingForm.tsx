@@ -3,6 +3,7 @@ import { Container, Title, TextInput, Select, Button, Box, Group, FileInput, Tex
 import { IconCamera, IconCreditCard, IconCheck, IconArrowLeft, IconArrowRight, IconCopy, IconPhoto, IconVideo, IconLock } from '@tabler/icons-react';
 import Webcam from 'react-webcam';
 import { CameraView } from './CameraView';
+import { captureAtAspect } from './captureAtAspect';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
@@ -105,6 +106,7 @@ export function BookingForm() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [cropWidth, setCropWidth] = useState(576);
   const [cropHeight, setCropHeight] = useState(1152);
+  const [videoProjectionDuration, setVideoProjectionDuration] = useState(15);
   const [codeCopied, setCodeCopied] = useState(false);
   const { t } = useLanguage();
   const documentTypeOptions = [
@@ -183,6 +185,7 @@ export function BookingForm() {
       .then((res) => {
         setCropWidth(res.data?.cropWidth || 576);
         setCropHeight(res.data?.cropHeight || 1152);
+        setVideoProjectionDuration(res.data?.videoProjectionDuration || 15);
       })
       .catch((err) => console.error("Error fetching screen settings", err));
   }, []);
@@ -267,7 +270,10 @@ export function BookingForm() {
   };
 
   const capture = () => {
-    const imageSrc = webcamRef.current?.getScreenshot();
+    // En celular la foto sale ya con la proporción de la pantalla gigante.
+    const imageSrc = isMobile
+      ? captureAtAspect(webcamRef.current, cropWidth / cropHeight)
+      : webcamRef.current?.getScreenshot();
     if (imageSrc) {
       closeCameraModal();
       setRawImageForCrop(imageSrc);
@@ -514,6 +520,11 @@ export function BookingForm() {
         // se abre y solo lo volvemos a marcar "cargando" mientras confirmamos
         // el pago aprobado con el backend.
         setIsUploadingPhoto(false);
+        // Forzamos el visor arriba y reseteamos el scroll del formulario
+        window.scrollTo(0, 0);
+        const bookingWrap = document.querySelector('.ledson-booking-wrap');
+        if (bookingWrap) bookingWrap.scrollTop = 0;
+
         checkout.open(async (result: any) => {
           const transaction = result?.transaction;
           console.log('Transaction result: ', transaction);
@@ -1055,7 +1066,7 @@ export function BookingForm() {
         >
           <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <Box style={{ width: '100%', maxWidth: '600px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000' }}>
-              <CameraView webcamRef={webcamRef} />
+              <CameraView webcamRef={webcamRef} aspect={isMobile ? cropWidth / cropHeight : undefined} />
             </Box>
             <Button className="ledson-btn-primary" mt="xl" onClick={capture} leftSection={<IconCamera size={20} />}>
               {t('capture')}
@@ -1075,7 +1086,7 @@ export function BookingForm() {
         <VideoTrimModal
           opened={videoTrimModalOpened}
           file={rawVideoFile}
-          maxSeconds={15}
+          maxSeconds={videoProjectionDuration}
           aspect={cropWidth / cropHeight}
           confirming={isCheckingVideoModeration}
           confirmingLabel={t('moderationCheckingVideo')}

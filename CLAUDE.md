@@ -78,6 +78,8 @@ Note: the exact-time assignment logic is duplicated across `initBooking`, `confi
 
 `frontend/src/BigScreenView.tsx` (route `/screen`, renders without the app shell) polls `GET /api/bookings/screen-settings` every 3 s. "Projecting" means the backend writes `currentProjection` into `lr_settings/screen`; the screen displays it, and when `projectionDuration` elapses the screen calls `POST /api/bookings/:id/complete`, which clears the projection, sends the result email (AWS SES) and WhatsApp message, and marks the booking `COMPLETED`. When idle, the screen shows a carousel/content grid from the same settings doc.
 
+Offline resilience: the last screen settings are kept in localStorage; key media (loop video, default image, transition video) are stored locally via `useCachedAsset` (Cache API — requires CORS on the Storage bucket, set with `npx ts-node scripts/set-storage-cors.ts`); and `public/screen-sw.js`, registered only by BigScreenView, caches the app so `/screen` reloads without internet. Cache API and service workers only work in a secure context (https or `localhost`), not on `http://<LAN-IP>`.
+
 ### Payments
 
 - **Wompi** (`wompi/`): backend only computes the integrity signature (`GET /api/wompi/integrity-signature`) and verifies transactions; the widget runs client-side. Sandbox vs production via `WOMPI_ENV`.
