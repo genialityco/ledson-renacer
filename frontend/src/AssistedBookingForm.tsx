@@ -107,6 +107,9 @@ export function AssistedBookingForm() {
   const [userPickedFranja, setUserPickedFranja] = useState(false);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [sellerId, setSellerId] = useState<string | null>(null);
+  // true si la cuenta con sesión es de un vendedor vinculado: el campo queda
+  // fijo en su nombre (el backend también lo fuerza al crear la reserva).
+  const [sellerLocked, setSellerLocked] = useState(false);
   const [benefits, setBenefits] = useState<BenefitOption[]>([]);
   const [benefitId, setBenefitId] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
@@ -149,6 +152,11 @@ export function AssistedBookingForm() {
     axios.get(`${API_BASE_URL}/api/sellers`).then((res) => {
       setSellers(res.data.map((s: any) => ({ id: s._id, name: s.name })));
     });
+    axios.get(`${API_BASE_URL}/api/sellers/me`).then((res) => {
+      if (!res.data?.seller) return;
+      setSellerId(res.data.seller._id);
+      setSellerLocked(!!res.data.locked);
+    }).catch(() => {});
     axios.get(`${API_BASE_URL}/api/benefits`).then((res) => {
       setBenefits(res.data.map((b: any) => ({ id: b._id, name: b.name })));
     });
@@ -602,8 +610,9 @@ export function AssistedBookingForm() {
                   data={sellers.map(s => ({ value: s.id, label: s.name }))}
                   value={sellerId}
                   onChange={setSellerId}
-                  clearable
-                  disabled={sellers.length === 0}
+                  clearable={!sellerLocked}
+                  disabled={sellers.length === 0 || sellerLocked}
+                  description={sellerLocked ? 'Vinculado a tu cuenta' : undefined}
                 />
               </Grid.Col>
 

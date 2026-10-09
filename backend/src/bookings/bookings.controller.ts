@@ -6,16 +6,22 @@ import {
   Put,
   Param,
   Query,
+  Req,
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import axios from 'axios';
 import { BookingsService } from './bookings.service';
 import { Roles } from '../auth/roles.decorator';
+import type { AuthedRequest } from '../auth/auth.guard';
+import { SellersService } from '../sellers/sellers.service';
 
 @Controller('api/bookings')
 export class BookingsController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(
+    private readonly bookingsService: BookingsService,
+    private readonly sellersService: SellersService,
+  ) {}
 
   @Get('screen-settings')
   async getScreenSettings() {
@@ -163,9 +169,9 @@ export class BookingsController {
     return this.bookingsService.initBooking(data);
   }
 
-  // Guarda la foto/video ANTES de salir a pagar con dLocal Go (que redirige y
-  // hace perder el estado del navegador). El pago se verifica después, en
-  // confirm-payment.
+  // Guarda la foto/video ANTES de abrir la pasarela (Wompi o dLocal Go), para
+  // que la reserva se pueda confirmar aunque el cliente no vuelva a la
+  // página. El pago se verifica después, en confirm-payment / sync-payment.
   @Post(':id/attach-media')
   async attachMedia(
     @Param('id') id: string,
@@ -178,9 +184,17 @@ export class BookingsController {
       frameX?: number;
       frameY?: number;
       frameZoom?: number;
+      checkoutGateway?: string;
     },
   ) {
     return this.bookingsService.attachMedia(id, data);
+  }
+
+  // Consulta periódica del frontend mientras el widget de Wompi está abierto:
+  // si el pago ya se aprobó, confirma la reserva y devuelve su resultado.
+  @Post(':id/sync-payment')
+  async syncPayment(@Param('id') id: string) {
+    return this.bookingsService.syncWompiPayment(id);
   }
 
   @Post(':id/confirm-payment')
@@ -217,7 +231,16 @@ export class BookingsController {
 
   @Roles('vendedor')
   @Post()
-  async createBooking(@Body() data: any) {
+  async createBooking(
+    @Body() data: Record<string, unknown>,
+    @Req() req: AuthedRequest,
+  ) {
+    // Un vendedor con cuenta vinculada siempre vende a su nombre, elija lo
+    // que elija en el formulario. Los admin pueden registrar por cualquiera.
+    if (req.user?.role === 'vendedor') {
+      const mine = await this.sellersService.findByUid(req.user.uid);
+      if (mine) data.sellerId = mine._id;
+    }
     return this.bookingsService.createBooking(data);
   }
 

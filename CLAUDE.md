@@ -50,6 +50,7 @@ All access goes through `FirebaseService` (`backend/src/firebase/firebase.servic
 
 - `lr_bookings` — one doc per booking. Status lifecycle: `PENDING` → `APPROVED` → `GENERATED` → `SHOWN` → `COMPLETED`.
 - `lr_filters` — AI style filters (LoRA name, prompt, strength, transition effect, frame overlay). Managed by the `images` module; seeded on startup.
+- `lr_sellers` — stand sellers. Optional `uid` links a seller to one Firebase Auth account (one account per seller, validated in `sellers.service.ts`).
 - `lr_settings` — singleton config docs: `screen` (big-screen layout, carousel, deadTimes, and `currentProjection` — the live projection pointer), `schedules` (`slotDuration`, `bookingSystemType`, `paymentGateway`), `general` (email language).
 - `lr_slot_templates`, `lr_daily_schedules` — reusable schedule templates and per-date (`YYYY-MM-DD`) schedules with `deadTimes`.
 
@@ -59,7 +60,7 @@ Photos live in Firebase Storage (`bookings/`, `generated/`); files are made publ
 
 Two entry paths, both under `/api/bookings`:
 
-1. **Self-service with online payment**: `POST /init` creates a `PENDING` booking → frontend pays via Wompi widget or dLocal Go redirect → `POST /:id/confirm-payment` verifies, assigns the exact projection minute, sets `APPROVED`, and kicks off image generation in the background.
+1. **Self-service with online payment**: `POST /init` creates a `PENDING` booking → `POST /:id/attach-media` stores the photo/video *before* opening the gateway → frontend pays via Wompi widget or dLocal Go redirect → `POST /:id/confirm-payment` verifies, assigns the exact projection minute, sets `APPROVED`, and kicks off image generation in the background. For Wompi the booking doesn't depend on the customer clicking "Finalizar" in the widget: while it's open the frontend polls `POST /:id/sync-payment` (looks up the transaction by reference `booking-<id>`), and on approval closes the widget and shows the confirmed booking; the widget's `redirectUrl` brings PSE-style payments back to `/booking?wompiBookingId=`; and the `reconcileWompiCheckouts` cron confirms paid bookings whose customer never returned (bookings flagged `pendingGateway: 'wompi'`). `confirmPayment` is serialized per booking so these paths can't double-confirm.
 2. **Assisted (admin/point-of-sale)**: `POST /api/bookings` creates the booking directly as `APPROVED` (cash/dataphone/QR payment methods).
 
 Two scheduling modes, switched by `lr_settings/schedules.bookingSystemType`:
@@ -72,6 +73,7 @@ Note: the exact-time assignment logic is duplicated across `initBooking`, `confi
 ### Cron jobs (in BookingsService, via @nestjs/schedule)
 
 - Every minute: auto-project `GENERATED` bookings whose `exactTime` has arrived (5-min tolerance window), and send WhatsApp "your projection is coming up" notifications (10-min lookahead).
+- Every minute: `reconcileWompiCheckouts` — confirms Wompi bookings that were paid but never confirmed by the browser (up to 2 h after the widget opened).
 - Every 10 minutes: abandoned-cart emails for bookings `PENDING` > 15 minutes.
 
 ### Big screen (the projection loop)
@@ -88,7 +90,7 @@ Offline resilience: the last screen settings are kept in localStorage; key media
 
 ### Auth
 
-Firebase Auth (email/password) with a `role` custom claim: `admin` (everything) or `vendedor` (assisted booking only). Accounts are managed from the admin "Usuarios" tab (`UsersAdmin.tsx` → `backend/src/users/`, `@Roles('admin')`); passwords are never set there — Firebase's password-reset email is used both for new users and "forgot password". The first admin is bootstrapped with `npx ts-node scripts/set-user-role.ts <email> admin [password]` from `backend/`. The guard verifies tokens with `checkRevoked`, so disabling a user or changing their role (which revokes sessions) takes effect immediately.
+Firebase Auth (email/password) with a `role` custom claim: `admin` (everything) or `vendedor` (assisted booking only). Accounts are managed from the admin "Usuarios" tab (`UsersAdmin.tsx` → `backend/src/users/`, `@Roles('admin')`); an optional initial password can be set when creating an account (e.g. from the "Vendedores" tab, which can create or link an account per seller); otherwise Firebase's password-reset email is used, both for new users and "forgot password". A `vendedor` linked to a seller has the seller preselected/locked in Reserva Asistida (`GET /api/sellers/me`), and `POST /api/bookings` overrides `sellerId` with it server-side. The first admin is bootstrapped with `npx ts-node scripts/set-user-role.ts <email> admin [password]` from `backend/`. The guard verifies tokens with `checkRevoked`, so disabling a user or changing their role (which revokes sessions) takes effect immediately.
 
 - Backend: global `AuthGuard` (`backend/src/auth/`) only enforces endpoints decorated with `@Roles(...)`; **undecorated endpoints are public**, so new admin endpoints must add `@Roles('admin')`. `admin` always passes.
 - The big screen doesn't log in: `/complete` and `grid-item-shown` use `@Roles('screen')`, satisfied by header `X-Screen-Key` = `SCREEN_KEY` env. Open the screen as `/screen?key=<SCREEN_KEY>` (remembered in localStorage).

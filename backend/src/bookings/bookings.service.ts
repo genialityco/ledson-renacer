@@ -18,6 +18,7 @@ import {
   renderButton,
   renderResultMediaImage,
 } from '../email/email.templates';
+import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormData from 'form-data';
@@ -30,6 +31,18 @@ import * as fs from 'fs';
 import * as ExcelJS from 'exceljs';
 
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
+
+interface ConfirmPaymentData {
+  imageBase64?: string;
+  timeSlot?: string;
+  trimStart?: number;
+  trimEnd?: number;
+  frameX?: number;
+  frameY?: number;
+  frameZoom?: number;
+  gateway?: 'wompi' | 'dlocalgo';
+  transactionId?: string;
+}
 
 @Injectable()
 export class BookingsService {
@@ -612,10 +625,11 @@ export class BookingsService {
   }
 
   // Guarda la foto/video (y la franja elegida, si aplica) en una reserva que
-  // sigue PENDING, sin marcarla como pagada ni asignarle hora. Se usa cuando
-  // la pasarela de pago redirige a una página externa (dLocal Go): hay que
-  // persistir el archivo ANTES de salir de la página, porque al volver se
-  // pierde el estado del navegador.
+  // sigue PENDING, sin marcarla como pagada ni asignarle hora. Se llama
+  // ANTES de abrir la pasarela (dLocal Go y Wompi): así la reserva ya tiene
+  // todo lo necesario para confirmarse aunque el cliente no vuelva a la
+  // página después de pagar. checkoutGateway = 'wompi' la deja marcada para
+  // que reconcileWompiCheckouts la confirme sola cuando Wompi apruebe.
   async attachMedia(
     id: string,
     data: {
@@ -626,6 +640,7 @@ export class BookingsService {
       frameX?: number;
       frameY?: number;
       frameZoom?: number;
+      checkoutGateway?: string;
     },
   ) {
     const db = this.firebase.getFirestore();
@@ -662,11 +677,86 @@ export class BookingsService {
       update.timeSlot = data.timeSlot;
     }
 
+    if (data.checkoutGateway === 'wompi') {
+      update.pendingGateway = 'wompi';
+      update.checkoutStartedAt = new Date();
+    }
+
     if (Object.keys(update).length > 0) {
       await bookingRef.update(update);
     }
 
     return { success: true };
+  }
+
+  // Consulta en Wompi (por la referencia booking-<id>) si la reserva ya se
+  // pagó y, si está aprobada, la confirma. Lo usan el frontend mientras el
+  // widget está abierto (para no depender de que el cliente pulse
+  // "Finalizar") y el cron reconcileWompiCheckouts (por si cerró la página).
+  // `result` = respuesta de confirmPayment cuando la reserva quedó confirmada.
+  async syncWompiPayment(
+    id: string,
+  ): Promise<{ status: string | null; result?: any }> {
+    const db = this.firebase.getFirestore();
+    const bookingDoc = await db.collection('lr_bookings').doc(id).get();
+    const booking = bookingDoc.data();
+    if (!bookingDoc.exists || !booking) {
+      throw new NotFoundException('Booking no encontrado');
+    }
+    if (booking.status !== 'PENDING') {
+      return { status: 'APPROVED', result: await this.confirmPayment(id) };
+    }
+    const txn = await this.wompi.findTransactionByReference(`booking-${id}`);
+    if (!txn) return { status: null };
+    // Sin foto/video guardado no se confirma acá: lo hará el frontend con
+    // confirm-payment, que la manda junto (flujo anterior a attach-media).
+    if (txn.status !== 'APPROVED' || !booking.imageUrl) {
+      return { status: txn.status };
+    }
+    const result = await this.confirmPayment(id, {
+      gateway: 'wompi',
+      transactionId: txn.id,
+    });
+    return { status: 'APPROVED', result };
+  }
+
+  // Red de seguridad: confirma las reservas cuyo pago Wompi se aprobó pero
+  // cuyo cliente nunca volvió a la página (cerró la pestaña al ver "pago
+  // exitoso", o se quedó en la página del banco con PSE). Al confirmarse le
+  // llega igual el correo con su código.
+  @Cron(CronExpression.EVERY_MINUTE)
+  async reconcileWompiCheckouts() {
+    const db = this.firebase.getFirestore();
+    if (!db) return;
+    // PSE y similares se resuelven en minutos; pasado este tiempo se deja
+    // de consultar (un checkout abierto y abandonado no se pagará).
+    const maxAgeMs = 2 * 60 * 60000;
+    try {
+      const snapshot = await db
+        .collection('lr_bookings')
+        .where('pendingGateway', '==', 'wompi')
+        .get();
+      for (const doc of snapshot.docs) {
+        const b = doc.data();
+        const startedAt: Date | undefined = b.checkoutStartedAt?.toDate?.();
+        const expired =
+          !startedAt || Date.now() - startedAt.getTime() > maxAgeMs;
+        if (b.status !== 'PENDING' || expired) {
+          await doc.ref.update({ pendingGateway: FieldValue.delete() });
+          continue;
+        }
+        try {
+          const { status } = await this.syncWompiPayment(doc.id);
+          if (status === 'APPROVED') {
+            console.log(`[Wompi] Reserva ${doc.id} confirmada por el cron`);
+          }
+        } catch (e: any) {
+          console.error(`[Wompi] Error reconciliando ${doc.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      console.error('[Wompi] Error reconciliando pagos:', e.message);
+    }
   }
 
   // Consulta la transacción en Wompi o dLocal Go y devuelve lo que hay que
@@ -727,20 +817,26 @@ export class BookingsService {
     }
   }
 
-  async confirmPayment(
-    id: string,
-    data?: {
-      imageBase64?: string;
-      timeSlot?: string;
-      trimStart?: number;
-      trimEnd?: number;
-      frameX?: number;
-      frameY?: number;
-      frameZoom?: number;
-      gateway?: 'wompi' | 'dlocalgo';
-      transactionId?: string;
-    },
-  ) {
+  // Confirmaciones en curso por reserva. Una misma reserva puede intentar
+  // confirmarse a la vez desde el callback del widget, la consulta periódica
+  // del frontend y el cron: se encadenan para que la segunda vea la reserva
+  // ya APPROVED y no asigne otra hora ni mande otro correo.
+  private confirmQueue = new Map<string, Promise<unknown>>();
+
+  async confirmPayment(id: string, data?: ConfirmPaymentData) {
+    const previous = this.confirmQueue.get(id) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => this.doConfirmPayment(id, data));
+    this.confirmQueue.set(id, current);
+    try {
+      return await current;
+    } finally {
+      if (this.confirmQueue.get(id) === current) this.confirmQueue.delete(id);
+    }
+  }
+
+  private async doConfirmPayment(id: string, data?: ConfirmPaymentData) {
     const db = this.firebase.getFirestore();
     const bookingRef = db.collection('lr_bookings').doc(id);
     const bookingDoc = await bookingRef.get();
@@ -1147,7 +1243,11 @@ export class BookingsService {
 
       if (exactTime === 'Sin asignar') {
         const currentStart = nowMins - (nowMins % franjaDuration);
-        for (let start = currentStart; start < 24 * 60; start += franjaDuration) {
+        for (
+          let start = currentStart;
+          start < 24 * 60;
+          start += franjaDuration
+        ) {
           const slot = `${this.toTimeStr(start)}-${this.toTimeStr(start + franjaDuration)}`;
           const free = await this.findFreeMinuteInFranja(
             finalBookingDate,

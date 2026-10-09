@@ -109,6 +109,11 @@ export function BookingForm() {
   // MISMA transacción, sin volver a cobrar.
   const [paidRetry, setPaidRetry] = useState<{ gateway: 'wompi' | 'dlocalgo'; transactionId: string | null } | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  // Consulta periódica del pago Wompi mientras el widget está abierto (ver
+  // startWompiWatch) y reserva ya mostrada como confirmada, para no
+  // procesarla dos veces si también llega el callback del widget.
+  const wompiWatchRef = useRef<number | null>(null);
+  const confirmedBookingRef = useRef<string | null>(null);
   const [cropWidth, setCropWidth] = useState(576);
   const [cropHeight, setCropHeight] = useState(1152);
   const [videoProjectionDuration, setVideoProjectionDuration] = useState(15);
@@ -131,7 +136,14 @@ export function BookingForm() {
     // La foto/video ya quedó guardada en el backend (attach-media) antes de
     // salir a pagar, así que al volver solo hace falta confirmar el pago —
     // no se le vuelve a pedir la foto al usuario.
-    if (statusParam === 'success' && bookingIdParam) {
+    // Vuelta de Wompi (redirectUrl, p. ej. después de PSE en la página del
+    // banco) o recarga de la página con un pago Wompi en curso.
+    const wompiBookingId = searchParams.get('wompiBookingId') || sessionStorage.getItem('wompi_booking_id');
+    if (searchParams.has('wompiBookingId')) window.history.replaceState(null, '', location.pathname);
+
+    if (wompiBookingId) {
+      resumeWompiBooking(wompiBookingId, searchParams.has('wompiBookingId'));
+    } else if (statusParam === 'success' && bookingIdParam) {
       sessionStorage.removeItem('dlocal_booking_id');
       sessionStorage.removeItem('dlocal_payment_id');
       sessionStorage.removeItem('dlocal_link');
@@ -193,6 +205,8 @@ export function BookingForm() {
         setVideoProjectionDuration(res.data?.videoProjectionDuration || 15);
       })
       .catch((err) => console.error("Error fetching screen settings", err));
+
+    return stopWompiWatch;
   }, []);
 
   // Política de filtros desactivada: el paso "elegir filtro" no existe en el
@@ -488,33 +502,124 @@ export function BookingForm() {
     };
   };
 
-  // Confirma con el backend una transacción de Wompi YA aprobada, mandando la
-  // foto/video. Si falla, NO se muestra "reserva completada": se vuelve al
-  // paso de la foto con los datos intactos para reintentar sin pagar de nuevo.
-  const confirmWompiPayment = async (transactionId: string) => {
-    if (!bookingId) return;
+  // Muestra la reserva confirmada (paso 3). Puede llegar por el callback del
+  // widget, por la consulta periódica o al volver de Wompi: solo cuenta la
+  // primera vez. Solo el flujo dentro de la página registra la compra en
+  // analytics (al volver de una redirección ya no están los datos del form).
+  const showWompiConfirmed = (id: string, result: any, track: boolean) => {
+    stopWompiWatch();
+    sessionStorage.removeItem('wompi_booking_id');
+    if (confirmedBookingRef.current === id) return;
+    confirmedBookingRef.current = id;
+    setBookingId(id);
+    setFinalResult(result);
+    setPaymentStatus('APPROVED');
+    setPaidRetry(null);
+    setActiveStep(3);
+    if (!track) return;
+    // Excluye PII (nombre, cédula, correo, celular) del evento.
+    trackGtagEvent('purchase', {
+      transaction_id: result.code,
+      value: servicePrice,
+      currency: 'COP',
+      nationality: country,
+      city,
+      items: [{
+        item_id: selectedFilter || 'ledson-renacer-sin-filtro',
+        item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
+        quantity: 1,
+      }],
+    });
+  };
+
+  // El widget de Wompi no tiene un método para cerrarse: se cierra como lo
+  // haría el usuario, con Escape sobre su fondo (.waybox-backdrop), lo que
+  // además deshace los cambios que el widget le hizo a la página. Si Wompi
+  // cambia su estructura esto no hace nada: el cliente ve el widget hasta
+  // cerrarlo, con la reserva ya confirmada detrás.
+  const closeWompiWidget = () => {
+    document.querySelectorAll<HTMLElement>('.waybox-backdrop:not([hidden])').forEach((el) => {
+      const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+      Object.defineProperty(esc, 'keyCode', { get: () => 27 });
+      el.dispatchEvent(esc);
+    });
+  };
+
+  function stopWompiWatch() {
+    if (wompiWatchRef.current !== null) {
+      window.clearInterval(wompiWatchRef.current);
+      wompiWatchRef.current = null;
+    }
+  }
+
+  // Mientras el widget está abierto (o el pago sigue en proceso) se pregunta
+  // al backend cada 3 s si Wompi ya aprobó el pago. Así, apenas aparece
+  // "pago exitoso", se cierra el widget y se muestra la reserva confirmada
+  // sin esperar a que el cliente pulse "Finalizar" — muchos creían que ya
+  // habían terminado y cerraban la página sin reservar.
+  const startWompiWatch = (id: string, track: boolean) => {
+    stopWompiWatch();
+    const startedAt = Date.now();
+    let inFlight = false;
+    wompiWatchRef.current = window.setInterval(async () => {
+      if (inFlight) return;
+      if (Date.now() - startedAt > 30 * 60000) { stopWompiWatch(); return; }
+      inFlight = true;
+      try {
+        const res = await axios.post(`${API_BASE_URL}/api/bookings/${id}/sync-payment`);
+        if (res.data?.status === 'APPROVED' && res.data.result) {
+          closeWompiWidget();
+          showWompiConfirmed(id, res.data.result, track);
+        }
+      } catch (err) {
+        console.error('Error consultando el pago Wompi:', err);
+      } finally {
+        inFlight = false;
+      }
+    }, 3000);
+  };
+
+  // Al volver de Wompi (redirectUrl) o recargar con un pago en curso: la
+  // foto ya está guardada (attach-media), así que si el pago se aprobó se
+  // confirma sin pedir nada más.
+  async function resumeWompiBooking(id: string, fromRedirect: boolean) {
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/bookings/${id}/sync-payment`);
+      const status = res.data?.status;
+      if (status === 'APPROVED' && res.data.result) {
+        showWompiConfirmed(id, res.data.result, false);
+      } else if (status === 'PENDING') {
+        setBookingId(id);
+        setPaymentStatus('PENDING');
+        setActiveStep(3);
+        startWompiWatch(id, false);
+      } else {
+        sessionStorage.removeItem('wompi_booking_id');
+        if (fromRedirect && status) alert(t('paymentDeclinedAlert'));
+      }
+    } catch (err) {
+      console.error('Error verificando el pago Wompi:', err);
+    }
+  }
+
+  // Confirma con el backend una transacción de Wompi YA aprobada (callback
+  // del widget). La foto/video ya se guardó antes de abrir el widget
+  // (attach-media); withMedia solo en "Reintentar", por si eligió otra. Si
+  // falla, NO se muestra "reserva completada": se vuelve al paso de la foto
+  // con los datos intactos para reintentar sin pagar de nuevo.
+  const confirmWompiPayment = async (transactionId: string, withMedia = false) => {
+    if (!bookingId || confirmedBookingRef.current === bookingId) return;
     setIsUploadingPhoto(true);
     try {
-      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, { ...buildMediaPayload(), gateway: 'wompi', transactionId });
-      setFinalResult(confirmRes.data);
-      setPaymentStatus('APPROVED');
-      setPaidRetry(null);
-      setActiveStep(3);
-      // Excluye PII (nombre, cédula, correo, celular) del evento.
-      trackGtagEvent('purchase', {
-        transaction_id: confirmRes.data.code,
-        value: servicePrice,
-        currency: 'COP',
-        nationality: country,
-        city,
-        items: [{
-          item_id: selectedFilter || 'ledson-renacer-sin-filtro',
-          item_name: filters.find((f) => f.id === selectedFilter)?.name || "Led's on Renacer",
-          quantity: 1,
-        }],
+      const confirmRes = await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/confirm-payment`, {
+        ...(withMedia ? buildMediaPayload() : {}),
+        gateway: 'wompi',
+        transactionId,
       });
+      showWompiConfirmed(bookingId, confirmRes.data, true);
     } catch (err) {
       console.error('Error confirmando la reserva pagada:', err);
+      stopWompiWatch();
       setPaidRetry({ gateway: 'wompi', transactionId });
       setActiveStep(2);
       alert(t('paidUploadErrorAlert'));
@@ -527,7 +632,7 @@ export function BookingForm() {
   const handleRetryPaid = async () => {
     if (!paidRetry || !bookingId) return;
     if (paidRetry.gateway === 'wompi') {
-      if (paidRetry.transactionId) await confirmWompiPayment(paidRetry.transactionId);
+      if (paidRetry.transactionId) await confirmWompiPayment(paidRetry.transactionId, true);
       return;
     }
     // dLocal Go: la foto/video ya quedó guardada (attach-media) antes de ir a
@@ -575,14 +680,30 @@ export function BookingForm() {
           throw new Error('No redirect URL received from DLocal Go');
         }
       } else {
+        // La foto/video se guarda ANTES de abrir el widget: así el backend
+        // puede confirmar la reserva en cuanto Wompi apruebe el pago, aunque
+        // el cliente cierre la página sin volver (ver reconcileWompiCheckouts).
+        await axios.post(`${API_BASE_URL}/api/bookings/${bookingId}/attach-media`, { ...mediaPayload, checkoutGateway: 'wompi' });
+        sessionStorage.setItem('wompi_booking_id', bookingId);
         const wompiRes = await axios.get(`${API_BASE_URL}/api/wompi/integrity-signature?reference=${reference}&amountInCents=${amountInCents}&currency=COP`);
         const { signature } = wompiRes.data;
+        // El firewall de Wompi rechaza con un 403 (CloudFront) la transacción
+        // entera si la redirectUrl apunta a una IP (ej. el sitio abierto como
+        // http://192.168.x.x desde la red local), así que solo se manda con un
+        // nombre de dominio. Sin ella, PSE no vuelve a esta página, pero la
+        // reserva igual se confirma (reconcileWompiCheckouts en el backend).
+        const { hostname } = window.location;
+        const hostIsIp = /^[\d.]+$/.test(hostname) || hostname.includes(':') || hostname.startsWith('[');
         const checkout = new (window as any).WidgetCheckout({
           currency: 'COP',
           amountInCents: amountInCents,
           reference: reference,
           publicKey: import.meta.env.VITE_WOMPI_PUBLIC_KEY,
           signature: { integrity: signature },
+          // Medios que salen de la página (PSE, botón Bancolombia…): Wompi
+          // vuelve acá con &id=<transacción> en vez de quedarse en su página
+          // de resultado.
+          ...(hostIsIp ? {} : { redirectUrl: `${window.location.origin}/booking?wompiBookingId=${bookingId}` }),
         });
         // Si el usuario cierra el widget sin completar el pago, Wompi puede
         // invocar este callback sin transacción o directamente no invocarlo
@@ -598,6 +719,7 @@ export function BookingForm() {
         const bookingWrap = document.querySelector('.ledson-booking-wrap');
         if (bookingWrap) bookingWrap.scrollTop = 0;
 
+        startWompiWatch(bookingId, true);
         checkout.open(async (result: any) => {
           const transaction = result?.transaction;
           console.log('Transaction result: ', transaction);
@@ -605,12 +727,15 @@ export function BookingForm() {
           if (transaction.status === 'APPROVED') {
             await confirmWompiPayment(transaction.id);
           } else if (transaction.status === 'PENDING') {
-            // Aún sin respuesta del banco: pantalla de "pago en proceso".
+            // Aún sin respuesta del banco: pantalla de "pago en proceso". La
+            // consulta periódica sigue y pasa sola a "reserva completada"
+            // cuando se apruebe.
             setPaymentStatus(transaction.status);
             setActiveStep(3);
           } else {
             // DECLINED / VOIDED / ERROR: no se cobró. Se queda en este paso
             // para que pueda volver a intentar el pago.
+            stopWompiWatch();
             alert(t('paymentDeclinedAlert'));
           }
         });
@@ -618,7 +743,9 @@ export function BookingForm() {
       }
     } catch (err) {
       console.error('Error al subir y pagar:', err);
-      alert(t('paymentErrorAlert'));
+      // attach-media rechaza el archivo (antes de cobrar) si no pasa la moderación.
+      const blocked = axios.isAxiosError(err) && err.response?.data?.code === 'CONTENT_NOT_ALLOWED';
+      alert(blocked ? t(isVideoSelected ? 'moderationBlockedVideo' : 'moderationBlocked') : t('paymentErrorAlert'));
     }
     setIsUploadingPhoto(false);
   };
@@ -659,6 +786,9 @@ export function BookingForm() {
     setSelectedFranja(null);
     setPaidRetry(null);
     setDlocalgoLink('');
+    stopWompiWatch();
+    confirmedBookingRef.current = null;
+    sessionStorage.removeItem('wompi_booking_id');
     sessionStorage.removeItem('dlocal_booking_id');
     sessionStorage.removeItem('dlocal_payment_id');
     sessionStorage.removeItem('dlocal_link');

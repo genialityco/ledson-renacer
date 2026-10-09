@@ -9,6 +9,7 @@ import { ImageCropModal } from './ImageCropModal';
 import { VideoTrimModal } from './VideoTrimModal';
 import { AdminGuide } from './AdminGuide';
 import { UsersAdmin } from './UsersAdmin';
+import { SellersAdmin, type Seller } from './SellersAdmin';
 
 // Proporción real de la pantalla de proyección — configurable desde este
 // panel (ver cropWidth/cropHeight) para que el recorte de fotos/videos del
@@ -47,9 +48,7 @@ export function AdminDashboard() {
   const [newFilter, setNewFilter] = useState<any>({
     label: '', description: '', value: '', imageUrl: '', lora: '', prompt: '', lora_strength: 0.8, denoise: 0.6, frameUrl: '', referenceImageUrl1: '', referenceImageUrl2: ''
   });
-  const [sellers, setSellers] = useState<any[]>([]);
-  const [sellerModalOpened, { open: openSellerModal, close: closeSellerModal }] = useDisclosure(false);
-  const [newSeller, setNewSeller] = useState<any>({ name: '' });
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [benefits, setBenefits] = useState<any[]>([]);
   const [benefitModalOpened, { open: openBenefitModal, close: closeBenefitModal }] = useDisclosure(false);
   const [newBenefit, setNewBenefit] = useState<any>({ name: '' });
@@ -252,29 +251,6 @@ export function AdminDashboard() {
 
   const handleToggleFilterStatus = async (id: string, active: boolean) => {
     await axios.put(`${API_BASE_URL}/api/images/${id}`, { active });
-    fetchData();
-  };
-
-  const handleAddSeller = async () => {
-    if (newSeller._id) {
-      const { _id, ...updateData } = newSeller;
-      await axios.put(`${API_BASE_URL}/api/sellers/${_id}`, updateData);
-    } else {
-      await axios.post(`${API_BASE_URL}/api/sellers`, newSeller);
-    }
-
-    setNewSeller({ name: '' });
-    closeSellerModal();
-    fetchData();
-  };
-
-  const handleEditSeller = (s: any) => {
-    setNewSeller(s);
-    openSellerModal();
-  };
-
-  const handleToggleSellerStatus = async (id: string, active: boolean) => {
-    await axios.put(`${API_BASE_URL}/api/sellers/${id}`, { active });
     fetchData();
   };
 
@@ -737,50 +713,7 @@ export function AdminDashboard() {
         </Tabs.Panel>
 
         <Tabs.Panel value="sellers">
-          <Group justify="space-between" mb="sm">
-            <Text fw={500}>Vendedores</Text>
-            <Button onClick={openSellerModal}>+ Añadir Vendedor</Button>
-          </Group>
-          <Table striped>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Nombre</Table.Th>
-                <Table.Th>Estado</Table.Th>
-                <Table.Th>Acciones</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {sellers.map((s) => (
-                <Table.Tr key={s._id}>
-                  <Table.Td>{s.name}</Table.Td>
-                  <Table.Td>
-                    <Badge color={s.active ? 'green' : 'red'}>{s.active ? 'Activo' : 'Inactivo'}</Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <Button size="xs" color="blue" variant="subtle" onClick={() => handleEditSeller(s)}>Editar</Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color={s.active ? 'red' : 'green'}
-                        onClick={() => handleToggleSellerStatus(s._id, !s.active)}
-                      >
-                        {s.active ? 'Desactivar' : 'Activar'}
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-
-          <Modal opened={sellerModalOpened} onClose={() => {
-            setNewSeller({ name: '' });
-            closeSellerModal();
-          }} title={newSeller._id ? 'Editar Vendedor' : 'Añadir Nuevo Vendedor'}>
-            <TextInput label="Nombre del vendedor" value={newSeller.name} onChange={e => setNewSeller({ ...newSeller, name: e.currentTarget.value })} mb="md" />
-            <Button fullWidth onClick={handleAddSeller}>Guardar Vendedor</Button>
-          </Modal>
+          <SellersAdmin sellers={sellers} onChanged={fetchData} />
         </Tabs.Panel>
 
         <Tabs.Panel value="benefits">

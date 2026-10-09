@@ -20,7 +20,8 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
     title: 'Vendedores, Beneficios y Métodos de Pago',
     intro: 'Listas que alimentan el formulario del stand físico (Reserva Asistida).',
     items: [
-      'Vendedores: personas que atienden. Aparecen en el campo «Vendedor». Desactivar uno lo oculta sin borrar su historial.',
+      'Vendedores: personas que atienden. Aparecen en el campo «Vendedor». Desactivar uno lo oculta sin borrar su historial (y te pregunta si también desactivar su cuenta de acceso).',
+      'Cuenta de acceso del vendedor: al crearlo o editarlo puedes crearle una cuenta nueva (correo y, si quieres, una contraseña; si la dejas vacía le llega un correo para crearla), vincular una cuenta que ya exista en «Usuarios», o dejarlo sin cuenta. Con cuenta, el vendedor entra a la Reserva Asistida y sus ventas quedan a su nombre automáticamente.',
       'Beneficios/Promoción: cortesías o descuentos (ej. «Cortesía prensa»). Aparecen en «Beneficio / Promoción» y quedan registrados en la venta.',
       'Métodos de Pago: efectivo, datáfono, QR, etc. Aparecen en «Método de pago» del stand.',
       'Los cambios se guardan al confirmar cada ventana y se ven de inmediato en el formulario del stand.',
@@ -29,7 +30,7 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
   {
     id: 'users',
     title: 'Usuarios',
-    intro: 'Cuentas que pueden iniciar sesión. No confundir con «Vendedores», que es solo la lista del campo «Vendedor» del formulario del stand.',
+    intro: 'Cuentas que pueden iniciar sesión. La columna «Vendedor» muestra a qué vendedor está vinculada cada cuenta; el vínculo se cambia editando el vendedor en «Vendedores».',
     items: [
       'Roles: Administrador ve todo el panel; Vendedor solo puede entrar a la Reserva Asistida.',
       'Añadir Usuario: escribe el correo y el rol. A la persona le llega un correo para crear su propia contraseña (nadie más la conoce). Si no lo ve, que revise spam.',

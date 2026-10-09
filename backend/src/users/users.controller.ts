@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
-import type { UserUpdate } from './users.service';
+import type { UserCreate, UserUpdate } from './users.service';
 import { Roles } from '../auth/roles.decorator';
 import type { AuthedRequest } from '../auth/auth.guard';
 
@@ -15,7 +15,7 @@ export class UsersController {
   }
 
   @Post()
-  async create(@Body() data: { email?: unknown; role?: unknown }) {
+  async create(@Body() data: UserCreate) {
     return this.usersService.create(data);
   }
 

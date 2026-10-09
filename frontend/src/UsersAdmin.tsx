@@ -18,6 +18,7 @@ interface PanelUser {
   disabled: boolean;
   createdAt: string;
   lastSignInAt: string | null;
+  seller: { id: string; name: string } | null;
 }
 
 const ROLE_OPTIONS = [
@@ -147,7 +148,8 @@ export function UsersAdmin() {
         Personas que pueden iniciar sesión. Los administradores ven todo el panel; los vendedores solo la Reserva
         Asistida. Si alguien olvidó su contraseña, usa «Enviar enlace de contraseña» (o puede hacerlo desde
         «¿Olvidaste tu contraseña?» en la pantalla de inicio de sesión). Para quitarle el acceso a alguien, desactiva
-        su cuenta.
+        su cuenta. Para vincular una cuenta a un vendedor (y que sus ventas queden a su nombre), edita el vendedor en la
+        pestaña «Vendedores».
       </Text>
 
       {users === null ? (
@@ -158,6 +160,7 @@ export function UsersAdmin() {
             <Table.Tr>
               <Table.Th>Correo</Table.Th>
               <Table.Th>Rol</Table.Th>
+              <Table.Th>Vendedor</Table.Th>
               <Table.Th>Estado</Table.Th>
               <Table.Th>Último acceso</Table.Th>
               <Table.Th>Acciones</Table.Th>
@@ -173,6 +176,7 @@ export function UsersAdmin() {
                     {self && <Text span size="xs" c="dimmed"> (tú)</Text>}
                   </Table.Td>
                   <Table.Td>{roleBadge(u.role)}</Table.Td>
+                  <Table.Td>{u.seller?.name ?? <Text span size="sm" c="dimmed">—</Text>}</Table.Td>
                   <Table.Td>
                     <Badge color={u.disabled ? 'red' : 'green'}>{u.disabled ? 'Desactivado' : 'Activo'}</Badge>
                   </Table.Td>

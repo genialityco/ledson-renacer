@@ -12,6 +12,12 @@ import { FirebaseService } from '../firebase/firebase.service';
 const ROLES = ['admin', 'vendedor'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export interface UserCreate {
+  email?: unknown;
+  role?: unknown;
+  password?: unknown;
+}
+
 export interface UserUpdate {
   email?: string;
   role?: string;
@@ -20,9 +26,11 @@ export interface UserUpdate {
 
 // Gestión de las cuentas del panel (Firebase Auth) desde la pestaña
 // "Usuarios" del admin, para no depender de la consola de Firebase ni de
-// scripts/set-user-role.ts. Las contraseñas nunca pasan por acá: al crear un
-// usuario se le pone una aleatoria y el frontend le envía el correo de
-// Firebase para que cree la suya.
+// scripts/set-user-role.ts. Al crear un usuario se le puede poner una
+// contraseña inicial (ej. un vendedor del stand sin acceso a su correo); si no
+// se da, se le pone una aleatoria y el frontend le envía el correo de Firebase
+// para que cree la suya. Una cuenta puede estar vinculada a un vendedor de
+// lr_sellers (campo `uid` del vendedor, ver sellers.service.ts).
 @Injectable()
 export class UsersService {
   constructor(private firebase: FirebaseService) {}
@@ -37,7 +45,7 @@ export class UsersService {
     return auth;
   }
 
-  private toDto(u: UserRecord) {
+  private toDto(u: UserRecord, seller: { id: string; name: string } | null) {
     return {
       uid: u.uid,
       email: u.email ?? '',
@@ -45,7 +53,39 @@ export class UsersService {
       disabled: u.disabled,
       createdAt: u.metadata.creationTime,
       lastSignInAt: u.metadata.lastSignInTime ?? null,
+      seller,
     };
+  }
+
+  // uid -> vendedor vinculado, para mostrarlo en la lista de usuarios.
+  private async sellersByUid(): Promise<
+    Map<string, { id: string; name: string }>
+  > {
+    const db = this.firebase.getFirestore();
+    const map = new Map<string, { id: string; name: string }>();
+    if (!db) return map;
+    const snapshot = await db.collection('lr_sellers').get();
+    for (const doc of snapshot.docs) {
+      const { uid, name } = doc.data() as { uid?: string; name: string };
+      if (uid) map.set(uid, { id: doc.id, name });
+    }
+    return map;
+  }
+
+  private async sellerOf(uid: string) {
+    return (await this.sellersByUid()).get(uid) ?? null;
+  }
+
+  private checkPassword(password: unknown): string | undefined {
+    if (password === undefined || password === null || password === '') {
+      return undefined;
+    }
+    if (typeof password !== 'string' || password.length < 6) {
+      throw new BadRequestException(
+        'La contraseña debe tener al menos 6 caracteres',
+      );
+    }
+    return password;
   }
 
   private normalizeEmail(email: unknown): string {
@@ -74,20 +114,21 @@ export class UsersService {
       users.push(...page.users.filter((u) => u.email));
       pageToken = page.pageToken;
     } while (pageToken);
+    const sellers = await this.sellersByUid();
     return users
-      .map((u) => this.toDto(u))
+      .map((u) => this.toDto(u, sellers.get(u.uid) ?? null))
       .sort((a, b) => a.email.localeCompare(b.email));
   }
 
-  async create(data: { email?: unknown; role?: unknown }) {
+  async create(data: UserCreate) {
     const email = this.normalizeEmail(data.email);
     const role = this.checkRole(data.role);
+    const password =
+      this.checkPassword(data.password) ??
+      randomBytes(24).toString('base64url');
     let user: UserRecord;
     try {
-      user = await this.auth.createUser({
-        email,
-        password: randomBytes(24).toString('base64url'),
-      });
+      user = await this.auth.createUser({ email, password });
     } catch (e: any) {
       if (e?.code === 'auth/email-already-exists') {
         throw new ConflictException('Ya existe un usuario con ese correo');
@@ -95,7 +136,7 @@ export class UsersService {
       throw e;
     }
     await this.auth.setCustomUserClaims(user.uid, { role });
-    return this.toDto(await this.auth.getUser(user.uid));
+    return this.toDto(await this.auth.getUser(user.uid), null);
   }
 
   async update(uid: string, data: UserUpdate, currentUid: string) {
@@ -146,6 +187,6 @@ export class UsersService {
       await this.auth.revokeRefreshTokens(uid);
     }
 
-    return this.toDto(await this.auth.getUser(uid));
+    return this.toDto(await this.auth.getUser(uid), await this.sellerOf(uid));
   }
 }

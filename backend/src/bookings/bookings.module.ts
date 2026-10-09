@@ -5,9 +5,16 @@ import { EmailModule } from '../email/email.module';
 import { WompiModule } from '../wompi/wompi.module';
 import { ModerationModule } from '../moderation/moderation.module';
 import { DlocalgoModule } from '../dlocalgo/dlocalgo.module';
+import { SellersModule } from '../sellers/sellers.module';
 
 @Module({
-  imports: [EmailModule, WompiModule, DlocalgoModule, ModerationModule],
+  imports: [
+    EmailModule,
+    WompiModule,
+    DlocalgoModule,
+    ModerationModule,
+    SellersModule,
+  ],
   controllers: [BookingsController],
   providers: [BookingsService],
 })
