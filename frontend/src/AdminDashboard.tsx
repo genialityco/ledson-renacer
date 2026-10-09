@@ -91,6 +91,7 @@ export function AdminDashboard() {
   // proyección en pantalla no lo usa). Reemplaza al marco por filtro para
   // este propósito, ya que este evento tiene los filtros desactivados.
   const [emailFrameUrl, setEmailFrameUrl] = useState('');
+  const [emailSceneUrl, setEmailSceneUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [pendingUploadTarget, setPendingUploadTarget] = useState<ScreenUploadTarget | null>(null);
   const [rawImageForCrop, setRawImageForCrop] = useState<string | null>(null);
@@ -202,6 +203,7 @@ export function AdminDashboard() {
         setRevealOverlayFadeSeconds(resScreen.data.revealOverlayFadeSeconds ?? 2);
         setContainerTransition(resScreen.data.containerTransition || 'fade');
         setEmailFrameUrl(resScreen.data.emailFrameUrl || '');
+        setEmailSceneUrl(resScreen.data.emailSceneUrl || '');
       }
     } catch (e) {
       console.error('Error fetching admin data', e);
@@ -335,6 +337,7 @@ export function AdminDashboard() {
       revealOverlayFadeSeconds: Number(revealOverlayFadeSeconds) || 2,
       containerTransition,
       emailFrameUrl,
+      emailSceneUrl,
     });
     alert('Configuración de la Pantalla Gigante actualizada');
   };
@@ -1498,6 +1501,26 @@ export function AdminDashboard() {
                       <CloseButton size="sm" title="Quitar marco del correo" onClick={() => setEmailFrameUrl('')} />
                     )}
                     <FileButton onChange={(f) => handleUploadFile(f, setEmailFrameUrl)} accept="image/png">
+                      {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16} /></ActionIcon>}
+                    </FileButton>
+                  </Group>
+                }
+                mb="md"
+              />
+              <TextInput
+                label="Escena del Correo (opcional)"
+                description="PNG del mismo tamaño que el marco con un hueco transparente (ej. la pantalla apagada del edificio): la foto del cliente se ubica dentro de ese hueco, la escena encima y el marco encima de todo. Si está vacía, la foto ocupa todo el marco como antes."
+                placeholder="URL o subir archivo..."
+                value={emailSceneUrl}
+                onChange={(e) => setEmailSceneUrl(e.currentTarget.value)}
+                maw={420}
+                rightSectionWidth={emailSceneUrl ? 68 : 36}
+                rightSection={
+                  <Group gap={4} wrap="nowrap">
+                    {emailSceneUrl && (
+                      <CloseButton size="sm" title="Quitar escena del correo" onClick={() => setEmailSceneUrl('')} />
+                    )}
+                    <FileButton onChange={(f) => handleUploadFile(f, setEmailSceneUrl)} accept="image/png">
                       {(props) => <ActionIcon {...props} variant="light" color="blue"><IconUpload size={16} /></ActionIcon>}
                     </FileButton>
                   </Group>

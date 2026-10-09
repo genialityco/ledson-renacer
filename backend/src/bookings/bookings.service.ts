@@ -1806,6 +1806,7 @@ export class BookingsService {
           revealOverlayFadeSeconds: 2,
           containerTransition: 'fade',
           emailFrameUrl: '',
+          emailSceneUrl: '',
           currentProjection: null,
         };
 
@@ -2006,44 +2007,69 @@ export class BookingsService {
   // así ambos llenan siempre el mismo lienzo sin dejar huecos, aunque eso
   // implique recortar un poco el borde exterior del marco si su PNG no tiene
   // exactamente esa proporción.
+  // Si además hay una escena (emailSceneUrl: PNG con un hueco transparente,
+  // ej. la foto de la Comuna 13 con la pantalla apagada), la foto va DENTRO
+  // de ese hueco y no a lienzo completo — ver composeSceneEmail.
   // Devuelve null si algo falla, para que el llamador pueda seguir usando la
   // foto sin marco como respaldo.
   private async compositeEmailFrame(
     imageUrl: string,
     frameUrl: string,
+    sceneUrl: string,
     cropWidth: number,
     cropHeight: number,
   ): Promise<string | null> {
     try {
-      const [imageRes, frameRes] = await Promise.all([
-        axios.get(imageUrl, { responseType: 'arraybuffer' }),
-        axios.get(frameUrl, { responseType: 'arraybuffer' }),
+      const download = async (url: string) =>
+        url
+          ? Buffer.from(
+              (await axios.get(url, { responseType: 'arraybuffer' })).data,
+            )
+          : null;
+      const [imageBuffer, frameBuffer, sceneBuffer] = await Promise.all([
+        download(imageUrl),
+        download(frameUrl),
+        download(sceneUrl),
       ]);
-      const imageBuffer = Buffer.from(imageRes.data);
-      const frameBuffer = Buffer.from(frameRes.data);
+      if (!imageBuffer) return null;
 
-      // El lienzo del correo usa la resolución real de la foto (hasta 2160px
-      // de ancho) en vez de la de la pantalla (cropWidth): así el recuerdo
-      // digital no pierde calidad. Nunca baja de cropWidth x cropHeight.
-      const meta = await sharp(imageBuffer).metadata();
-      const outWidth = Math.max(cropWidth, Math.min(meta.width || 0, 2160));
-      const outHeight = Math.round((outWidth * cropHeight) / cropWidth);
+      let composited: Buffer;
+      if (sceneBuffer) {
+        composited = await this.composeSceneEmail(
+          imageBuffer,
+          sceneBuffer,
+          frameBuffer,
+        );
+      } else {
+        if (!frameBuffer) return null;
+        // El ancho del lienzo usa la resolución real de la foto (hasta
+        // 2160px) en vez de la de la pantalla (cropWidth): así el recuerdo
+        // digital no pierde calidad. El alto sale de la proporción del MARCO
+        // (ej. 9:16 de historias), no de la Proporción de Recorte (1:2): si
+        // no, el marco se estiraba a lo alto y se veía deformado. La foto se
+        // ajusta con "cover" a ese lienzo (pierde un poco arriba/abajo).
+        const meta = await sharp(imageBuffer).metadata();
+        const frameMeta = await sharp(frameBuffer).metadata();
+        const frameRatio =
+          frameMeta.width && frameMeta.height
+            ? frameMeta.height / frameMeta.width
+            : cropHeight / cropWidth;
+        const outWidth = Math.max(cropWidth, Math.min(meta.width || 0, 2160));
+        const outHeight = Math.round((outWidth * frameRatio) / 2) * 2;
 
-      const resizedImage = await sharp(imageBuffer)
-        .resize(outWidth, outHeight, { fit: 'cover' })
-        .toBuffer();
-      // El marco debe ajustarse al lienzo sin recortar sus bordes (fit: 'fill').
-      // Con fit: 'cover', si la relación de aspecto del marco difiere de
-      // cropWidth / cropHeight (ej. 9:16 vs 1:2), sharp recortaba los laterales
-      // del marco perdiéndose el diseño o marco a los lados.
-      const resizedFrame = await sharp(frameBuffer)
-        .resize(outWidth, outHeight, { fit: 'fill' })
-        .toBuffer();
+        const resizedImage = await sharp(imageBuffer)
+          .resize(outWidth, outHeight, { fit: 'cover' })
+          .toBuffer();
+        // Mismo aspecto que el lienzo: se escala sin deformarse ni recortarse.
+        const resizedFrame = await sharp(frameBuffer)
+          .resize(outWidth, outHeight, { fit: 'fill' })
+          .toBuffer();
 
-      const composited = await sharp(resizedImage)
-        .composite([{ input: resizedFrame }])
-        .jpeg({ quality: 95 })
-        .toBuffer();
+        composited = await sharp(resizedImage)
+          .composite([{ input: resizedFrame }])
+          .jpeg({ quality: 95 })
+          .toBuffer();
+      }
 
       const storage = this.firebase.getStorage();
       const bucket = storage.bucket();
@@ -2065,6 +2091,65 @@ export class BookingsService {
       console.error('Error componiendo marco para el correo:', e.message);
       return null;
     }
+  }
+
+  // Recuerdo con escena: la foto del cliente se ajusta ("cover") al hueco
+  // transparente de la escena y se ve a través de él; encima va el marco
+  // (borde, sello y pie), escalado al tamaño de la escena. Todo al tamaño
+  // real de la escena, que está diseñada a la misma medida que el marco
+  // (1688x3000): así el hueco cae justo en la pantalla del edificio.
+  private async composeSceneEmail(
+    photo: Buffer,
+    scene: Buffer,
+    frame: Buffer | null,
+  ): Promise<Buffer> {
+    const { data, info } = await sharp(scene)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let minX = info.width;
+    let minY = info.height;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < info.height; y++) {
+      for (let x = 0; x < info.width; x++) {
+        if (data[(y * info.width + x) * 4 + 3] < 128) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) {
+      throw new Error('La escena del correo no tiene una zona transparente');
+    }
+
+    const fittedPhoto = await sharp(photo)
+      .resize(maxX - minX + 1, maxY - minY + 1, { fit: 'cover' })
+      .toBuffer();
+    const layers: sharp.OverlayOptions[] = [
+      { input: fittedPhoto, left: minX, top: minY },
+      { input: scene },
+    ];
+    if (frame) {
+      layers.push({
+        input: await sharp(frame)
+          .resize(info.width, info.height, { fit: 'fill' })
+          .toBuffer(),
+      });
+    }
+    return sharp({
+      create: {
+        width: info.width,
+        height: info.height,
+        channels: 3,
+        background: '#000000',
+      },
+    })
+      .composite(layers)
+      .jpeg({ quality: 92 })
+      .toBuffer();
   }
 
   // Igual que compositeEmailFrame pero para video: compone el marco sobre
@@ -2089,9 +2174,20 @@ export class BookingsService {
       os.tmpdir(),
       `email-framed-${Date.now()}-${uuidv4()}.mp4`,
     );
-    const w = Math.round(cropWidth);
-    const h = Math.round(cropHeight);
     try {
+      // Lienzo con la proporción del MARCO (ej. 9:16), no la de recorte
+      // (1:2), para que el marco no se deforme. H.264 exige medidas pares.
+      const frameMeta = await sharp(
+        Buffer.from(
+          (await axios.get(frameUrl, { responseType: 'arraybuffer' })).data,
+        ),
+      ).metadata();
+      const frameRatio =
+        frameMeta.width && frameMeta.height
+          ? frameMeta.height / frameMeta.width
+          : cropHeight / cropWidth;
+      const w = Math.round(cropWidth / 2) * 2;
+      const h = Math.round((w * frameRatio) / 2) * 2;
       await new Promise<void>((resolve, reject) => {
         ffmpeg()
           .input(videoUrl)
@@ -2269,6 +2365,9 @@ export class BookingsService {
       const screenDoc = await db.collection('lr_settings').doc('screen').get();
       const screenData = screenDoc.exists ? screenDoc.data() : undefined;
       const emailFrameUrl = screenData?.emailFrameUrl || '';
+      // Escena con hueco para la foto (solo imagen; el video sigue con marco
+      // a lienzo completo).
+      const emailSceneUrl = screenData?.emailSceneUrl || '';
       const cropWidth = screenData?.cropWidth || 576;
       const cropHeight = screenData?.cropHeight || 1152;
 
@@ -2293,10 +2392,11 @@ export class BookingsService {
       } else {
         let emailImageUrl = imageUrl;
         let emailFramedImageUrl: string | undefined;
-        if (!isVideo && emailFrameUrl) {
+        if (!isVideo && (emailFrameUrl || emailSceneUrl)) {
           const composed = await this.compositeEmailFrame(
             imageUrl,
             emailFrameUrl,
+            emailSceneUrl,
             cropWidth,
             cropHeight,
           );

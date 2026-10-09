@@ -97,6 +97,7 @@ const SECTIONS: { id: string; title: string; intro: string; items: string[] }[] 
       'Efecto de Revelado: cómo aparece la foto (spray, fundido, video overlay o partículas). Con «Video Overlay» se reproduce un video de transición encima de la foto al entrar y al salir; «Duración del Fade» es cuántos segundos finales del video se desvanecen.',
       'Entrada/Salida del Contenedor: animación con la que entra y sale la experiencia.',
       'Marco del Correo: marco que se compone SOLO sobre la foto que se envía por correo (la pantalla no lo usa).',
+      'Escena del Correo (opcional): PNG del mismo tamaño que el marco con un hueco transparente (ej. la pantalla apagada del edificio). La foto del cliente aparece dentro de ese hueco, con la escena y el marco encima. Solo aplica a fotos; los videos siguen con el marco a pantalla completa.',
     ],
   },
   {
